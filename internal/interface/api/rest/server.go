@@ -20,7 +20,7 @@ func NewServer(db *gorm.DB) *Server {
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS("*"))
 
-	// Base API route group
+	// Grupo base de rutas de la API
 	api := e.Group("/api/services/v1")
 
 	// Registro de rutas

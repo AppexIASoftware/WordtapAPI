@@ -78,6 +78,10 @@ DB_PORT=3306
 DB_USER=usuario
 DB_PASSWORD=password
 DB_NAME=wordtap_db
+
+# Control de migraciones y datos iniciales (opcional)
+AUTO_MIGRATE=true
+AUTO_SEED=true
 ```
 
 ### Ejecución de la API

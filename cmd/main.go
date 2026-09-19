@@ -27,7 +27,21 @@ func main() {
 		log.Fatalf("Database connection error: %v", err)
 	}
 
-	// 3. Inicializar y encender el servidor REST
+	// 3. Ejecutar migraciones automáticas bajo demanda
+	if os.Getenv("AUTO_MIGRATE") == "true" {
+		if err := mysql.AutoMigrate(db); err != nil {
+			log.Fatalf("Database migration error: %v", err)
+		}
+	}
+
+	// 4. Sembrar datos iniciales mínimos bajo demanda
+	if os.Getenv("AUTO_SEED") == "true" {
+		if err := mysql.Seed(db); err != nil {
+			log.Fatalf("Database seed error: %v", err)
+		}
+	}
+
+	// 5. Inicializar y encender el servidor REST
 	server := rest.NewServer(db)
 
 	log.Printf("Server listening on port :%s", port)
