@@ -22,7 +22,10 @@ func AutoMigrate(db *gorm.DB) error {
 
 		// Catálogo y Aprendizaje
 		&entities.ContentCategory{},
+		&entities.ContentBankType{},
+		&entities.ContentBankItem{},
 		&entities.Course{},
+		&entities.CourseReviewRequest{},
 		&entities.Lesson{},
 		&entities.VocabularyItem{},
 		&entities.Phrase{},

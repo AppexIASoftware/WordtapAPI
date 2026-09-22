@@ -51,6 +51,28 @@ func Seed(db *gorm.DB) error {
 		}
 	}
 
+	// 1.1 Tipos de Bancos de Aprendizaje (Content Vault Types)
+	bankTypes := []entities.ContentBankType{
+		{Slug: "vocabulary", DisplayName: "Vocabulario", ColorTheme: "emerald", Description: stringPtr("Términos esenciales y partes de la oración"), IsActive: true},
+		{Slug: "phrase", DisplayName: "Oraciones", ColorTheme: "blue", Description: stringPtr("Estructuras y patrones sintácticos cotidianos"), IsActive: true},
+		{Slug: "collocation", DisplayName: "Colocaciones", ColorTheme: "purple", Description: stringPtr("Frases fijas y combinaciones naturales de palabras"), IsActive: true},
+		{Slug: "minimal_pair", DisplayName: "Pares Mínimos", ColorTheme: "amber", Description: stringPtr("Fonética contrastiva crítica para hispanohablantes"), IsActive: true},
+		{Slug: "false_friend", DisplayName: "Falsos Amigos", ColorTheme: "rose", Description: stringPtr("Trampas léxicas con traducción contraintuitiva"), IsActive: true},
+		{Slug: "dialogue", DisplayName: "Micro-Diálogos", ColorTheme: "cyan", Description: stringPtr("Intercambios conversacionales de 2 o 3 turnos"), IsActive: true},
+		{Slug: "idioms", DisplayName: "Modismos & Idioms", ColorTheme: "indigo", Description: stringPtr("Expresiones figuradas no traducibles literalmente"), IsActive: true},
+		{Slug: "slang", DisplayName: "Slang & Jerga", ColorTheme: "orange", Description: stringPtr("Lenguaje coloquial y regional auténtico"), IsActive: true},
+		{Slug: "business_english", DisplayName: "Inglés de Negocios", ColorTheme: "teal", Description: stringPtr("Términos corporativos y de gestión de proyectos"), IsActive: true},
+	}
+
+	for _, bt := range bankTypes {
+		var existing entities.ContentBankType
+		if err := db.Where("slug = ?", bt.Slug).First(&existing).Error; err != nil {
+			if err := db.Create(&bt).Error; err != nil {
+				return fmt.Errorf("failed to seed bank type %s: %w", bt.Slug, err)
+			}
+		}
+	}
+
 	// 2. Cursos
 	courses := []entities.Course{
 		{
@@ -124,6 +146,13 @@ func Seed(db *gorm.DB) error {
 		catID = &defaultCategory.ID
 	}
 
+	var basicCourse entities.Course
+	db.Where("slug = ?", "ingles-basico-gratuito").First(&basicCourse)
+	var courseID string
+	if basicCourse.ID != "" {
+		courseID = basicCourse.ID
+	}
+
 	vocabList := []entities.VocabularyItem{
 		{Spanish: "Gato", English: "Cat", Definition: stringPtr("Animal doméstico."), Status: entities.ContentStatusPublished, CategoryID: catID},
 		{Spanish: "Perro", English: "Dog", Definition: stringPtr("Animal doméstico."), Status: entities.ContentStatusPublished, CategoryID: catID},
@@ -143,10 +172,90 @@ func Seed(db *gorm.DB) error {
 		}
 	}
 
+	// 5. Lección "Los 50 verbos más usados" y sus elementos iniciales
+	if courseID != "" {
+		var lesson entities.Lesson
+		if err := db.Where("id = ? OR slug = ?", "lesson-1", "los-50-verbos-mas-usados").First(&lesson).Error; err != nil {
+			lesson = entities.Lesson{
+				ID:               "lesson-1",
+				CourseID:         courseID,
+				CategoryID:       catID,
+				Title:            "Los 50 verbos más usados",
+				Slug:             "los-50-verbos-mas-usados",
+				Description:      stringPtr("Domina los verbos esenciales del inglés."),
+				AccessTier:       entities.AccessTierFree,
+				Status:           entities.ContentStatusPublished,
+				SortOrder:        1,
+				EstimatedMinutes: intPtr(15),
+			}
+			if err := db.Create(&lesson).Error; err != nil {
+				return fmt.Errorf("failed to seed lesson %s: %w", lesson.Title, err)
+			}
+		}
+
+		verbs := []struct {
+			Spanish     string
+			English     string
+			Example     string
+			Note        string
+			Pronounce   string
+		}{
+			{"ser/estar", "be", "\"I am happy\"", "El verbo más importante", "/biː/"},
+			{"tener", "have", "\"I have a car\"", "Usado en tiempos perfectos", "/hæv/"},
+			{"hacer", "do", "\"I do my homework\"", "También auxiliar en preguntas", "/duː/"},
+			{"decir", "say", "\"I say hello\"", "Para expresar palabras", "/seɪ/"},
+			{"ir", "go", "\"I go to school\"", "Verbo de movimiento básico", "/ɡoʊ/"},
+			{"obtener", "get", "\"I get up early\"", "Muy versátil con phrasal verbs", "/ɡet/"},
+			{"hacer/crear", "make", "\"Make a wish\"", "Usado para crear o elaborar", "/meɪk/"},
+			{"saber/conocer", "know", "\"I know the answer\"", "Conocimiento o certeza", "/noʊ/"},
+			{"pensar", "think", "\"I think so\"", "Expresa opinión o razonamiento", "/θɪŋk/"},
+			{"tomar/llevar", "take", "\"Take a break\"", "Agarrar, tomar o transportar", "/teɪk/"},
+		}
+
+		for idx, vb := range verbs {
+			var vocab entities.VocabularyItem
+			if err := db.Where("english = ?", vb.English).First(&vocab).Error; err != nil {
+				vocab = entities.VocabularyItem{
+					CategoryID:      catID,
+					Spanish:         vb.Spanish,
+					English:         vb.English,
+					Pronunciation:   stringPtr(vb.Pronounce),
+					Definition:      stringPtr(vb.Note),
+					ExampleSentence: stringPtr(vb.Example),
+					Status:          entities.ContentStatusPublished,
+				}
+				if err := db.Create(&vocab).Error; err != nil {
+					return fmt.Errorf("failed to seed verb %s: %w", vb.English, err)
+				}
+			}
+
+			// Asociar como ítem de la lección
+			var itemCount int64
+			db.Model(&entities.LessonItem{}).Where("lesson_id = ? AND vocabulary_item_id = ?", lesson.ID, vocab.ID).Count(&itemCount)
+			if itemCount == 0 {
+				item := entities.LessonItem{
+					LessonID:         lesson.ID,
+					VocabularyItemID: &vocab.ID,
+					ItemType:         entities.LessonContentTypeWord,
+					ContentText:      stringPtr(vb.Note),
+					SortOrder:        idx + 1,
+					IsRequired:       true,
+				}
+				if err := db.Create(&item).Error; err != nil {
+					return fmt.Errorf("failed to seed lesson item for verb %s: %w", vb.English, err)
+				}
+			}
+		}
+	}
+
 	fmt.Println("Initial database seed completed successfully!")
 	return nil
 }
 
 func stringPtr(s string) *string {
 	return &s
+}
+
+func intPtr(i int) *int {
+	return &i
 }

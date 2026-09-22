@@ -5,7 +5,9 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 	"gorm.io/gorm"
 
+	infraRepo "github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/health"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/lesson"
 )
 
 type Server struct {
@@ -23,9 +25,15 @@ func NewServer(db *gorm.DB) *Server {
 	// Grupo base de rutas de la API
 	api := e.Group("/api/services/v1")
 
+	// Repositorios de infraestructura
+	lessonRepo := infraRepo.NewMySQLLessonRepository(db)
+
 	// Registro de rutas
 	healthRouter := health.NewHealthRouter(db)
 	api.GET("/health", healthRouter.CheckHealth)
+
+	lessonRouter := lesson.NewLessonRouter(lessonRepo)
+	api.GET("/lessons/:id", lessonRouter.GetLessonDetail)
 
 	return &Server{App: e}
 }

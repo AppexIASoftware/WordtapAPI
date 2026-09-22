@@ -35,6 +35,7 @@ type Game struct {
 	AccessTier       AccessTier    `gorm:"type:varchar(20);default:'free';not null" json:"access_tier"`
 	Status           ContentStatus `gorm:"type:varchar(20);default:'draft';not null" json:"status"`
 	Level            int           `gorm:"default:1;not null" json:"level"`
+	LevelConfig      *string       `gorm:"type:json" json:"level_config"`
 	SortOrder        int           `gorm:"default:0;not null" json:"sort_order"`
 	UnlockStars      int           `gorm:"default:0;not null" json:"unlock_stars"`
 	TimeLimitSeconds *int          `json:"time_limit_seconds"`
@@ -53,21 +54,24 @@ func (g *Game) BeforeCreate(tx *gorm.DB) error {
 
 // GameQuestion almacena preguntas, pares de fichas y datos dinámicos (JSON) de cada minijuego.
 type GameQuestion struct {
-	ID               string    `gorm:"type:varchar(36);primaryKey" json:"id"`
-	GameID           string    `gorm:"type:varchar(36);not null;index:idx_questions_game,priority:1" json:"game_id"`
-	VocabularyItemID *string   `gorm:"type:varchar(36);index" json:"vocabulary_item_id"`
-	PhraseID         *string   `gorm:"type:varchar(36);index" json:"phrase_id"`
-	Prompt           string    `gorm:"type:text;not null" json:"prompt"`
-	QuestionData     string    `gorm:"type:json;not null" json:"question_data"`
-	CorrectAnswer    string    `gorm:"type:text;not null" json:"correct_answer"`
-	Explanation      *string   `gorm:"type:text" json:"explanation"`
-	SortOrder        int       `gorm:"default:0;not null;index:idx_questions_game,priority:2" json:"sort_order"`
-	Points           int       `gorm:"default:10;not null" json:"points"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID                string           `gorm:"type:varchar(36);primaryKey" json:"id"`
+	GameID            string           `gorm:"type:varchar(36);not null;index:idx_questions_game,priority:1" json:"game_id"`
+	VocabularyItemID  *string          `gorm:"type:varchar(36);index" json:"vocabulary_item_id"`
+	PhraseID          *string          `gorm:"type:varchar(36);index" json:"phrase_id"`
+	ContentBankItemID *string          `gorm:"type:varchar(36);index" json:"content_bank_item_id"`
+	Prompt            string           `gorm:"type:text;not null" json:"prompt"`
+	QuestionData      string           `gorm:"type:json;not null" json:"question_data"`
+	CorrectAnswer     string           `gorm:"type:text;not null" json:"correct_answer"`
+	Explanation       *string          `gorm:"type:text" json:"explanation"`
+	Level             int              `gorm:"default:1;not null;index" json:"level"`
+	SortOrder         int              `gorm:"default:0;not null;index:idx_questions_game,priority:2" json:"sort_order"`
+	Points            int              `gorm:"default:10;not null" json:"points"`
+	CreatedAt         time.Time        `json:"created_at"`
 
-	Game           *Game           `gorm:"foreignKey:GameID;constraint:OnDelete:CASCADE" json:"game,omitempty"`
-	VocabularyItem *VocabularyItem `gorm:"foreignKey:VocabularyItemID;constraint:OnDelete:SET NULL" json:"vocabulary_item,omitempty"`
-	Phrase         *Phrase         `gorm:"foreignKey:PhraseID;constraint:OnDelete:SET NULL" json:"phrase,omitempty"`
+	Game            *Game            `gorm:"foreignKey:GameID;constraint:OnDelete:CASCADE" json:"game,omitempty"`
+	VocabularyItem  *VocabularyItem  `gorm:"foreignKey:VocabularyItemID;constraint:OnDelete:SET NULL" json:"vocabulary_item,omitempty"`
+	Phrase          *Phrase          `gorm:"foreignKey:PhraseID;constraint:OnDelete:SET NULL" json:"phrase,omitempty"`
+	ContentBankItem *ContentBankItem `gorm:"foreignKey:ContentBankItemID;constraint:OnDelete:SET NULL" json:"content_bank_item,omitempty"`
 }
 
 func (q *GameQuestion) BeforeCreate(tx *gorm.DB) error {

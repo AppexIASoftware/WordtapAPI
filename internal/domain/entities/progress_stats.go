@@ -1,6 +1,7 @@
 package entities
 
 import (
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,26 +55,81 @@ func (p *UserLessonProgress) CalculateProgress() {
 	}
 }
 
-// UserVocabulary rastrea palabras favoritas, difíciles y conteo de aciertos del usuario.
+// UserVocabulary rastrea palabras favoritas, difíciles, conteo de aciertos y parámetros SM-2 del usuario.
 type UserVocabulary struct {
-	ID               string     `gorm:"type:varchar(36);primaryKey" json:"id"`
-	UserID           string     `gorm:"type:varchar(36);not null;uniqueIndex:idx_user_vocab,priority:1" json:"user_id"`
-	VocabularyItemID string     `gorm:"type:varchar(36);not null;uniqueIndex:idx_user_vocab,priority:2" json:"vocabulary_item_id"`
-	IsFavorite       bool       `gorm:"default:false;not null" json:"is_favorite"`
-	IsDifficult      bool       `gorm:"default:false;not null" json:"is_difficult"`
-	TimesSeen        int        `gorm:"default:0;not null" json:"times_seen"`
-	TimesCorrect     int        `gorm:"default:0;not null" json:"times_correct"`
-	LastReviewedAt   *time.Time `json:"last_reviewed_at"`
+	ID                string     `gorm:"type:varchar(36);primaryKey" json:"id"`
+	UserID            string     `gorm:"type:varchar(36);not null;index:idx_user_vocab,priority:1" json:"user_id"`
+	VocabularyItemID  *string    `gorm:"type:varchar(36);index:idx_user_vocab,priority:2" json:"vocabulary_item_id"`
+	ContentBankItemID *string    `gorm:"type:varchar(36);index" json:"content_bank_item_id"`
+	IsFavorite        bool       `gorm:"default:false;not null" json:"is_favorite"`
+	IsDifficult       bool       `gorm:"default:false;not null" json:"is_difficult"`
+	TimesSeen         int        `gorm:"default:0;not null" json:"times_seen"`
+	TimesCorrect      int        `gorm:"default:0;not null" json:"times_correct"`
+	EaseFactor        float64    `gorm:"type:decimal(3,2);default:2.50;not null" json:"ease_factor"`
+	IntervalDays      int        `gorm:"default:1;not null" json:"interval_days"`
+	RepetitionNumber  int        `gorm:"default:0;not null" json:"repetition_number"`
+	NextReviewDate    *time.Time `gorm:"index" json:"next_review_date"`
+	LastReviewedAt    *time.Time `json:"last_reviewed_at"`
 
-	User           *User           `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
-	VocabularyItem *VocabularyItem `gorm:"foreignKey:VocabularyItemID;constraint:OnDelete:CASCADE" json:"vocabulary_item,omitempty"`
+	User            *User            `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
+	VocabularyItem  *VocabularyItem  `gorm:"foreignKey:VocabularyItemID;constraint:OnDelete:CASCADE" json:"vocabulary_item,omitempty"`
+	ContentBankItem *ContentBankItem `gorm:"foreignKey:ContentBankItemID;constraint:OnDelete:SET NULL" json:"content_bank_item,omitempty"`
 }
 
 func (uv *UserVocabulary) BeforeCreate(tx *gorm.DB) error {
 	if uv.ID == "" {
 		uv.ID = uuid.NewString()
 	}
+	if uv.EaseFactor <= 0 {
+		uv.EaseFactor = 2.50
+	}
+	if uv.IntervalDays <= 0 {
+		uv.IntervalDays = 1
+	}
 	return nil
+}
+
+// ApplySM2 actualiza los parámetros de repetición espaciada según la calidad de respuesta q (0 a 5).
+// ponytail: standard SuperMemo SM-2; upgrade to FSRS if personalized forgetting curves requested.
+func (uv *UserVocabulary) ApplySM2(q int) {
+	if q < 0 {
+		q = 0
+	} else if q > 5 {
+		q = 5
+	}
+
+	if uv.EaseFactor < 1.30 {
+		uv.EaseFactor = 2.50
+	}
+
+	if q >= 3 {
+		switch uv.RepetitionNumber {
+		case 0:
+			uv.IntervalDays = 1
+		case 1:
+			uv.IntervalDays = 6
+		default:
+			uv.IntervalDays = int(math.Round(float64(uv.IntervalDays) * uv.EaseFactor))
+		}
+		uv.RepetitionNumber++
+		uv.TimesCorrect++
+	} else {
+		uv.RepetitionNumber = 0
+		uv.IntervalDays = 1
+	}
+
+	diff := float64(5 - q)
+	newEF := uv.EaseFactor + (0.1 - diff*(0.08+diff*0.02))
+	if newEF < 1.30 {
+		newEF = 1.30
+	}
+	uv.EaseFactor = math.Round(newEF*100) / 100
+
+	uv.TimesSeen++
+	now := time.Now()
+	uv.LastReviewedAt = &now
+	nextReview := now.Add(time.Duration(uv.IntervalDays) * 24 * time.Hour)
+	uv.NextReviewDate = &nextReview
 }
 
 // UserLearningStats almacena estadísticas acumuladas (palabras, racha, precisión y estrellas).
