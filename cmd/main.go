@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 
@@ -16,10 +18,12 @@ func main() {
 		log.Println("Note: No .env file found, reading environment variables from system")
 	}
 
-	port := os.Getenv("PORT")
+	host := strings.TrimSpace(os.Getenv("HOST"))
+	port := strings.TrimSpace(os.Getenv("PORT"))
 	if port == "" {
-		port = "8080"
+		log.Fatalf("missing required environment variable: PORT")
 	}
+	bindAddr := fmt.Sprintf("%s:%s", host, port)
 
 	// 2. Conectar a MySQL
 	db, err := mysql.NewConnection()
@@ -42,10 +46,13 @@ func main() {
 	}
 
 	// 5. Inicializar y encender el servidor REST
-	server := rest.NewServer(db)
+	server, err := rest.NewServer(db)
+	if err != nil {
+		log.Fatalf("Server initialization error: %v", err)
+	}
 
-	log.Printf("Server listening on port :%s", port)
-	if err := server.Start(":" + port); err != nil {
+	log.Printf("Server listening on %s", bindAddr)
+	if err := server.Start(bindAddr); err != nil {
 		log.Fatalf("Server shutdown: %v", err)
 	}
 }

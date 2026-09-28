@@ -20,17 +20,20 @@ func NewHealthRouter(db *gorm.DB) *HealthRouter {
 func (h *HealthRouter) CheckHealth(c *echo.Context) error {
 	start := time.Now()
 
-	sqlDB, err := h.db.DB()
-	dbConnected := true
+	dbConnected := false
 	var pingError string
 
-	if err != nil || sqlDB.Ping() != nil {
-		dbConnected = false
+	if h.db != nil {
+		sqlDB, err := h.db.DB()
 		if err != nil {
 			pingError = err.Error()
+		} else if err := sqlDB.Ping(); err != nil {
+			pingError = err.Error()
 		} else {
-			pingError = "database ping failed"
+			dbConnected = true
 		}
+	} else {
+		pingError = "database connection is uninitialized"
 	}
 
 	elapsed := time.Since(start).Milliseconds()
