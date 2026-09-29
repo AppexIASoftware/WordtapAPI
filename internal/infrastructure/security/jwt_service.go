@@ -20,6 +20,7 @@ var (
 
 type UserClaims struct {
 	Email      string              `json:"email"`
+	Role       entities.UserRole   `json:"role"`
 	AccessTier entities.AccessTier `json:"access_tier"`
 	jwt.RegisteredClaims
 }
@@ -53,6 +54,7 @@ func (s *JWTService) GenerateAccessToken(user *entities.User) (string, int64, er
 
 	claims := UserClaims{
 		Email:      user.Email,
+		Role:       user.Role,
 		AccessTier: user.AccessTier,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.ID,

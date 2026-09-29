@@ -73,3 +73,46 @@ func TestRequireAuthMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestRequireRoleMiddleware(t *testing.T) {
+	tests := []struct {
+		name           string
+		userRole       string
+		allowedRoles   []entities.UserRole
+		expectedStatus int
+	}{
+		{
+			name:           "allowed admin role",
+			userRole:       "admin",
+			allowedRoles:   []entities.UserRole{entities.RoleAdmin},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "forbidden student accessing admin",
+			userRole:       "student",
+			allowedRoles:   []entities.UserRole{entities.RoleAdmin, entities.RoleInstructor},
+			expectedStatus: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodGet, "/admin", nil)
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+			c.Set("user_role", tt.userRole)
+
+			roleMiddleware := middleware.RequireRole(tt.allowedRoles...)
+			handler := roleMiddleware(func(ctx *echo.Context) error {
+				return ctx.NoContent(http.StatusOK)
+			})
+
+			_ = handler(c)
+
+			if rec.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, rec.Code)
+			}
+		})
+	}
+}

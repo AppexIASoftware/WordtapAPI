@@ -1,7 +1,11 @@
 package mysql
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -13,6 +17,41 @@ import (
  */
 func Seed(db *gorm.DB) error {
 	fmt.Println("Seeding initial database records...")
+
+	// 0. Super Admin Inicial (Bootstrap desde variable de entorno)
+	adminEmail := strings.ToLower(strings.TrimSpace(os.Getenv("INITIAL_ADMIN_EMAIL")))
+	if adminEmail != "" {
+		var user entities.User
+		err := db.Where("email = ?", adminEmail).First(&user).Error
+		if err == nil {
+			if user.Role != entities.RoleAdmin {
+				if err := db.Model(&user).Update("role", entities.RoleAdmin).Error; err != nil {
+					return fmt.Errorf("failed to upgrade initial admin role for %s: %w", adminEmail, err)
+				}
+				fmt.Printf("Upgraded existing user %s to admin role\n", adminEmail)
+			}
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			name := strings.Split(adminEmail, "@")[0]
+			now := time.Now()
+			newAdmin := entities.User{
+				Email:             adminEmail,
+				Name:              name,
+				Role:              entities.RoleAdmin,
+				AccessTier:        entities.AccessTierAdmin,
+				PreferredLanguage: "es",
+				LearningLevel:     "advanced",
+				Timezone:          "UTC",
+				IsActive:          true,
+				EmailVerifiedAt:   &now,
+			}
+			if err := db.Create(&newAdmin).Error; err != nil {
+				return fmt.Errorf("failed to seed initial admin user %s: %w", adminEmail, err)
+			}
+			fmt.Printf("Pre-seeded initial admin user %s with admin role\n", adminEmail)
+		} else {
+			return fmt.Errorf("failed to check initial admin user %s: %w", adminEmail, err)
+		}
+	}
 
 	// 1. Categorías de contenido
 	categories := []entities.ContentCategory{

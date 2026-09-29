@@ -6,6 +6,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
 )
 
@@ -38,9 +39,30 @@ func RequireAuth(jwtService *security.JWTService) echo.MiddlewareFunc {
 			// Inyectar datos del usuario autenticado en el contexto de la petición
 			c.Set("user_id", claims.Subject)
 			c.Set("user_email", claims.Email)
+			c.Set("user_role", string(claims.Role))
 			c.Set("access_tier", string(claims.AccessTier))
 
 			return next(c)
+		}
+	}
+}
+
+// RequireRole restringe el acceso solo a usuarios con los roles autorizados.
+func RequireRole(allowedRoles ...entities.UserRole) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			roleVal := c.Get("user_role")
+			roleStr, _ := roleVal.(string)
+
+			for _, allowed := range allowedRoles {
+				if strings.EqualFold(roleStr, string(allowed)) {
+					return next(c)
+				}
+			}
+
+			return c.JSON(http.StatusForbidden, map[string]any{
+				"error": "insufficient permissions for this resource",
+			})
 		}
 	}
 }

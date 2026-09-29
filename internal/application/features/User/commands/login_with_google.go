@@ -25,6 +25,7 @@ type AuthUserDTO struct {
 	Email             string              `json:"email"`
 	Name              string              `json:"name"`
 	AvatarURL         *string             `json:"avatar_url"`
+	Role              entities.UserRole   `json:"role"`
 	AccessTier        entities.AccessTier `json:"access_tier"`
 	PreferredLanguage string              `json:"preferred_language"`
 	LearningLevel     string              `json:"learning_level"`
@@ -91,6 +92,19 @@ func (h *LoginWithGoogleHandler) Handle(ctx context.Context, cmd LoginWithGoogle
 			if err := h.userRepo.CreateAuthAccount(ctx, authAccount); err != nil {
 				return nil, fmt.Errorf("failed to link google account: %w", err)
 			}
+			// Sincronizar nombre y foto de Google si aún no estaban asignados
+			updated := false
+			if claims.Name != "" && (user.Name == "" || user.Name == strings.Split(user.Email, "@")[0]) {
+				user.Name = claims.Name
+				updated = true
+			}
+			if claims.Picture != "" && user.AvatarURL == nil {
+				user.AvatarURL = &claims.Picture
+				updated = true
+			}
+			if updated {
+				_ = h.userRepo.UpdateUser(ctx, user)
+			}
 		} else {
 			// 3. Crear nuevo usuario con estado inicial completo
 			userName := claims.Name
@@ -108,6 +122,7 @@ func (h *LoginWithGoogleHandler) Handle(ctx context.Context, cmd LoginWithGoogle
 				Email:             claims.Email,
 				Name:              userName,
 				AvatarURL:         avatar,
+				Role:              entities.RoleStudent,
 				AccessTier:        entities.AccessTierFree,
 				PreferredLanguage: "es",
 				LearningLevel:     "beginner",
@@ -176,6 +191,7 @@ func (h *LoginWithGoogleHandler) Handle(ctx context.Context, cmd LoginWithGoogle
 			Email:             user.Email,
 			Name:              user.Name,
 			AvatarURL:         user.AvatarURL,
+			Role:              user.Role,
 			AccessTier:        user.AccessTier,
 			PreferredLanguage: user.PreferredLanguage,
 			LearningLevel:     user.LearningLevel,

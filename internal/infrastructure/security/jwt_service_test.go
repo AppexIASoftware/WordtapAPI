@@ -14,6 +14,7 @@ func TestJWTService_GenerateAndValidate(t *testing.T) {
 	user := &entities.User{
 		ID:         "test-user-uuid",
 		Email:      "student@wordtap.app",
+		Role:       entities.RoleAdmin,
 		AccessTier: entities.AccessTierFree,
 	}
 
@@ -35,6 +36,9 @@ func TestJWTService_GenerateAndValidate(t *testing.T) {
 	}
 	if claims.Email != user.Email {
 		t.Errorf("expected email %s, got %s", user.Email, claims.Email)
+	}
+	if claims.Role != entities.RoleAdmin {
+		t.Errorf("expected role %s, got %s", entities.RoleAdmin, claims.Role)
 	}
 	if claims.AccessTier != entities.AccessTierFree {
 		t.Errorf("expected tier %s, got %s", entities.AccessTierFree, claims.AccessTier)

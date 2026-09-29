@@ -17,6 +17,16 @@ const (
 	AccessTierAdmin        AccessTier = "admin"
 )
 
+// UserRole define los roles de acceso y staff en la plataforma (RBAC).
+type UserRole string
+
+const (
+	RoleStudent    UserRole = "student"
+	RoleInstructor UserRole = "instructor"
+	RoleModerator  UserRole = "moderator"
+	RoleAdmin      UserRole = "admin"
+)
+
 // User representa el perfil principal y cuenta del usuario.
 type User struct {
 	ID                string     `gorm:"type:varchar(36);primaryKey" json:"id"`
@@ -24,6 +34,7 @@ type User struct {
 	Name              string     `gorm:"type:varchar(120);not null" json:"name"`
 	PasswordHash      *string    `gorm:"type:text" json:"-"`
 	AvatarURL         *string    `gorm:"type:text" json:"avatar_url"`
+	Role              UserRole   `gorm:"type:varchar(20);default:'student';not null" json:"role"`
 	AccessTier        AccessTier `gorm:"type:varchar(20);default:'free';not null" json:"access_tier"`
 	PreferredLanguage string     `gorm:"type:varchar(10);default:'es';not null" json:"preferred_language"`
 	LearningLevel     string     `gorm:"type:varchar(30);default:'beginner';not null" json:"learning_level"`
@@ -41,6 +52,12 @@ type User struct {
 func (u *User) BeforeCreate(tx *gorm.DB) error {
 	if u.ID == "" {
 		u.ID = uuid.NewString()
+	}
+	if u.Role == "" {
+		u.Role = RoleStudent
+	}
+	if u.AccessTier == "" {
+		u.AccessTier = AccessTierFree
 	}
 	return nil
 }
