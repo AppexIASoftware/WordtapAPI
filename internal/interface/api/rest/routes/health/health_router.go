@@ -16,6 +16,16 @@ func NewHealthRouter(db *gorm.DB) *HealthRouter {
 	return &HealthRouter{db: db}
 }
 
+// RegisterRoutes registra los endpoints de monitoreo y diagnóstico de infraestructura.
+func (h *HealthRouter) RegisterRoutes(e *echo.Echo, v1 *echo.Group) {
+	e.GET("/health", h.CheckHealth)
+	e.GET("/healthz", h.CheckHealth)
+
+	if v1 != nil {
+		v1.GET("/health", h.CheckHealth)
+	}
+}
+
 // En Echo v5 se recibe *echo.Context (puntero a struct)
 func (h *HealthRouter) CheckHealth(c *echo.Context) error {
 	start := time.Now()

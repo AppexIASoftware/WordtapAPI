@@ -108,6 +108,6 @@ AUTO_SEED=true
 
 - **Endpoint de verificación de salud:**
   ```http
-  GET /api/services/v1/health
+  GET /api/v1/health
   ```
   Retorna el estado operativo del servidor, la verificación de conexión activa con la base de datos MySQL y el tiempo de respuesta (ping) en milisegundos.

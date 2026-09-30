@@ -9,7 +9,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 
-	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/User/commands"
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/commands"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
@@ -26,6 +26,16 @@ func NewAuthRouter(
 		loginWithGoogleHandler: loginWithGoogleHandler,
 		userRepo:               userRepo,
 	}
+}
+
+// RegisterRoutes registra los endpoints del dominio de autenticación y usuarios.
+func (r *AuthRouter) RegisterRoutes(v1 *echo.Group, authRequired echo.MiddlewareFunc) {
+	authGroup := v1.Group("/auth")
+	authGroup.POST("/google", r.LoginWithGoogle)
+
+	usersGroup := v1.Group("/users")
+	usersGroup.Use(authRequired)
+	usersGroup.GET("/me", r.GetMe)
 }
 
 type GoogleLoginRequest struct {

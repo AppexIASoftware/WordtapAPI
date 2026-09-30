@@ -1,6 +1,8 @@
 package rest_test
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 
@@ -37,5 +39,25 @@ func TestNewServer_MissingEnvVariables(t *testing.T) {
 	}
 	if server == nil || server.App == nil {
 		t.Fatal("expected valid server instance")
+	}
+
+	// Probar que las rutas base responden sin 404
+	for _, route := range []struct {
+		method string
+		path   string
+	}{
+		{"GET", "/"},
+		{"HEAD", "/"},
+		{"GET", "/health"},
+		{"GET", "/healthz"},
+		{"GET", "/api/v1/health"},
+	} {
+		req := httptest.NewRequest(route.method, route.path, nil)
+		rec := httptest.NewRecorder()
+		server.App.ServeHTTP(rec, req)
+
+		if rec.Code == http.StatusNotFound {
+			t.Errorf("route %s %s returned unexpected 404 Not Found", route.method, route.path)
+		}
 	}
 }

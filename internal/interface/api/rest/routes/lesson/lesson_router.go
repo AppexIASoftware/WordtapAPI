@@ -7,7 +7,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 
-	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/Lesson/queries"
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
@@ -21,6 +21,12 @@ func NewLessonRouter(repo repositories.LessonRepository) *LessonRouter {
 	return &LessonRouter{
 		getLessonDetailHandler: queries.NewGetLessonDetailHandler(repo),
 	}
+}
+
+// RegisterRoutes registra los endpoints del catálogo y lecciones.
+func (r *LessonRouter) RegisterRoutes(v1 *echo.Group) {
+	lessonsGroup := v1.Group("/lessons")
+	lessonsGroup.GET("/:id", r.GetLessonDetail)
 }
 
 // GetLessonDetail maneja la solicitud GET /api/services/v1/lessons/:id

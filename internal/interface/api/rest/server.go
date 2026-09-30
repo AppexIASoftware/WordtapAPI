@@ -2,6 +2,7 @@ package rest
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -10,7 +11,7 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 	"gorm.io/gorm"
 
-	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/User/commands"
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/commands"
 	infraRepo "github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
 	restMiddleware "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/middleware"
@@ -76,26 +77,24 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	// Middlewares específicos
 	authRequired := restMiddleware.RequireAuth(jwtService)
 
-	// --- Rutas de diagnóstico ---
-	servicesV1 := e.Group("/api/services/v1")
-	servicesV1.GET("/health", healthRouter.CheckHealth)
-	servicesV1.GET("/lessons/:id", lessonRouter.GetLessonDetail)
+	// --- Root Status Probe (Render / Uptime monitors) ---
+	rootHandler := func(c *echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]any{
+			"app":     "WordtapAPI",
+			"status":  "operational",
+			"version": "v1",
+		})
+	}
+	e.GET("/", rootHandler)
+	e.HEAD("/", rootHandler)
 
-	// --- API REST Canónica v1 ---
+	// --- Grupos de enrutamiento ---
 	v1 := e.Group("/api/v1")
 
-	// Autenticación pública
-	authGroup := v1.Group("/auth")
-	authGroup.POST("/google", authRouter.LoginWithGoogle)
-
-	// Usuarios y perfiles protegidos
-	usersGroup := v1.Group("/users")
-	usersGroup.Use(authRequired)
-	usersGroup.GET("/me", authRouter.GetMe)
-
-	// Catálogo y lecciones
-	lessonsGroup := v1.Group("/lessons")
-	lessonsGroup.GET("/:id", lessonRouter.GetLessonDetail)
+	// --- Registro modular de rutas por dominio ---
+	healthRouter.RegisterRoutes(e, v1)
+	authRouter.RegisterRoutes(v1, authRequired)
+	lessonRouter.RegisterRoutes(v1)
 
 	return &Server{App: e}, nil
 }
