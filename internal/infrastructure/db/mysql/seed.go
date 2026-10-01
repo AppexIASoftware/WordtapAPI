@@ -53,6 +53,47 @@ func Seed(db *gorm.DB) error {
 		}
 	}
 
+	// 0.1 Docente/Instructor Inicial (Bootstrap desde variable de entorno)
+	teacherEmail := strings.ToLower(strings.TrimSpace(os.Getenv("INITIAL_TEACHER_EMAIL")))
+	if teacherEmail != "" {
+		for _, rawEmail := range strings.Split(teacherEmail, ",") {
+			email := strings.ToLower(strings.TrimSpace(rawEmail))
+			if email == "" {
+				continue
+			}
+			var user entities.User
+			err := db.Where("email = ?", email).First(&user).Error
+			if err == nil {
+				if user.Role != entities.RoleInstructor && user.Role != entities.RoleAdmin {
+					if err := db.Model(&user).Update("role", entities.RoleInstructor).Error; err != nil {
+						return fmt.Errorf("failed to upgrade initial instructor role for %s: %w", email, err)
+					}
+					fmt.Printf("Upgraded existing user %s to instructor role\n", email)
+				}
+			} else if errors.Is(err, gorm.ErrRecordNotFound) {
+				name := strings.Split(email, "@")[0]
+				now := time.Now()
+				newTeacher := entities.User{
+					Email:             email,
+					Name:              name,
+					Role:              entities.RoleInstructor,
+					AccessTier:        entities.AccessTierCourse,
+					PreferredLanguage: "es",
+					LearningLevel:     "advanced",
+					Timezone:          "UTC",
+					IsActive:          true,
+					EmailVerifiedAt:   &now,
+				}
+				if err := db.Create(&newTeacher).Error; err != nil {
+					return fmt.Errorf("failed to seed initial instructor user %s: %w", email, err)
+				}
+				fmt.Printf("Pre-seeded initial instructor user %s with instructor role\n", email)
+			} else {
+				return fmt.Errorf("failed to check initial instructor user %s: %w", email, err)
+			}
+		}
+	}
+
 	// 1. Categorías de contenido
 	categories := []entities.ContentCategory{
 		{
