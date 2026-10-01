@@ -14,6 +14,8 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/commands"
 	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
 	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
+	lessonCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/commands"
+	lessonQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	infraRepo "github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
@@ -80,9 +82,25 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	listPublishedCoursesHandler := courseQuery.NewListPublishedCoursesHandler(courseRepo)
 	getCourseDetailHandler := courseQuery.NewGetCourseDetailHandler(courseRepo)
 
+	// Lesson Command & Query handlers
+	listCourseLessonsHandler := lessonQuery.NewListCourseLessonsHandler(lessonRepo)
+	createLessonHandler := lessonCmd.NewCreateLessonHandler(lessonRepo, courseRepo)
+	updateLessonHandler := lessonCmd.NewUpdateLessonHandler(lessonRepo, courseRepo)
+	deleteLessonHandler := lessonCmd.NewDeleteLessonHandler(lessonRepo, courseRepo)
+	saveLessonItemHandler := lessonCmd.NewSaveLessonItemHandler(lessonRepo, courseRepo)
+	deleteLessonItemHandler := lessonCmd.NewDeleteLessonItemHandler(lessonRepo, courseRepo)
+
 	// Routers
 	healthRouter := health.NewHealthRouter(db)
-	lessonRouter := lesson.NewLessonRouter(lessonRepo)
+	lessonRouter := lesson.NewLessonRouter(
+		lessonRepo,
+		listCourseLessonsHandler,
+		createLessonHandler,
+		updateLessonHandler,
+		deleteLessonHandler,
+		saveLessonItemHandler,
+		deleteLessonItemHandler,
+	)
 	authRouter := auth.NewAuthRouter(loginWithGoogleHandler, userRepo)
 	courseRouter := course.NewCourseRouter(
 		createCourseHandler,
@@ -114,7 +132,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	// --- Registro modular de rutas por dominio ---
 	healthRouter.RegisterRoutes(e, v1)
 	authRouter.RegisterRoutes(v1, authRequired)
-	lessonRouter.RegisterRoutes(v1)
+	lessonRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
 	courseRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
 
 	return &Server{App: e}, nil
