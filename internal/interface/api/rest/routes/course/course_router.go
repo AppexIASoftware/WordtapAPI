@@ -1,0 +1,239 @@
+package course
+
+import (
+	"net/http"
+
+	"github.com/labstack/echo/v5"
+
+	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
+	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+)
+
+type CourseRouter struct {
+	createCourseHandler       *courseCmd.CreateCourseHandler
+	updateCourseHandler       *courseCmd.UpdateCourseHandler
+	submitCourseReviewHandler *courseCmd.SubmitCourseReviewHandler
+	listTeacherCoursesHandler *courseQuery.ListTeacherCoursesHandler
+	getCourseDetailHandler    *courseQuery.GetCourseDetailHandler
+}
+
+func NewCourseRouter(
+	createCourseHandler *courseCmd.CreateCourseHandler,
+	updateCourseHandler *courseCmd.UpdateCourseHandler,
+	submitCourseReviewHandler *courseCmd.SubmitCourseReviewHandler,
+	listTeacherCoursesHandler *courseQuery.ListTeacherCoursesHandler,
+	getCourseDetailHandler *courseQuery.GetCourseDetailHandler,
+) *CourseRouter {
+	return &CourseRouter{
+		createCourseHandler:       createCourseHandler,
+		updateCourseHandler:       updateCourseHandler,
+		submitCourseReviewHandler: submitCourseReviewHandler,
+		listTeacherCoursesHandler: listTeacherCoursesHandler,
+		getCourseDetailHandler:    getCourseDetailHandler,
+	}
+}
+
+// RegisterRoutes registers course endpoints on the v1 router group.
+func (r *CourseRouter) RegisterRoutes(
+	v1 *echo.Group,
+	authRequired echo.MiddlewareFunc,
+	instructorOrAdmin echo.MiddlewareFunc,
+) {
+	// Course details (accessible by authenticated users)
+	v1.GET("/courses/:id", r.GetCourseDetail, authRequired)
+
+	// Teacher course management
+	coursesGroup := v1.Group("/courses")
+	coursesGroup.Use(authRequired, instructorOrAdmin)
+	coursesGroup.POST("", r.CreateCourse)
+	coursesGroup.PUT("/:id", r.UpdateCourse)
+	coursesGroup.POST("/:id/submit-review", r.SubmitCourseReview)
+
+	// Teacher courses list
+	teacherGroup := v1.Group("/teacher")
+	teacherGroup.Use(authRequired, instructorOrAdmin)
+	teacherGroup.GET("/courses", r.ListTeacherCourses)
+}
+
+type CreateCourseRequest struct {
+	Title         string  `json:"title"`
+	Description   *string `json:"description"`
+	Level         string  `json:"level"`
+	AccessTier    string  `json:"access_tier"`
+	SourceLang    string  `json:"source_lang"`
+	TargetLang    string  `json:"target_lang"`
+	CoverImageURL *string `json:"cover_image_url"`
+}
+
+type UpdateCourseRequest struct {
+	Title         *string `json:"title"`
+	Description   *string `json:"description"`
+	Level         *string `json:"level"`
+	AccessTier    *string `json:"access_tier"`
+	CoverImageURL *string `json:"cover_image_url"`
+}
+
+// CreateCourse handles POST /api/v1/courses
+func (r *CourseRouter) CreateCourse(c *echo.Context) error {
+	userIDVal := c.Get("user_id")
+	userID, ok := userIDVal.(string)
+	if !ok || userID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]any{
+			"error": "unauthorized context",
+		})
+	}
+
+	var req CreateCourseRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error": "invalid request body",
+		})
+	}
+
+	ctx := c.Request().Context()
+	course, err := r.createCourseHandler.Handle(ctx, courseCmd.CreateCourseCommand{
+		Title:         req.Title,
+		Description:   req.Description,
+		Level:         req.Level,
+		AccessTier:    entities.AccessTier(req.AccessTier),
+		SourceLang:    req.SourceLang,
+		TargetLang:    req.TargetLang,
+		CoverImageURL: req.CoverImageURL,
+		AuthorID:      userID,
+	})
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error":   "failed to create course",
+			"details": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusCreated, course)
+}
+
+// UpdateCourse handles PUT /api/v1/courses/:id
+func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
+	courseID := c.Param("id")
+	if courseID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error": "missing course id parameter",
+		})
+	}
+
+	userIDVal := c.Get("user_id")
+	userID, _ := userIDVal.(string)
+
+	roleVal := c.Get("user_role")
+	roleStr, _ := roleVal.(string)
+
+	var req UpdateCourseRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error": "invalid request body",
+		})
+	}
+
+	var tierPtr *entities.AccessTier
+	if req.AccessTier != nil {
+		t := entities.AccessTier(*req.AccessTier)
+		tierPtr = &t
+	}
+
+	ctx := c.Request().Context()
+	updated, err := r.updateCourseHandler.Handle(ctx, courseCmd.UpdateCourseCommand{
+		CourseID:      courseID,
+		Title:         req.Title,
+		Description:   req.Description,
+		Level:         req.Level,
+		CoverImageURL: req.CoverImageURL,
+		AccessTier:    tierPtr,
+		RequesterID:   userID,
+		RequesterRole: entities.UserRole(roleStr),
+	})
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error":   "failed to update course",
+			"details": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, updated)
+}
+
+// GetCourseDetail handles GET /api/v1/courses/:id
+func (r *CourseRouter) GetCourseDetail(c *echo.Context) error {
+	courseID := c.Param("id")
+	if courseID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error": "missing course id parameter",
+		})
+	}
+
+	ctx := c.Request().Context()
+	course, err := r.getCourseDetailHandler.Handle(ctx, courseQuery.GetCourseDetailQuery{
+		CourseID: courseID,
+	})
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]any{
+			"error": "course not found",
+		})
+	}
+
+	return c.JSON(http.StatusOK, course)
+}
+
+// ListTeacherCourses handles GET /api/v1/teacher/courses
+func (r *CourseRouter) ListTeacherCourses(c *echo.Context) error {
+	userIDVal := c.Get("user_id")
+	userID, ok := userIDVal.(string)
+	if !ok || userID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]any{
+			"error": "unauthorized context",
+		})
+	}
+
+	ctx := c.Request().Context()
+	courses, err := r.listTeacherCoursesHandler.Handle(ctx, courseQuery.ListTeacherCoursesQuery{
+		AuthorID: userID,
+	})
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]any{
+			"error":   "failed to retrieve teacher courses",
+			"details": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, courses)
+}
+
+// SubmitCourseReview handles POST /api/v1/courses/:id/submit-review
+func (r *CourseRouter) SubmitCourseReview(c *echo.Context) error {
+	courseID := c.Param("id")
+	if courseID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error": "missing course id parameter",
+		})
+	}
+
+	userIDVal := c.Get("user_id")
+	userID, _ := userIDVal.(string)
+
+	roleVal := c.Get("user_role")
+	roleStr, _ := roleVal.(string)
+
+	ctx := c.Request().Context()
+	submitted, err := r.submitCourseReviewHandler.Handle(ctx, courseCmd.SubmitCourseReviewCommand{
+		CourseID:      courseID,
+		RequesterID:   userID,
+		RequesterRole: entities.UserRole(roleStr),
+	})
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error":   "failed to submit course for review",
+			"details": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, submitted)
+}

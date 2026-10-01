@@ -12,10 +12,14 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/commands"
+	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
+	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	infraRepo "github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
 	restMiddleware "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/middleware"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/auth"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/course"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/health"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/lesson"
 )
@@ -65,17 +69,31 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	// Repositorios de infraestructura
 	lessonRepo := infraRepo.NewMySQLLessonRepository(db)
 	userRepo := infraRepo.NewMySQLUserRepository(db)
+	courseRepo := infraRepo.NewMySQLCourseRepository(db)
 
 	// Casos de uso
 	loginWithGoogleHandler := commands.NewLoginWithGoogleHandler(userRepo, googleVerifier, jwtService)
+	createCourseHandler := courseCmd.NewCreateCourseHandler(courseRepo)
+	updateCourseHandler := courseCmd.NewUpdateCourseHandler(courseRepo)
+	submitCourseReviewHandler := courseCmd.NewSubmitCourseReviewHandler(courseRepo)
+	listTeacherCoursesHandler := courseQuery.NewListTeacherCoursesHandler(courseRepo)
+	getCourseDetailHandler := courseQuery.NewGetCourseDetailHandler(courseRepo)
 
 	// Routers
 	healthRouter := health.NewHealthRouter(db)
 	lessonRouter := lesson.NewLessonRouter(lessonRepo)
 	authRouter := auth.NewAuthRouter(loginWithGoogleHandler, userRepo)
+	courseRouter := course.NewCourseRouter(
+		createCourseHandler,
+		updateCourseHandler,
+		submitCourseReviewHandler,
+		listTeacherCoursesHandler,
+		getCourseDetailHandler,
+	)
 
 	// Middlewares específicos
 	authRequired := restMiddleware.RequireAuth(jwtService)
+	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
 
 	// --- Root Status Probe (Render / Uptime monitors) ---
 	rootHandler := func(c *echo.Context) error {
@@ -95,6 +113,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	healthRouter.RegisterRoutes(e, v1)
 	authRouter.RegisterRoutes(v1, authRequired)
 	lessonRouter.RegisterRoutes(v1)
+	courseRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
 
 	return &Server{App: e}, nil
 }
