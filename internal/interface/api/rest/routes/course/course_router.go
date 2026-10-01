@@ -15,6 +15,7 @@ type CourseRouter struct {
 	updateCourseHandler       *courseCmd.UpdateCourseHandler
 	submitCourseReviewHandler *courseCmd.SubmitCourseReviewHandler
 	listTeacherCoursesHandler *courseQuery.ListTeacherCoursesHandler
+	listPublishedCoursesHandler *courseQuery.ListPublishedCoursesHandler
 	getCourseDetailHandler    *courseQuery.GetCourseDetailHandler
 }
 
@@ -23,14 +24,16 @@ func NewCourseRouter(
 	updateCourseHandler *courseCmd.UpdateCourseHandler,
 	submitCourseReviewHandler *courseCmd.SubmitCourseReviewHandler,
 	listTeacherCoursesHandler *courseQuery.ListTeacherCoursesHandler,
+	listPublishedCoursesHandler *courseQuery.ListPublishedCoursesHandler,
 	getCourseDetailHandler *courseQuery.GetCourseDetailHandler,
 ) *CourseRouter {
 	return &CourseRouter{
-		createCourseHandler:       createCourseHandler,
-		updateCourseHandler:       updateCourseHandler,
-		submitCourseReviewHandler: submitCourseReviewHandler,
-		listTeacherCoursesHandler: listTeacherCoursesHandler,
-		getCourseDetailHandler:    getCourseDetailHandler,
+		createCourseHandler:         createCourseHandler,
+		updateCourseHandler:         updateCourseHandler,
+		submitCourseReviewHandler:   submitCourseReviewHandler,
+		listTeacherCoursesHandler:   listTeacherCoursesHandler,
+		listPublishedCoursesHandler: listPublishedCoursesHandler,
+		getCourseDetailHandler:      getCourseDetailHandler,
 	}
 }
 
@@ -40,6 +43,9 @@ func (r *CourseRouter) RegisterRoutes(
 	authRequired echo.MiddlewareFunc,
 	instructorOrAdmin echo.MiddlewareFunc,
 ) {
+	// Public course catalog (open to all)
+	v1.GET("/courses", r.ListPublicCourses)
+
 	// Course details (accessible by authenticated users)
 	v1.GET("/courses/:id", r.GetCourseDetail, authRequired)
 
@@ -236,4 +242,18 @@ func (r *CourseRouter) SubmitCourseReview(c *echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, submitted)
+}
+
+// ListPublicCourses handles GET /api/v1/courses (public catalog of published courses)
+func (r *CourseRouter) ListPublicCourses(c *echo.Context) error {
+	ctx := c.Request().Context()
+	courses, err := r.listPublishedCoursesHandler.Handle(ctx, courseQuery.ListPublishedCoursesQuery{})
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]any{
+			"error":   "failed to retrieve public course catalog",
+			"details": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, courses)
 }

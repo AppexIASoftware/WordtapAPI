@@ -77,6 +77,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	updateCourseHandler := courseCmd.NewUpdateCourseHandler(courseRepo)
 	submitCourseReviewHandler := courseCmd.NewSubmitCourseReviewHandler(courseRepo)
 	listTeacherCoursesHandler := courseQuery.NewListTeacherCoursesHandler(courseRepo)
+	listPublishedCoursesHandler := courseQuery.NewListPublishedCoursesHandler(courseRepo)
 	getCourseDetailHandler := courseQuery.NewGetCourseDetailHandler(courseRepo)
 
 	// Routers
@@ -88,6 +89,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		updateCourseHandler,
 		submitCourseReviewHandler,
 		listTeacherCoursesHandler,
+		listPublishedCoursesHandler,
 		getCourseDetailHandler,
 	)
 

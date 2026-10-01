@@ -38,6 +38,20 @@ func (r *MySQLCourseRepository) FindByAuthor(ctx context.Context, authorID strin
 	return courses, nil
 }
 
+// FindPublished returns all published courses available for the public catalog.
+func (r *MySQLCourseRepository) FindPublished(ctx context.Context) ([]entities.Course, error) {
+	courses := make([]entities.Course, 0)
+	err := r.db.WithContext(ctx).
+		Where("status = ?", entities.ContentStatusPublished).
+		Preload("Lessons").
+		Order("sort_order ASC, created_at DESC").
+		Find(&courses).Error
+	if err != nil {
+		return nil, err
+	}
+	return courses, nil
+}
+
 // FindByID retrieves a single course by its ID.
 func (r *MySQLCourseRepository) FindByID(ctx context.Context, id string) (*entities.Course, error) {
 	var course entities.Course

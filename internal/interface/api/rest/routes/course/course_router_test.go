@@ -39,6 +39,16 @@ func (m *mockCourseRepository) FindByAuthor(ctx context.Context, authorID string
 	return result, nil
 }
 
+func (m *mockCourseRepository) FindPublished(ctx context.Context) ([]entities.Course, error) {
+	var published []entities.Course
+	for _, c := range m.courses {
+		if c.Status == entities.ContentStatusPublished {
+			published = append(published, c)
+		}
+	}
+	return published, nil
+}
+
 func (m *mockCourseRepository) FindByID(ctx context.Context, id string) (*entities.Course, error) {
 	for _, c := range m.courses {
 		if c.ID == id {
@@ -67,9 +77,10 @@ func setupTestServer() (*echo.Echo, *security.JWTService, *mockCourseRepository)
 	updateCmd := courseCmd.NewUpdateCourseHandler(repo)
 	submitCmd := courseCmd.NewSubmitCourseReviewHandler(repo)
 	listQuery := courseQuery.NewListTeacherCoursesHandler(repo)
+	listPublishedQuery := courseQuery.NewListPublishedCoursesHandler(repo)
 	getQuery := courseQuery.NewGetCourseDetailHandler(repo)
 
-	router := course.NewCourseRouter(createCmd, updateCmd, submitCmd, listQuery, getQuery)
+	router := course.NewCourseRouter(createCmd, updateCmd, submitCmd, listQuery, listPublishedQuery, getQuery)
 
 	authRequired := restMiddleware.RequireAuth(jwtSvc)
 	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
@@ -229,6 +240,41 @@ func TestCourseRoutesRBAC(t *testing.T) {
 
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("expected 400 on duplicate submit, got %d", rec.Code)
+		}
+	})
+
+	t.Run("public course catalog returns published courses without auth (200 OK)", func(t *testing.T) {
+		// Insert a published course into repo
+		repo.courses = append(repo.courses, entities.Course{
+			ID:     "published-1",
+			Title:  "Curso Publico",
+			Status: entities.ContentStatusPublished,
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/courses", nil)
+		// No Authorization header
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for public catalog, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		var list []entities.Course
+		if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+
+		found := false
+		for _, c := range list {
+			if c.ID == "published-1" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected published course in public catalog")
 		}
 	})
 }

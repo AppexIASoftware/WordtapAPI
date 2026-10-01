@@ -25,6 +25,10 @@ func (m *mockCourseRepo) FindByAuthor(ctx context.Context, authorID string) ([]e
 	return nil, nil
 }
 
+func (m *mockCourseRepo) FindPublished(ctx context.Context) ([]entities.Course, error) {
+	return nil, nil
+}
+
 func (m *mockCourseRepo) FindByID(ctx context.Context, id string) (*entities.Course, error) {
 	return nil, nil
 }
