@@ -44,17 +44,20 @@ type LoginWithGoogleHandler struct {
 	userRepo       repositories.UserRepository
 	googleVerifier security.GoogleVerifier
 	jwtService     *security.JWTService
+	teacherAppRepo repositories.TeacherApplicationRepository
 }
 
 func NewLoginWithGoogleHandler(
 	userRepo repositories.UserRepository,
 	googleVerifier security.GoogleVerifier,
 	jwtService *security.JWTService,
+	teacherAppRepo repositories.TeacherApplicationRepository,
 ) *LoginWithGoogleHandler {
 	return &LoginWithGoogleHandler{
 		userRepo:       userRepo,
 		googleVerifier: googleVerifier,
 		jwtService:     jwtService,
+		teacherAppRepo: teacherAppRepo,
 	}
 }
 
@@ -143,6 +146,17 @@ func (h *LoginWithGoogleHandler) Handle(ctx context.Context, cmd LoginWithGoogle
 		}
 	} else {
 		return nil, fmt.Errorf("database query error: %w", err)
+	}
+
+	// 3.5. Verificar si la cuenta se encuentra suspendida o desactivada
+	if !user.IsActive {
+		reason := "Suspensión administrativa preventiva"
+		if h.teacherAppRepo != nil {
+			if app, err := h.teacherAppRepo.FindByUserID(ctx, user.ID); err == nil && app != nil && app.RejectionReason != nil && *app.RejectionReason != "" {
+				reason = *app.RejectionReason
+			}
+		}
+		return nil, fmt.Errorf("account_suspended: %s", reason)
 	}
 
 	// 4. Generar tokens JWT y Refresh

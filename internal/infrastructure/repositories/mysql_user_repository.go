@@ -136,6 +136,14 @@ func (r *MySQLUserRepository) RevokeSession(ctx context.Context, tokenHash strin
 		Update("revoked_at", &now).Error
 }
 
+func (r *MySQLUserRepository) RevokeAllSessions(ctx context.Context, userID string) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).
+		Model(&entities.UserSession{}).
+		Where("user_id = ? AND revoked_at IS NULL", userID).
+		Update("revoked_at", &now).Error
+}
+
 func (r *MySQLUserRepository) UpdateUser(ctx context.Context, user *entities.User) error {
 	return r.db.WithContext(ctx).Save(user).Error
 }

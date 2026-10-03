@@ -16,5 +16,6 @@ type UserRepository interface {
 	CreateSession(ctx context.Context, session *entities.UserSession) error
 	FindSessionByTokenHash(ctx context.Context, tokenHash string) (*entities.UserSession, error)
 	RevokeSession(ctx context.Context, tokenHash string) error
+	RevokeAllSessions(ctx context.Context, userID string) error
 	UpdateUser(ctx context.Context, user *entities.User) error
 }
