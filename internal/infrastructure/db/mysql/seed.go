@@ -53,8 +53,14 @@ func Seed(db *gorm.DB) error {
 		}
 	}
 
-	// 0.1 Docente/Instructor Inicial (Bootstrap desde variable de entorno)
+	// 0.1 Docente/Instructor Inicial (Bootstrap desde variable de entorno o default demo)
 	teacherEmail := strings.ToLower(strings.TrimSpace(os.Getenv("INITIAL_TEACHER_EMAIL")))
+	if teacherEmail == "" {
+		teacherEmail = strings.ToLower(strings.TrimSpace(os.Getenv("DEV_TEACHER_EMAIL")))
+	}
+	if teacherEmail == "" {
+		teacherEmail = "mateo.silva@wordtap.app"
+	}
 	if teacherEmail != "" {
 		for _, rawEmail := range strings.Split(teacherEmail, ",") {
 			email := strings.ToLower(strings.TrimSpace(rawEmail))
@@ -154,6 +160,14 @@ func Seed(db *gorm.DB) error {
 	}
 
 	// 2. Cursos
+	var defaultTeacher entities.User
+	var defaultTeacherID *string
+	if err := db.Where("role = ? AND is_active = ?", entities.RoleInstructor, true).Order("created_at ASC").First(&defaultTeacher).Error; err == nil {
+		defaultTeacherID = &defaultTeacher.ID
+	} else if err := db.Where("role = ? AND is_active = ?", entities.RoleAdmin, true).Order("created_at ASC").First(&defaultTeacher).Error; err == nil {
+		defaultTeacherID = &defaultTeacher.ID
+	}
+
 	courses := []entities.Course{
 		{
 			Title:       "Inglés básico gratuito",
@@ -162,6 +176,7 @@ func Seed(db *gorm.DB) error {
 			AccessTier:  entities.AccessTierFree,
 			Level:       "beginner",
 			Status:      entities.ContentStatusPublished,
+			CreatedBy:   defaultTeacherID,
 			SortOrder:   1,
 		},
 		{
@@ -171,6 +186,7 @@ func Seed(db *gorm.DB) error {
 			AccessTier:  entities.AccessTierCourse,
 			Level:       "intermediate",
 			Status:      entities.ContentStatusPublished,
+			CreatedBy:   defaultTeacherID,
 			SortOrder:   2,
 		},
 	}
@@ -181,7 +197,13 @@ func Seed(db *gorm.DB) error {
 			if err := db.Create(&c).Error; err != nil {
 				return fmt.Errorf("failed to seed course %s: %w", c.Slug, err)
 			}
+		} else if existing.CreatedBy == nil && defaultTeacherID != nil {
+			db.Model(&existing).Update("created_by", *defaultTeacherID)
 		}
+	}
+
+	if defaultTeacherID != nil {
+		db.Model(&entities.Course{}).Where("created_by IS NULL").Update("created_by", *defaultTeacherID)
 	}
 
 	// 3. Productos
@@ -325,6 +347,20 @@ func Seed(db *gorm.DB) error {
 					return fmt.Errorf("failed to seed lesson item for verb %s: %w", vb.English, err)
 				}
 			}
+		}
+	}
+
+	// 6. Platform Settings por defecto
+	defaultSettings := []entities.PlatformSetting{
+		{Key: "contact_email", Value: "soporte@wordtap.app", Description: stringPtr("Correo institucional de soporte y contacto"), UpdatedAt: time.Now()},
+		{Key: "company_name", Value: "Wordtap Studio", Description: stringPtr("Nombre legal o de marca de la empresa"), UpdatedAt: time.Now()},
+		{Key: "support_url", Value: "https://wordtap.app/soporte", Description: stringPtr("Enlace al centro de ayuda o contacto"), UpdatedAt: time.Now()},
+	}
+	for _, s := range defaultSettings {
+		var count int64
+		db.Model(&entities.PlatformSetting{}).Where("`key` = ?", s.Key).Count(&count)
+		if count == 0 {
+			_ = db.Create(&s).Error
 		}
 	}
 

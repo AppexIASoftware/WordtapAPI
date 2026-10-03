@@ -19,6 +19,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&entities.UserSession{},
 		&entities.AccountToken{},
 		&entities.UserDevice{},
+		&entities.TeacherApplication{},
+		&entities.PlatformSetting{},
 
 		// Catálogo y Aprendizaje
 		&entities.ContentCategory{},

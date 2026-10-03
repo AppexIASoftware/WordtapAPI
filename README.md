@@ -23,11 +23,11 @@ WordtapAPI/
 │   │
 │   ├── application/                             # Casos de uso del negocio (CQRS)
 │   │   └── features/
-│   │       ├── User/                            # Dominio de usuario (comandos y consultas)
-│   │       ├── Lesson/                          # Lecciones y progreso de vocabulario
-│   │       ├── Game/                            # Minijuegos, niveles y puntaje de estrellas
-│   │       ├── Notification/                    # Configuración e historial de notificaciones
-│   │       └── Payment/                         # Compras de cursos y suscripciones
+│   │       ├── user/                            # Dominio de usuario (comandos y consultas)
+│   │       ├── course/                          # Creación, precios y catálogo de cursos
+│   │       ├── lesson/                          # Lecciones y progreso de vocabulario
+│   │       ├── teacher_application/             # Postulaciones docentes y moderación
+│   │       └── platform_setting/                # Configuraciones institucionales globales
 │   │
 │   ├── infrastructure/                          # Adaptadores secundarios y persistencia
 │   │   ├── db/mysql/                            # Conexión GORM y configuración de pool
@@ -111,3 +111,19 @@ AUTO_SEED=true
   GET /api/v1/health
   ```
   Retorna el estado operativo del servidor, la verificación de conexión activa con la base de datos MySQL y el tiempo de respuesta (ping) en milisegundos.
+
+- **Postulaciones Docentes:**
+  ```http
+  POST /api/v1/teacher-applications             # Postulación de docente autenticado
+  GET  /api/v1/teacher-applications/my-status   # Consulta de estado del postulante
+  GET  /api/v1/admin/teacher-applications       # Lista de postulantes (Admin/Mod)
+  POST /api/v1/admin/teacher-applications/:id/approve # Aprobación y ascenso de rol a instructor
+  POST /api/v1/admin/teacher-applications/:id/reject  # Rechazo con motivo
+  ```
+
+- **Configuraciones de Plataforma:**
+  ```http
+  GET /api/v1/public-settings                   # Contacto y datos institucionales públicos
+  GET /api/v1/admin/settings                    # Lista de configuraciones clave-valor
+  PUT /api/v1/admin/settings                    # Modificación de configuración institucional
+  ```
