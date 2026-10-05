@@ -11,15 +11,15 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 	"gorm.io/gorm"
 
-	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/commands"
 	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
 	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
 	lessonCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/commands"
 	lessonQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/queries"
-	teacherAppCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/commands"
-	teacherAppQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/queries"
 	settingCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/platform_setting/commands"
 	settingQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/platform_setting/queries"
+	teacherAppCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/commands"
+	teacherAppQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/queries"
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/commands"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	infraRepo "github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
@@ -78,6 +78,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	lessonRepo := infraRepo.NewMySQLLessonRepository(db)
 	userRepo := infraRepo.NewMySQLUserRepository(db)
 	courseRepo := infraRepo.NewMySQLCourseRepository(db)
+	courseReviewRepo := infraRepo.NewMySQLCourseReviewRepository(db)
 	teacherAppRepo := infraRepo.NewMySQLTeacherApplicationRepository(db)
 	settingRepo := infraRepo.NewMySQLPlatformSettingRepository(db)
 
@@ -86,7 +87,10 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	createCourseHandler := courseCmd.NewCreateCourseHandler(courseRepo)
 	updateCourseHandler := courseCmd.NewUpdateCourseHandler(courseRepo)
 	deleteCourseHandler := courseCmd.NewDeleteCourseHandler(courseRepo)
-	submitCourseReviewHandler := courseCmd.NewSubmitCourseReviewHandler(courseRepo)
+	submitCourseReviewHandler := courseCmd.NewSubmitCourseReviewHandler(courseRepo, courseReviewRepo)
+	reviewCourseHandler := courseCmd.NewReviewCourseHandler(courseReviewRepo)
+	listCourseReviewsHandler := courseQuery.NewListCourseReviewsHandler(courseReviewRepo)
+	listTeacherCourseReviewsHandler := courseQuery.NewListTeacherCourseReviewsHandler(courseReviewRepo)
 	listTeacherCoursesHandler := courseQuery.NewListTeacherCoursesHandler(courseRepo)
 	listPublishedCoursesHandler := courseQuery.NewListPublishedCoursesHandler(courseRepo)
 	getCourseDetailHandler := courseQuery.NewGetCourseDetailHandler(courseRepo)
@@ -169,6 +173,9 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	authRouter.RegisterRoutes(v1, authRequired)
 	lessonRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
 	courseRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
+	adminOnly := restMiddleware.RequireRole(entities.RoleAdmin)
+	courseReviewRouter := course.NewCourseReviewRouter(submitCourseReviewHandler, reviewCourseHandler, listCourseReviewsHandler, listTeacherCourseReviewsHandler)
+	courseReviewRouter.RegisterRoutes(v1, authRequired, restMiddleware.RequireRole(entities.RoleInstructor), adminOnly)
 	teacherAppRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
 	settingRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
 

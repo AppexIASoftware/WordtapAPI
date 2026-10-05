@@ -18,10 +18,11 @@ type SubmitCourseReviewCommand struct {
 
 type SubmitCourseReviewHandler struct {
 	courseRepo repositories.CourseRepository
+	reviewRepo repositories.CourseReviewRepository
 }
 
-func NewSubmitCourseReviewHandler(courseRepo repositories.CourseRepository) *SubmitCourseReviewHandler {
-	return &SubmitCourseReviewHandler{courseRepo: courseRepo}
+func NewSubmitCourseReviewHandler(courseRepo repositories.CourseRepository, reviewRepo repositories.CourseReviewRepository) *SubmitCourseReviewHandler {
+	return &SubmitCourseReviewHandler{courseRepo: courseRepo, reviewRepo: reviewRepo}
 }
 
 func (h *SubmitCourseReviewHandler) Handle(ctx context.Context, cmd SubmitCourseReviewCommand) (*entities.Course, error) {
@@ -34,11 +35,8 @@ func (h *SubmitCourseReviewHandler) Handle(ctx context.Context, cmd SubmitCourse
 		return nil, fmt.Errorf("course not found: %w", err)
 	}
 
-	// Ownership validation: only author or admin can submit for review
-	if cmd.RequesterRole != entities.RoleAdmin {
-		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return nil, errors.New("forbidden: cannot submit a course created by another author")
-		}
+	if cmd.RequesterRole != entities.RoleInstructor || cmd.RequesterID == "" || course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
+		return nil, errors.New("forbidden: only the owning teacher can submit a course for review")
 	}
 
 	// State transition validation
@@ -52,12 +50,12 @@ func (h *SubmitCourseReviewHandler) Handle(ctx context.Context, cmd SubmitCourse
 		return nil, fmt.Errorf("cannot submit course with status '%s' for review", course.Status)
 	}
 
-	course.Status = entities.ContentStatusInReview
-	course.UpdatedAt = time.Now()
-
-	if err := h.courseRepo.Update(ctx, course); err != nil {
+	request := &entities.CourseReviewRequest{CourseID: course.ID, InstructorID: cmd.RequesterID, Status: entities.CourseReviewStatusPending, SubmittedAt: time.Now()}
+	if err := h.reviewRepo.CreateSubmission(ctx, request); err != nil {
 		return nil, fmt.Errorf("failed to submit course for review: %w", err)
 	}
 
+	course.Status = entities.ContentStatusInReview
+	course.UpdatedAt = request.SubmittedAt
 	return course, nil
 }

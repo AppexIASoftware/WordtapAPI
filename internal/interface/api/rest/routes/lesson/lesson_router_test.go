@@ -131,6 +131,10 @@ func (m *mockCourseRepoForLesson) Update(ctx context.Context, course *entities.C
 	return nil
 }
 
+func (m *mockCourseRepoForLesson) Delete(ctx context.Context, id string) error {
+	return nil
+}
+
 func setupLessonTestServer() (*echo.Echo, *security.JWTService, *mockLessonRepository, *mockCourseRepoForLesson) {
 	e := echo.New()
 	jwtSvc := security.NewJWTService("test-secret-key-32-bytes-minimum!", 15*time.Minute, time.Hour)

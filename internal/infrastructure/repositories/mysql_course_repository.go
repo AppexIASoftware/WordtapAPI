@@ -29,7 +29,14 @@ func (r *MySQLCourseRepository) FindByAuthor(ctx context.Context, authorID strin
 	courses := make([]entities.Course, 0)
 	err := r.db.WithContext(ctx).
 		Where("created_by = ?", authorID).
-		Preload("Lessons").
+		Preload("Lessons", func(db *gorm.DB) *gorm.DB {
+			return db.Order("lessons.sort_order ASC, lessons.created_at ASC")
+		}).
+		Preload("Lessons.Items", func(db *gorm.DB) *gorm.DB {
+			return db.Order("lesson_items.sort_order ASC")
+		}).
+		Preload("Lessons.Items.VocabularyItem").
+		Preload("Lessons.Items.Phrase").
 		Order("created_at DESC").
 		Find(&courses).Error
 	if err != nil {
@@ -56,7 +63,14 @@ func (r *MySQLCourseRepository) FindPublished(ctx context.Context) ([]entities.C
 func (r *MySQLCourseRepository) FindByID(ctx context.Context, id string) (*entities.Course, error) {
 	var course entities.Course
 	err := r.db.WithContext(ctx).
-		Preload("Lessons").
+		Preload("Lessons", func(db *gorm.DB) *gorm.DB {
+			return db.Order("lessons.sort_order ASC, lessons.created_at ASC")
+		}).
+		Preload("Lessons.Items", func(db *gorm.DB) *gorm.DB {
+			return db.Order("lesson_items.sort_order ASC")
+		}).
+		Preload("Lessons.Items.VocabularyItem").
+		Preload("Lessons.Items.Phrase").
 		Where("id = ?", id).
 		First(&course).Error
 	if err != nil {
@@ -68,4 +82,9 @@ func (r *MySQLCourseRepository) FindByID(ctx context.Context, id string) (*entit
 // Update updates an existing course entity.
 func (r *MySQLCourseRepository) Update(ctx context.Context, course *entities.Course) error {
 	return r.db.WithContext(ctx).Save(course).Error
+}
+
+// Delete removes a course by its ID.
+func (r *MySQLCourseRepository) Delete(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&entities.Course{}).Error
 }

@@ -11,17 +11,19 @@ import (
 )
 
 type CourseRouter struct {
-	createCourseHandler       *courseCmd.CreateCourseHandler
-	updateCourseHandler       *courseCmd.UpdateCourseHandler
-	submitCourseReviewHandler *courseCmd.SubmitCourseReviewHandler
-	listTeacherCoursesHandler *courseQuery.ListTeacherCoursesHandler
+	createCourseHandler         *courseCmd.CreateCourseHandler
+	updateCourseHandler         *courseCmd.UpdateCourseHandler
+	deleteCourseHandler         *courseCmd.DeleteCourseHandler
+	submitCourseReviewHandler   *courseCmd.SubmitCourseReviewHandler
+	listTeacherCoursesHandler   *courseQuery.ListTeacherCoursesHandler
 	listPublishedCoursesHandler *courseQuery.ListPublishedCoursesHandler
-	getCourseDetailHandler    *courseQuery.GetCourseDetailHandler
+	getCourseDetailHandler      *courseQuery.GetCourseDetailHandler
 }
 
 func NewCourseRouter(
 	createCourseHandler *courseCmd.CreateCourseHandler,
 	updateCourseHandler *courseCmd.UpdateCourseHandler,
+	deleteCourseHandler *courseCmd.DeleteCourseHandler,
 	submitCourseReviewHandler *courseCmd.SubmitCourseReviewHandler,
 	listTeacherCoursesHandler *courseQuery.ListTeacherCoursesHandler,
 	listPublishedCoursesHandler *courseQuery.ListPublishedCoursesHandler,
@@ -30,6 +32,7 @@ func NewCourseRouter(
 	return &CourseRouter{
 		createCourseHandler:         createCourseHandler,
 		updateCourseHandler:         updateCourseHandler,
+		deleteCourseHandler:         deleteCourseHandler,
 		submitCourseReviewHandler:   submitCourseReviewHandler,
 		listTeacherCoursesHandler:   listTeacherCoursesHandler,
 		listPublishedCoursesHandler: listPublishedCoursesHandler,
@@ -54,7 +57,7 @@ func (r *CourseRouter) RegisterRoutes(
 	coursesGroup.Use(authRequired, instructorOrAdmin)
 	coursesGroup.POST("", r.CreateCourse)
 	coursesGroup.PUT("/:id", r.UpdateCourse)
-	coursesGroup.POST("/:id/submit-review", r.SubmitCourseReview)
+	coursesGroup.DELETE("/:id", r.DeleteCourse)
 
 	// Teacher courses list
 	teacherGroup := v1.Group("/teacher")
@@ -67,6 +70,7 @@ type CreateCourseRequest struct {
 	Description   *string `json:"description"`
 	Level         string  `json:"level"`
 	AccessTier    string  `json:"access_tier"`
+	PriceCents    *int    `json:"price_cents"`
 	SourceLang    string  `json:"source_lang"`
 	TargetLang    string  `json:"target_lang"`
 	CoverImageURL *string `json:"cover_image_url"`
@@ -77,6 +81,7 @@ type UpdateCourseRequest struct {
 	Description   *string `json:"description"`
 	Level         *string `json:"level"`
 	AccessTier    *string `json:"access_tier"`
+	PriceCents    *int    `json:"price_cents"`
 	CoverImageURL *string `json:"cover_image_url"`
 }
 
@@ -98,11 +103,16 @@ func (r *CourseRouter) CreateCourse(c *echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
+	priceCentsVal := 0
+	if req.PriceCents != nil {
+		priceCentsVal = *req.PriceCents
+	}
 	course, err := r.createCourseHandler.Handle(ctx, courseCmd.CreateCourseCommand{
 		Title:         req.Title,
 		Description:   req.Description,
 		Level:         req.Level,
 		AccessTier:    entities.AccessTier(req.AccessTier),
+		PriceCents:    priceCentsVal,
 		SourceLang:    req.SourceLang,
 		TargetLang:    req.TargetLang,
 		CoverImageURL: req.CoverImageURL,
@@ -154,6 +164,7 @@ func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 		Level:         req.Level,
 		CoverImageURL: req.CoverImageURL,
 		AccessTier:    tierPtr,
+		PriceCents:    req.PriceCents,
 		RequesterID:   userID,
 		RequesterRole: entities.UserRole(roleStr),
 	})
@@ -165,6 +176,40 @@ func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, updated)
+}
+
+// DeleteCourse handles DELETE /api/v1/courses/:id
+func (r *CourseRouter) DeleteCourse(c *echo.Context) error {
+	courseID := c.Param("id")
+	if courseID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error": "missing course id parameter",
+		})
+	}
+
+	userIDVal := c.Get("user_id")
+	userID, _ := userIDVal.(string)
+
+	roleVal := c.Get("user_role")
+	roleStr, _ := roleVal.(string)
+
+	ctx := c.Request().Context()
+	err := r.deleteCourseHandler.Handle(ctx, courseCmd.DeleteCourseCommand{
+		CourseID:      courseID,
+		RequesterID:   userID,
+		RequesterRole: entities.UserRole(roleStr),
+	})
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error":   "failed to delete course",
+			"details": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"status":    "deleted",
+		"course_id": courseID,
+	})
 }
 
 // GetCourseDetail handles GET /api/v1/courses/:id

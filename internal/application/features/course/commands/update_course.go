@@ -18,6 +18,7 @@ type UpdateCourseCommand struct {
 	Level         *string
 	CoverImageURL *string
 	AccessTier    *entities.AccessTier
+	PriceCents    *int
 	RequesterID   string
 	RequesterRole entities.UserRole
 }
@@ -72,6 +73,10 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 
 	if cmd.AccessTier != nil && *cmd.AccessTier != "" {
 		course.AccessTier = *cmd.AccessTier
+	}
+
+	if cmd.PriceCents != nil {
+		course.PriceCents = *cmd.PriceCents
 	}
 
 	course.UpdatedAt = time.Now()

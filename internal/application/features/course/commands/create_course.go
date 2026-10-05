@@ -23,6 +23,7 @@ type CreateCourseCommand struct {
 	Description   *string             `json:"description"`
 	Level         string              `json:"level"`
 	AccessTier    entities.AccessTier `json:"access_tier"`
+	PriceCents    int                 `json:"price_cents"`
 	SourceLang    string              `json:"source_lang"`
 	TargetLang    string              `json:"target_lang"`
 	CoverImageURL *string             `json:"cover_image_url"`
@@ -68,12 +69,18 @@ func (h *CreateCourseHandler) Handle(ctx context.Context, cmd CreateCourseComman
 		targetLang = "en"
 	}
 
+	priceCents := cmd.PriceCents
+	if priceCents == 0 && accessTier == entities.AccessTierCourse {
+		priceCents = 1999
+	}
+
 	course := &entities.Course{
 		ID:            uuid.NewString(),
 		Title:         title,
 		Slug:          slug,
 		Description:   cmd.Description,
 		AccessTier:    accessTier,
+		PriceCents:    priceCents,
 		Level:         level,
 		Status:        entities.ContentStatusDraft,
 		SortOrder:     0,

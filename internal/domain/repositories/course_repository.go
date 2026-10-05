@@ -13,4 +13,5 @@ type CourseRepository interface {
 	FindPublished(ctx context.Context) ([]entities.Course, error)
 	FindByID(ctx context.Context, id string) (*entities.Course, error)
 	Update(ctx context.Context, course *entities.Course) error
+	Delete(ctx context.Context, id string) error
 }

@@ -37,6 +37,10 @@ func (m *mockCourseRepo) Update(ctx context.Context, course *entities.Course) er
 	return nil
 }
 
+func (m *mockCourseRepo) Delete(ctx context.Context, id string) error {
+	return nil
+}
+
 func TestCreateCourseHandler(t *testing.T) {
 	repo := &mockCourseRepo{}
 	handler := commands.NewCreateCourseHandler(repo)

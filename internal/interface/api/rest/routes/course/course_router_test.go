@@ -24,6 +24,66 @@ type mockCourseRepository struct {
 	courses []entities.Course
 }
 
+type mockCourseReviewRepository struct {
+	requests []entities.CourseReviewRequest
+	courses  *mockCourseRepository
+}
+
+func (m *mockCourseReviewRepository) CreateSubmission(_ context.Context, req *entities.CourseReviewRequest) error {
+	for i := range m.courses.courses {
+		c := &m.courses.courses[i]
+		if c.ID == req.CourseID && c.CreatedBy != nil && *c.CreatedBy == req.InstructorID && c.Status == entities.ContentStatusDraft {
+			c.Status = entities.ContentStatusInReview
+			m.requests = append(m.requests, *req)
+			return nil
+		}
+	}
+	return errors.New("course is unavailable for submission")
+}
+func (m *mockCourseReviewRepository) ListPending(context.Context) ([]entities.CourseReviewRequest, error) {
+	var out []entities.CourseReviewRequest
+	for _, r := range m.requests {
+		if r.Status == entities.CourseReviewStatusPending {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+func (m *mockCourseReviewRepository) Decide(_ context.Context, id, admin string, status entities.CourseReviewStatus, notes *string) (*entities.CourseReviewRequest, error) {
+	for i := range m.requests {
+		r := &m.requests[i]
+		if r.ID != id || r.Status != entities.CourseReviewStatusPending {
+			return nil, errors.New("review request is not pending")
+		}
+		now := time.Now()
+		r.Status = status
+		r.ReviewerAdminID = &admin
+		r.FeedbackNotes = notes
+		r.ReviewedAt = &now
+		for j := range m.courses.courses {
+			c := &m.courses.courses[j]
+			if c.ID == r.CourseID && c.Status == entities.ContentStatusInReview {
+				if status == entities.CourseReviewStatusApproved {
+					c.Status = entities.ContentStatusPublished
+				} else {
+					c.Status = entities.ContentStatusDraft
+				}
+				return r, nil
+			}
+		}
+	}
+	return nil, errors.New("review request not found")
+}
+func (m *mockCourseReviewRepository) ListByInstructor(_ context.Context, id string) ([]entities.CourseReviewRequest, error) {
+	var out []entities.CourseReviewRequest
+	for _, r := range m.requests {
+		if r.InstructorID == id {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
 func (m *mockCourseRepository) Create(ctx context.Context, c *entities.Course) error {
 	m.courses = append(m.courses, *c)
 	return nil
@@ -68,25 +128,42 @@ func (m *mockCourseRepository) Update(ctx context.Context, c *entities.Course) e
 	return errors.New("record not found")
 }
 
+func (m *mockCourseRepository) Delete(ctx context.Context, id string) error {
+	for i, existing := range m.courses {
+		if existing.ID == id {
+			m.courses = append(m.courses[:i], m.courses[i+1:]...)
+			return nil
+		}
+	}
+	return errors.New("record not found")
+}
+
 func setupTestServer() (*echo.Echo, *security.JWTService, *mockCourseRepository) {
 	e := echo.New()
 	jwtSvc := security.NewJWTService("test-secret-key-32-bytes-minimum!", 15*time.Minute, time.Hour)
 	repo := &mockCourseRepository{}
+	reviewRepo := &mockCourseReviewRepository{courses: repo}
 
 	createCmd := courseCmd.NewCreateCourseHandler(repo)
 	updateCmd := courseCmd.NewUpdateCourseHandler(repo)
-	submitCmd := courseCmd.NewSubmitCourseReviewHandler(repo)
+	deleteCmd := courseCmd.NewDeleteCourseHandler(repo)
+	submitCmd := courseCmd.NewSubmitCourseReviewHandler(repo, reviewRepo)
+	reviewCmd := courseCmd.NewReviewCourseHandler(reviewRepo)
+	pendingQuery := courseQuery.NewListCourseReviewsHandler(reviewRepo)
+	historyQuery := courseQuery.NewListTeacherCourseReviewsHandler(reviewRepo)
 	listQuery := courseQuery.NewListTeacherCoursesHandler(repo)
 	listPublishedQuery := courseQuery.NewListPublishedCoursesHandler(repo)
 	getQuery := courseQuery.NewGetCourseDetailHandler(repo)
 
-	router := course.NewCourseRouter(createCmd, updateCmd, submitCmd, listQuery, listPublishedQuery, getQuery)
+	router := course.NewCourseRouter(createCmd, updateCmd, deleteCmd, submitCmd, listQuery, listPublishedQuery, getQuery)
 
 	authRequired := restMiddleware.RequireAuth(jwtSvc)
 	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
 
 	v1 := e.Group("/api/v1")
 	router.RegisterRoutes(v1, authRequired, instructorOrAdmin)
+	reviewRouter := course.NewCourseReviewRouter(submitCmd, reviewCmd, pendingQuery, historyQuery)
+	reviewRouter.RegisterRoutes(v1, authRequired, restMiddleware.RequireRole(entities.RoleInstructor), restMiddleware.RequireRole(entities.RoleAdmin))
 
 	return e, jwtSvc, repo
 }
@@ -220,8 +297,8 @@ func TestCourseRoutesRBAC(t *testing.T) {
 
 		e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected 200 OK when submitting for review, got %d. Body: %s", rec.Code, rec.Body.String())
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected 201 Created when submitting for review, got %d. Body: %s", rec.Code, rec.Body.String())
 		}
 
 		var submitted entities.Course
@@ -275,6 +352,27 @@ func TestCourseRoutesRBAC(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("expected published course in public catalog")
+		}
+	})
+
+	t.Run("teacher can delete own course", func(t *testing.T) {
+		authorID := "teacher-123"
+		courseID := "course-to-delete"
+		repo.courses = append(repo.courses, entities.Course{
+			ID:        courseID,
+			Title:     "Course to Delete",
+			CreatedBy: &authorID,
+			Status:    entities.ContentStatusDraft,
+		})
+
+		req := httptest.NewRequest(http.MethodDelete, "/api/v1/courses/"+courseID, nil)
+		req.Header.Set("Authorization", "Bearer "+teacherToken)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK on course delete, got %d. Body: %s", rec.Code, rec.Body.String())
 		}
 	})
 }

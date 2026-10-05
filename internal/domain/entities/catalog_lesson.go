@@ -52,6 +52,7 @@ type Course struct {
 	Slug          string        `gorm:"type:varchar(200);uniqueIndex;not null" json:"slug"`
 	Description   *string       `gorm:"type:text" json:"description"`
 	AccessTier    AccessTier    `gorm:"type:varchar(20);default:'free';not null" json:"access_tier"`
+	PriceCents    int           `gorm:"default:1999;not null" json:"price_cents"`
 	Level         string        `gorm:"type:varchar(30);default:'beginner';not null" json:"level"`
 	Status        ContentStatus `gorm:"type:varchar(20);default:'draft';not null" json:"status"`
 	SortOrder     int           `gorm:"default:0;not null" json:"sort_order"`
