@@ -141,7 +141,7 @@ func setupLessonTestServer() (*echo.Echo, *security.JWTService, *mockLessonRepos
 	lessonRepo := &mockLessonRepository{}
 	courseRepo := &mockCourseRepoForLesson{}
 
-	listLessonsHandler := lessonQuery.NewListCourseLessonsHandler(lessonRepo)
+	listLessonsHandler := lessonQuery.NewListCourseLessonsHandler(lessonRepo, courseRepo)
 	createLessonHandler := lessonCmd.NewCreateLessonHandler(lessonRepo, courseRepo)
 	updateLessonHandler := lessonCmd.NewUpdateLessonHandler(lessonRepo, courseRepo)
 	deleteLessonHandler := lessonCmd.NewDeleteLessonHandler(lessonRepo, courseRepo)
@@ -159,10 +159,11 @@ func setupLessonTestServer() (*echo.Echo, *security.JWTService, *mockLessonRepos
 	)
 
 	authRequired := restMiddleware.RequireAuth(jwtSvc)
+	staffRoles := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator)
 	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
 
 	v1 := e.Group("/api/v1")
-	router.RegisterRoutes(v1, authRequired, instructorOrAdmin)
+	router.RegisterRoutes(v1, authRequired, staffRoles, instructorOrAdmin)
 
 	return e, jwtSvc, lessonRepo, courseRepo
 }
@@ -247,8 +248,64 @@ func TestLessonRoutesRBAC(t *testing.T) {
 		createdLessonID = created.ID
 	})
 
-	t.Run("public can list course lessons (200 OK)", func(t *testing.T) {
+	t.Run("author can list draft course lessons (200 OK)", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/courses/course-100/lessons", nil)
+		req.Header.Set("Authorization", "Bearer "+teacherToken)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d", rec.Code)
+		}
+
+		var list []entities.Lesson
+		_ = json.Unmarshal(rec.Body.Bytes(), &list)
+		if len(list) != 1 {
+			t.Errorf("expected 1 lesson, got %d", len(list))
+		}
+	})
+
+	t.Run("anonymous and student cannot list course lessons (401 / 403)", func(t *testing.T) {
+		reqAnon := httptest.NewRequest(http.MethodGet, "/api/v1/courses/course-100/lessons", nil)
+		recAnon := httptest.NewRecorder()
+		e.ServeHTTP(recAnon, reqAnon)
+		if recAnon.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 Unauthorized for anonymous, got %d", recAnon.Code)
+		}
+
+		reqStudent := httptest.NewRequest(http.MethodGet, "/api/v1/courses/course-100/lessons", nil)
+		reqStudent.Header.Set("Authorization", "Bearer "+studentToken)
+		recStudent := httptest.NewRecorder()
+		e.ServeHTTP(recStudent, reqStudent)
+		if recStudent.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 Forbidden for student, got %d", recStudent.Code)
+		}
+	})
+
+	t.Run("staff can list published course lessons (200 OK)", func(t *testing.T) {
+		modToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+			ID:    "mod-1",
+			Email: "moderator@wordtap.app",
+			Role:  entities.RoleModerator,
+		})
+
+		pubCourseID := "course-published-200"
+		courseRepo.courses = append(courseRepo.courses, entities.Course{
+			ID:        pubCourseID,
+			Title:     "Curso Publicado",
+			Status:    entities.ContentStatusPublished,
+			CreatedBy: &authorID,
+		})
+		lessonRepo.lessons = append(lessonRepo.lessons, entities.Lesson{
+			ID:       "lesson-pub-1",
+			CourseID: pubCourseID,
+			Title:    "Lección Pública",
+			Status:   entities.ContentStatusPublished,
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/courses/"+pubCourseID+"/lessons", nil)
+		req.Header.Set("Authorization", "Bearer "+modToken)
 		rec := httptest.NewRecorder()
 
 		e.ServeHTTP(rec, req)
@@ -323,8 +380,45 @@ func TestLessonRoutesRBAC(t *testing.T) {
 			t.Fatalf("expected 200 OK on lesson delete, got %d. Body: %s", rec.Code, rec.Body.String())
 		}
 
-		if len(lessonRepo.lessons) != 0 {
-			t.Errorf("expected lesson to be deleted, lessons: %d", len(lessonRepo.lessons))
+		for _, l := range lessonRepo.lessons {
+			if l.ID == createdLessonID {
+				t.Errorf("expected lesson %s to be deleted", createdLessonID)
+			}
+		}
+	})
+
+	t.Run("anonymous access to lessons of draft course returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/courses/course-100/lessons", nil)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for draft course lessons without auth, got %d", rec.Code)
+		}
+	})
+
+	t.Run("foreign teacher access to lessons of draft course returns 403", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/courses/course-100/lessons", nil)
+		req.Header.Set("Authorization", "Bearer "+otherTeacherToken)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 for draft course lessons by foreign teacher, got %d", rec.Code)
+		}
+	})
+
+	t.Run("author access to lessons of draft course returns 200 OK", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/courses/course-100/lessons", nil)
+		req.Header.Set("Authorization", "Bearer "+teacherToken)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for author, got %d", rec.Code)
 		}
 	})
 }

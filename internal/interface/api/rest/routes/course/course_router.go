@@ -1,6 +1,7 @@
 package course
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/labstack/echo/v5"
@@ -44,25 +45,28 @@ func NewCourseRouter(
 func (r *CourseRouter) RegisterRoutes(
 	v1 *echo.Group,
 	authRequired echo.MiddlewareFunc,
+	catalogRoles echo.MiddlewareFunc,
+	staffRoles echo.MiddlewareFunc,
 	instructorOrAdmin echo.MiddlewareFunc,
 ) {
-	// Public course catalog (open to all)
-	v1.GET("/courses", r.ListPublicCourses)
+	// Course catalog (staff only: admin, moderator. Teacher has no access to Wordtap catalog)
+	v1.GET("/courses", r.ListPublicCourses, authRequired, catalogRoles)
 
-	// Course details (accessible by authenticated users)
-	v1.GET("/courses/:id", r.GetCourseDetail, authRequired)
+	// Course details (accessible by author, admin, moderator)
+	v1.GET("/courses/:id", r.GetCourseDetail, authRequired, staffRoles)
 
-	// Teacher course management
+	// Course management (teacher, admin, moderator)
 	coursesGroup := v1.Group("/courses")
-	coursesGroup.Use(authRequired, instructorOrAdmin)
+	coursesGroup.Use(authRequired, staffRoles)
 	coursesGroup.POST("", r.CreateCourse)
 	coursesGroup.PUT("/:id", r.UpdateCourse)
 	coursesGroup.DELETE("/:id", r.DeleteCourse)
 
-	// Teacher courses list
+	// Teacher private courses list and detail (only own courses)
 	teacherGroup := v1.Group("/teacher")
 	teacherGroup.Use(authRequired, instructorOrAdmin)
 	teacherGroup.GET("/courses", r.ListTeacherCourses)
+	teacherGroup.GET("/courses/:id", r.GetTeacherCourseDetail)
 }
 
 type CreateCourseRequest struct {
@@ -83,6 +87,7 @@ type UpdateCourseRequest struct {
 	AccessTier    *string `json:"access_tier"`
 	PriceCents    *int    `json:"price_cents"`
 	CoverImageURL *string `json:"cover_image_url"`
+	ChangeSummary *string `json:"change_summary"`
 }
 
 // CreateCourse handles POST /api/v1/courses
@@ -165,6 +170,7 @@ func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 		CoverImageURL: req.CoverImageURL,
 		AccessTier:    tierPtr,
 		PriceCents:    req.PriceCents,
+		ChangeSummary: req.ChangeSummary,
 		RequesterID:   userID,
 		RequesterRole: entities.UserRole(roleStr),
 	})
@@ -221,13 +227,83 @@ func (r *CourseRouter) GetCourseDetail(c *echo.Context) error {
 		})
 	}
 
+	userID, _ := c.Get("user_id").(string)
+	roleStr, _ := c.Get("user_role").(string)
+
 	ctx := c.Request().Context()
 	course, err := r.getCourseDetailHandler.Handle(ctx, courseQuery.GetCourseDetailQuery{
-		CourseID: courseID,
+		CourseID:      courseID,
+		RequesterID:   userID,
+		RequesterRole: entities.UserRole(roleStr),
 	})
 	if err != nil {
+		if errors.Is(err, courseQuery.ErrCourseAccessDenied) {
+			if userID == "" {
+				return c.JSON(http.StatusNotFound, map[string]any{
+					"error": "course not found",
+				})
+			}
+			return c.JSON(http.StatusForbidden, map[string]any{
+				"error": "access denied: course is not published",
+			})
+		}
 		return c.JSON(http.StatusNotFound, map[string]any{
 			"error": "course not found",
+		})
+	}
+
+	isOwner := userID != "" && course.CreatedBy != nil && *course.CreatedBy == userID
+	isAdmin := entities.UserRole(roleStr) == entities.RoleAdmin
+
+	if !isOwner && !isAdmin {
+		return c.JSON(http.StatusOK, ToPublicCourseDTO(course))
+	}
+
+	return c.JSON(http.StatusOK, course)
+}
+
+// GetTeacherCourseDetail handles GET /api/v1/teacher/courses/:id (private teacher-owned detail path)
+func (r *CourseRouter) GetTeacherCourseDetail(c *echo.Context) error {
+	courseID := c.Param("id")
+	if courseID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error": "missing course id parameter",
+		})
+	}
+
+	userIDVal := c.Get("user_id")
+	userID, ok := userIDVal.(string)
+	if !ok || userID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]any{
+			"error": "unauthorized context",
+		})
+	}
+
+	roleVal := c.Get("user_role")
+	roleStr, _ := roleVal.(string)
+
+	ctx := c.Request().Context()
+	course, err := r.getCourseDetailHandler.Handle(ctx, courseQuery.GetCourseDetailQuery{
+		CourseID:      courseID,
+		RequesterID:   userID,
+		RequesterRole: entities.UserRole(roleStr),
+	})
+	if err != nil {
+		if errors.Is(err, courseQuery.ErrCourseAccessDenied) {
+			return c.JSON(http.StatusForbidden, map[string]any{
+				"error": "access denied: not the owner of this course",
+			})
+		}
+		return c.JSON(http.StatusNotFound, map[string]any{
+			"error": "course not found",
+		})
+	}
+
+	isOwner := course.CreatedBy != nil && *course.CreatedBy == userID
+	isAdmin := entities.UserRole(roleStr) == entities.RoleAdmin
+	if !isOwner && !isAdmin {
+		return c.JSON(http.StatusForbidden, map[string]any{
+			"error": "access denied: not the owner of this course",
 		})
 	}
 
@@ -258,6 +334,10 @@ func (r *CourseRouter) ListTeacherCourses(c *echo.Context) error {
 	return c.JSON(http.StatusOK, courses)
 }
 
+type SubmitCourseReviewRequest struct {
+	ChangeSummary *string `json:"change_summary"`
+}
+
 // SubmitCourseReview handles POST /api/v1/courses/:id/submit-review
 func (r *CourseRouter) SubmitCourseReview(c *echo.Context) error {
 	courseID := c.Param("id")
@@ -273,11 +353,15 @@ func (r *CourseRouter) SubmitCourseReview(c *echo.Context) error {
 	roleVal := c.Get("user_role")
 	roleStr, _ := roleVal.(string)
 
+	var req SubmitCourseReviewRequest
+	_ = c.Bind(&req)
+
 	ctx := c.Request().Context()
 	submitted, err := r.submitCourseReviewHandler.Handle(ctx, courseCmd.SubmitCourseReviewCommand{
 		CourseID:      courseID,
 		RequesterID:   userID,
 		RequesterRole: entities.UserRole(roleStr),
+		ChangeSummary: req.ChangeSummary,
 	})
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]any{
@@ -300,5 +384,10 @@ func (r *CourseRouter) ListPublicCourses(c *echo.Context) error {
 		})
 	}
 
-	return c.JSON(http.StatusOK, courses)
+	publicCourses := make([]PublicCourseDTO, 0, len(courses))
+	for _, c := range courses {
+		publicCourses = append(publicCourses, ToPublicCourseDTO(&c))
+	}
+
+	return c.JSON(http.StatusOK, publicCourses)
 }

@@ -22,6 +22,9 @@ func (s *reviewRepoStub) ListPending(context.Context) ([]entities.CourseReviewRe
 func (s *reviewRepoStub) Decide(context.Context, string, string, entities.CourseReviewStatus, *string) (*entities.CourseReviewRequest, error) {
 	return nil, nil
 }
+func (s *reviewRepoStub) Withdraw(context.Context, string, string) (*entities.CourseReviewRequest, error) {
+	return nil, nil
+}
 func (s *reviewRepoStub) ListByInstructor(context.Context, string) ([]entities.CourseReviewRequest, error) {
 	return s.requests, nil
 }

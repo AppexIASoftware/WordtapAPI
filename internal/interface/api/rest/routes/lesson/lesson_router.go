@@ -46,15 +46,16 @@ func NewLessonRouter(
 func (r *LessonRouter) RegisterRoutes(
 	v1 *echo.Group,
 	authRequired echo.MiddlewareFunc,
+	staffRoles echo.MiddlewareFunc,
 	instructorOrAdmin echo.MiddlewareFunc,
 ) {
-	// Course lessons
-	v1.GET("/courses/:course_id/lessons", r.ListCourseLessons)
+	// Course lessons (staff only: instructor, admin, moderator)
+	v1.GET("/courses/:course_id/lessons", r.ListCourseLessons, authRequired, staffRoles)
 	v1.POST("/courses/:course_id/lessons", r.CreateLesson, authRequired, instructorOrAdmin)
 
 	// Single lesson management
 	lessonsGroup := v1.Group("/lessons")
-	lessonsGroup.GET("/:id", r.GetLessonDetail)
+	lessonsGroup.GET("/:id", r.GetLessonDetail, authRequired, staffRoles)
 	lessonsGroup.PUT("/:id", r.UpdateLesson, authRequired, instructorOrAdmin)
 	lessonsGroup.DELETE("/:id", r.DeleteLesson, authRequired, instructorOrAdmin)
 	lessonsGroup.POST("/:id/items", r.SaveLessonItem, authRequired, instructorOrAdmin)
@@ -87,9 +88,25 @@ func (r *LessonRouter) ListCourseLessons(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]any{"error": "missing course id parameter"})
 	}
 
+	userID, _ := c.Get("user_id").(string)
+	roleStr, _ := c.Get("user_role").(string)
+
 	ctx := c.Request().Context()
-	lessons, err := r.listCourseLessonsHandler.Handle(ctx, queries.ListCourseLessonsQuery{CourseID: courseID})
+	lessons, err := r.listCourseLessonsHandler.Handle(ctx, queries.ListCourseLessonsQuery{
+		CourseID:      courseID,
+		RequesterID:   userID,
+		RequesterRole: entities.UserRole(roleStr),
+	})
 	if err != nil {
+		if errors.Is(err, queries.ErrCourseLessonsAccessDenied) {
+			if userID == "" {
+				return c.JSON(http.StatusNotFound, map[string]any{"error": "course not found"})
+			}
+			return c.JSON(http.StatusForbidden, map[string]any{"error": "access denied: course is not published"})
+		}
+		if errors.Is(err, queries.ErrCourseLessonsNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]any{"error": "course not found"})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]any{
 			"error":   "failed to fetch course lessons",
 			"details": err.Error(),

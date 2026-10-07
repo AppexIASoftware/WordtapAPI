@@ -32,7 +32,7 @@ type mockCourseReviewRepository struct {
 func (m *mockCourseReviewRepository) CreateSubmission(_ context.Context, req *entities.CourseReviewRequest) error {
 	for i := range m.courses.courses {
 		c := &m.courses.courses[i]
-		if c.ID == req.CourseID && c.CreatedBy != nil && *c.CreatedBy == req.InstructorID && c.Status == entities.ContentStatusDraft {
+		if c.ID == req.CourseID && c.CreatedBy != nil && *c.CreatedBy == req.InstructorID && (c.Status == entities.ContentStatusDraft || c.Status == entities.ContentStatusPublished) {
 			c.Status = entities.ContentStatusInReview
 			m.requests = append(m.requests, *req)
 			return nil
@@ -70,6 +70,25 @@ func (m *mockCourseReviewRepository) Decide(_ context.Context, id, admin string,
 				}
 				return r, nil
 			}
+		}
+	}
+	return nil, errors.New("review request not found")
+}
+func (m *mockCourseReviewRepository) Withdraw(_ context.Context, id, instructorID string) (*entities.CourseReviewRequest, error) {
+	for i := range m.requests {
+		r := &m.requests[i]
+		if (r.ID == id || r.CourseID == id) && r.InstructorID == instructorID {
+			now := time.Now()
+			r.Status = entities.CourseReviewStatusWithdrawn
+			r.ReviewedAt = &now
+			for j := range m.courses.courses {
+				c := &m.courses.courses[j]
+				if c.ID == r.CourseID {
+					c.Status = entities.ContentStatusDraft
+					return r, nil
+				}
+			}
+			return r, nil
 		}
 	}
 	return nil, errors.New("review request not found")
@@ -138,16 +157,17 @@ func (m *mockCourseRepository) Delete(ctx context.Context, id string) error {
 	return errors.New("record not found")
 }
 
-func setupTestServer() (*echo.Echo, *security.JWTService, *mockCourseRepository) {
+func setupTestServer() (*echo.Echo, *security.JWTService, *mockCourseRepository, *mockCourseReviewRepository) {
 	e := echo.New()
 	jwtSvc := security.NewJWTService("test-secret-key-32-bytes-minimum!", 15*time.Minute, time.Hour)
 	repo := &mockCourseRepository{}
 	reviewRepo := &mockCourseReviewRepository{courses: repo}
 
 	createCmd := courseCmd.NewCreateCourseHandler(repo)
-	updateCmd := courseCmd.NewUpdateCourseHandler(repo)
+	updateCmd := courseCmd.NewUpdateCourseHandler(repo, reviewRepo)
 	deleteCmd := courseCmd.NewDeleteCourseHandler(repo)
 	submitCmd := courseCmd.NewSubmitCourseReviewHandler(repo, reviewRepo)
+	withdrawCmd := courseCmd.NewWithdrawCourseReviewHandler(reviewRepo)
 	reviewCmd := courseCmd.NewReviewCourseHandler(reviewRepo)
 	pendingQuery := courseQuery.NewListCourseReviewsHandler(reviewRepo)
 	historyQuery := courseQuery.NewListTeacherCourseReviewsHandler(reviewRepo)
@@ -158,18 +178,21 @@ func setupTestServer() (*echo.Echo, *security.JWTService, *mockCourseRepository)
 	router := course.NewCourseRouter(createCmd, updateCmd, deleteCmd, submitCmd, listQuery, listPublishedQuery, getQuery)
 
 	authRequired := restMiddleware.RequireAuth(jwtSvc)
+	catalogRoles := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
+	staffRoles := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator)
 	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
 
 	v1 := e.Group("/api/v1")
-	router.RegisterRoutes(v1, authRequired, instructorOrAdmin)
-	reviewRouter := course.NewCourseReviewRouter(submitCmd, reviewCmd, pendingQuery, historyQuery)
-	reviewRouter.RegisterRoutes(v1, authRequired, restMiddleware.RequireRole(entities.RoleInstructor), restMiddleware.RequireRole(entities.RoleAdmin))
+	router.RegisterRoutes(v1, authRequired, catalogRoles, staffRoles, instructorOrAdmin)
+	reviewRouter := course.NewCourseReviewRouter(submitCmd, withdrawCmd, reviewCmd, pendingQuery, historyQuery)
+	adminOrMod := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
+	reviewRouter.RegisterRoutes(v1, authRequired, restMiddleware.RequireRole(entities.RoleInstructor), adminOrMod)
 
-	return e, jwtSvc, repo
+	return e, jwtSvc, repo, reviewRepo
 }
 
 func TestCourseRoutesRBAC(t *testing.T) {
-	e, jwtSvc, repo := setupTestServer()
+	e, jwtSvc, repo, _ := setupTestServer()
 
 	teacherToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
 		ID:         "teacher-123",
@@ -320,26 +343,76 @@ func TestCourseRoutesRBAC(t *testing.T) {
 		}
 	})
 
-	t.Run("public course catalog returns published courses without auth (200 OK)", func(t *testing.T) {
-		// Insert a published course into repo
+	t.Run("author can withdraw submitted course from review (200 OK)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/courses/"+createdID+"/withdraw-review", nil)
+		req.Header.Set("Authorization", "Bearer "+teacherToken)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK when withdrawing review, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		if len(repo.courses) > 0 && repo.courses[0].Status != entities.ContentStatusDraft {
+			t.Errorf("expected course status reverted to 'draft', got '%s'", repo.courses[0].Status)
+		}
+	})
+
+	t.Run("course catalog RBAC: rejects anonymous (401) and teacher (403), allows student and moderator (200 OK)", func(t *testing.T) {
 		repo.courses = append(repo.courses, entities.Course{
 			ID:     "published-1",
 			Title:  "Curso Publico",
 			Status: entities.ContentStatusPublished,
 		})
 
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/courses", nil)
-		// No Authorization header
-		rec := httptest.NewRecorder()
-
-		e.ServeHTTP(rec, req)
-
-		if rec.Code != http.StatusOK {
-			t.Fatalf("expected 200 OK for public catalog, got %d. Body: %s", rec.Code, rec.Body.String())
+		// 1. Anonymous -> 401
+		reqAnon := httptest.NewRequest(http.MethodGet, "/api/v1/courses", nil)
+		recAnon := httptest.NewRecorder()
+		e.ServeHTTP(recAnon, reqAnon)
+		if recAnon.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 Unauthorized for anonymous, got %d", recAnon.Code)
 		}
 
-		var list []entities.Course
-		if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		// 2. Teacher -> 403 Forbidden (el docente no tiene acceso a catálogo público de Wordtap)
+		reqTeacher := httptest.NewRequest(http.MethodGet, "/api/v1/courses", nil)
+		reqTeacher.Header.Set("Authorization", "Bearer "+teacherToken)
+		recTeacher := httptest.NewRecorder()
+		e.ServeHTTP(recTeacher, reqTeacher)
+		if recTeacher.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 Forbidden for teacher accessing public courses, got %d", recTeacher.Code)
+		}
+
+		// 3. Student -> 403 Forbidden (no acceso en Studio)
+		studentToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+			ID:    "student-1",
+			Email: "student@wordtap.app",
+			Role:  entities.RoleStudent,
+		})
+		reqStudent := httptest.NewRequest(http.MethodGet, "/api/v1/courses", nil)
+		reqStudent.Header.Set("Authorization", "Bearer "+studentToken)
+		recStudent := httptest.NewRecorder()
+		e.ServeHTTP(recStudent, reqStudent)
+		if recStudent.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 Forbidden for student, got %d", recStudent.Code)
+		}
+
+		// 4. Staff moderator -> 200 OK
+		modToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+			ID:    "mod-1",
+			Email: "mod@wordtap.app",
+			Role:  entities.RoleModerator,
+		})
+		reqMod := httptest.NewRequest(http.MethodGet, "/api/v1/courses", nil)
+		reqMod.Header.Set("Authorization", "Bearer "+modToken)
+		recMod := httptest.NewRecorder()
+		e.ServeHTTP(recMod, reqMod)
+		if recMod.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for moderator, got %d. Body: %s", recMod.Code, recMod.Body.String())
+		}
+
+		var list []course.PublicCourseDTO
+		if err := json.Unmarshal(recMod.Body.Bytes(), &list); err != nil {
 			t.Fatalf("failed to decode response: %v", err)
 		}
 
@@ -351,7 +424,16 @@ func TestCourseRoutesRBAC(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("expected published course in public catalog")
+			t.Errorf("expected published course in catalog")
+		}
+
+		// Verify created_by / author is not serialized in raw json
+		var rawList []map[string]any
+		_ = json.Unmarshal(recMod.Body.Bytes(), &rawList)
+		if len(rawList) > 0 {
+			if _, exists := rawList[0]["created_by"]; exists {
+				t.Errorf("expected 'created_by' to be omitted from catalog response")
+			}
 		}
 	})
 

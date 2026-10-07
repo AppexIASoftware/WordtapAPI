@@ -116,3 +116,79 @@ func TestRequireRoleMiddleware(t *testing.T) {
 		})
 	}
 }
+
+func TestOptionalAuthMiddleware(t *testing.T) {
+	jwtSvc := security.NewJWTService("secret-key-for-optional-auth", time.Minute, time.Hour)
+	optionalMiddleware := middleware.OptionalAuth(jwtSvc)
+
+	user := &entities.User{
+		ID:         "usr-opt-1",
+		Email:      "opt@wordtap.app",
+		Role:       entities.RoleInstructor,
+		AccessTier: entities.AccessTierFree,
+	}
+	validToken, _, _ := jwtSvc.GenerateAccessToken(user)
+
+	tests := []struct {
+		name         string
+		authHeader   string
+		expectUserID string
+		expectRole   string
+	}{
+		{
+			name:         "anonymous request without header",
+			authHeader:   "",
+			expectUserID: "",
+			expectRole:   "",
+		},
+		{
+			name:         "invalid header format",
+			authHeader:   "Basic 12345",
+			expectUserID: "",
+			expectRole:   "",
+		},
+		{
+			name:         "invalid or expired token",
+			authHeader:   "Bearer bogus.token.value",
+			expectUserID: "",
+			expectRole:   "",
+		},
+		{
+			name:         "valid token populates context",
+			authHeader:   "Bearer " + validToken,
+			expectUserID: "usr-opt-1",
+			expectRole:   "instructor",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := echo.New()
+			req := httptest.NewRequest(http.MethodGet, "/public-or-private", nil)
+			if tt.authHeader != "" {
+				req.Header.Set("Authorization", tt.authHeader)
+			}
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+
+			var capturedUserID, capturedRole string
+			handler := optionalMiddleware(func(ctx *echo.Context) error {
+				capturedUserID, _ = ctx.Get("user_id").(string)
+				capturedRole, _ = ctx.Get("user_role").(string)
+				return ctx.NoContent(http.StatusOK)
+			})
+
+			_ = handler(c)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("expected status 200 OK, got %d", rec.Code)
+			}
+			if capturedUserID != tt.expectUserID {
+				t.Errorf("expected user_id '%s', got '%s'", tt.expectUserID, capturedUserID)
+			}
+			if capturedRole != tt.expectRole {
+				t.Errorf("expected user_role '%s', got '%s'", tt.expectRole, capturedRole)
+			}
+		})
+	}
+}

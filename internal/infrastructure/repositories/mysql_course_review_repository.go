@@ -20,7 +20,7 @@ func NewMySQLCourseReviewRepository(db *gorm.DB) domainRepo.CourseReviewReposito
 
 func (r *MySQLCourseReviewRepository) CreateSubmission(ctx context.Context, request *entities.CourseReviewRequest) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&entities.Course{}).Where("id = ? AND created_by = ? AND status = ?", request.CourseID, request.InstructorID, entities.ContentStatusDraft).Updates(map[string]any{"status": entities.ContentStatusInReview, "updated_at": request.SubmittedAt})
+		result := tx.Model(&entities.Course{}).Where("id = ? AND created_by = ? AND status IN (?)", request.CourseID, request.InstructorID, []entities.ContentStatus{entities.ContentStatusDraft, entities.ContentStatusPublished}).Updates(map[string]any{"status": entities.ContentStatusInReview, "updated_at": request.SubmittedAt})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -33,14 +33,14 @@ func (r *MySQLCourseReviewRepository) CreateSubmission(ctx context.Context, requ
 
 func (r *MySQLCourseReviewRepository) ListPending(ctx context.Context) ([]entities.CourseReviewRequest, error) {
 	items := make([]entities.CourseReviewRequest, 0)
-	err := r.db.WithContext(ctx).Preload("Course").Preload("Instructor").Where("status = ?", entities.CourseReviewStatusPending).Order("submitted_at ASC").Find(&items).Error
+	err := r.db.WithContext(ctx).Preload("Course").Preload("Course.Author").Preload("Instructor").Where("status = ?", entities.CourseReviewStatusPending).Order("submitted_at ASC").Find(&items).Error
 	return items, err
 }
 
 func (r *MySQLCourseReviewRepository) Decide(ctx context.Context, id, adminID string, status entities.CourseReviewStatus, notes *string) (*entities.CourseReviewRequest, error) {
 	var request entities.CourseReviewRequest
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND status = ?", id, entities.CourseReviewStatusPending).First(&request).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("(id = ? OR course_id = ?) AND status = ?", id, id, entities.CourseReviewStatusPending).First(&request).Error; err != nil {
 			return errors.New("review request is not pending")
 		}
 		now := time.Now()
@@ -48,7 +48,7 @@ func (r *MySQLCourseReviewRepository) Decide(ctx context.Context, id, adminID st
 		request.ReviewerAdminID = &adminID
 		request.FeedbackNotes = notes
 		request.ReviewedAt = &now
-		result := tx.Model(&entities.CourseReviewRequest{}).Where("id = ? AND status = ?", id, entities.CourseReviewStatusPending).Updates(map[string]any{"status": status, "reviewer_admin_id": adminID, "feedback_notes": notes, "reviewed_at": now})
+		result := tx.Model(&entities.CourseReviewRequest{}).Where("id = ? AND status = ?", request.ID, entities.CourseReviewStatusPending).Updates(map[string]any{"status": status, "reviewer_admin_id": adminID, "feedback_notes": notes, "reviewed_at": now})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -59,12 +59,37 @@ func (r *MySQLCourseReviewRepository) Decide(ctx context.Context, id, adminID st
 		if status == entities.CourseReviewStatusApproved {
 			courseStatus = entities.ContentStatusPublished
 		}
-		course := tx.Model(&entities.Course{}).Where("id = ? AND status = ?", request.CourseID, entities.ContentStatusInReview).Updates(map[string]any{"status": courseStatus, "updated_at": now})
+		course := tx.Model(&entities.Course{}).Where("id = ?", request.CourseID).Updates(map[string]any{"status": courseStatus, "updated_at": now})
 		if course.Error != nil {
 			return course.Error
 		}
 		if course.RowsAffected != 1 {
-			return errors.New("course is not in review")
+			return errors.New("course not found")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &request, nil
+}
+
+func (r *MySQLCourseReviewRepository) Withdraw(ctx context.Context, idOrCourseID, instructorID string) (*entities.CourseReviewRequest, error) {
+	var request entities.CourseReviewRequest
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("(id = ? OR course_id = ?) AND instructor_id = ? AND status IN (?)", idOrCourseID, idOrCourseID, instructorID, []entities.CourseReviewStatus{entities.CourseReviewStatusPending, entities.CourseReviewStatusChangesRequested}).First(&request).Error; err != nil {
+			return errors.New("active review request not found for withdrawal")
+		}
+		now := time.Now()
+		request.Status = entities.CourseReviewStatusWithdrawn
+		request.ReviewedAt = &now
+		res := tx.Model(&entities.CourseReviewRequest{}).Where("id = ?", request.ID).Updates(map[string]any{"status": entities.CourseReviewStatusWithdrawn, "reviewed_at": now})
+		if res.Error != nil {
+			return res.Error
+		}
+		courseRes := tx.Model(&entities.Course{}).Where("id = ?", request.CourseID).Updates(map[string]any{"status": entities.ContentStatusDraft, "updated_at": now})
+		if courseRes.Error != nil {
+			return courseRes.Error
 		}
 		return nil
 	})

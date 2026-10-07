@@ -85,9 +85,10 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	// Casos de uso
 	loginWithGoogleHandler := commands.NewLoginWithGoogleHandler(userRepo, googleVerifier, jwtService, teacherAppRepo)
 	createCourseHandler := courseCmd.NewCreateCourseHandler(courseRepo)
-	updateCourseHandler := courseCmd.NewUpdateCourseHandler(courseRepo)
+	updateCourseHandler := courseCmd.NewUpdateCourseHandler(courseRepo, courseReviewRepo)
 	deleteCourseHandler := courseCmd.NewDeleteCourseHandler(courseRepo)
 	submitCourseReviewHandler := courseCmd.NewSubmitCourseReviewHandler(courseRepo, courseReviewRepo)
+	withdrawCourseReviewHandler := courseCmd.NewWithdrawCourseReviewHandler(courseReviewRepo)
 	reviewCourseHandler := courseCmd.NewReviewCourseHandler(courseReviewRepo)
 	listCourseReviewsHandler := courseQuery.NewListCourseReviewsHandler(courseReviewRepo)
 	listTeacherCourseReviewsHandler := courseQuery.NewListTeacherCourseReviewsHandler(courseReviewRepo)
@@ -108,7 +109,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	listApplicationsHandler := teacherAppQuery.NewListApplicationsHandler(teacherAppRepo)
 
 	// Lesson Command & Query handlers
-	listCourseLessonsHandler := lessonQuery.NewListCourseLessonsHandler(lessonRepo)
+	listCourseLessonsHandler := lessonQuery.NewListCourseLessonsHandler(lessonRepo, courseRepo)
 	createLessonHandler := lessonCmd.NewCreateLessonHandler(lessonRepo, courseRepo)
 	updateLessonHandler := lessonCmd.NewUpdateLessonHandler(lessonRepo, courseRepo)
 	deleteLessonHandler := lessonCmd.NewDeleteLessonHandler(lessonRepo, courseRepo)
@@ -151,6 +152,8 @@ func NewServer(db *gorm.DB) (*Server, error) {
 
 	// Middlewares específicos
 	authRequired := restMiddleware.RequireAuth(jwtService)
+	catalogRoles := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
+	staffRoles := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator)
 	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
 	adminOrModerator := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
 
@@ -171,11 +174,10 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	// --- Registro modular de rutas por dominio ---
 	healthRouter.RegisterRoutes(e, v1)
 	authRouter.RegisterRoutes(v1, authRequired)
-	lessonRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
-	courseRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
-	adminOnly := restMiddleware.RequireRole(entities.RoleAdmin)
-	courseReviewRouter := course.NewCourseReviewRouter(submitCourseReviewHandler, reviewCourseHandler, listCourseReviewsHandler, listTeacherCourseReviewsHandler)
-	courseReviewRouter.RegisterRoutes(v1, authRequired, restMiddleware.RequireRole(entities.RoleInstructor), adminOnly)
+	lessonRouter.RegisterRoutes(v1, authRequired, staffRoles, instructorOrAdmin)
+	courseRouter.RegisterRoutes(v1, authRequired, catalogRoles, staffRoles, instructorOrAdmin)
+	courseReviewRouter := course.NewCourseReviewRouter(submitCourseReviewHandler, withdrawCourseReviewHandler, reviewCourseHandler, listCourseReviewsHandler, listTeacherCourseReviewsHandler)
+	courseReviewRouter.RegisterRoutes(v1, authRequired, restMiddleware.RequireRole(entities.RoleInstructor), adminOrModerator)
 	teacherAppRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
 	settingRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
 

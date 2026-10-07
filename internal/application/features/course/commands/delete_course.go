@@ -33,9 +33,9 @@ func (h *DeleteCourseHandler) Handle(ctx context.Context, cmd DeleteCourseComman
 		return fmt.Errorf("course not found: %w", err)
 	}
 
-	if cmd.RequesterRole != entities.RoleAdmin {
+	if cmd.RequesterRole != entities.RoleAdmin && cmd.RequesterRole != entities.RoleModerator {
 		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return errors.New("forbidden: only course author or admin can delete this course")
+			return errors.New("forbidden: only course author, admin or moderator can delete this course")
 		}
 	}
 

@@ -25,8 +25,8 @@ func NewReviewCourseHandler(repo repositories.CourseReviewRepository) *ReviewCou
 }
 
 func (h *ReviewCourseHandler) Handle(ctx context.Context, cmd ReviewCourseCommand) (*entities.CourseReviewRequest, error) {
-	if cmd.ReviewerRole != entities.RoleAdmin || cmd.ReviewerID == "" {
-		return nil, errors.New("forbidden: admin role required")
+	if (cmd.ReviewerRole != entities.RoleAdmin && cmd.ReviewerRole != entities.RoleModerator) || cmd.ReviewerID == "" {
+		return nil, errors.New("forbidden: admin or moderator role required")
 	}
 	if cmd.ReviewID == "" {
 		return nil, errors.New("review id is required")

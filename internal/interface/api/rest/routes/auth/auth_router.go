@@ -144,8 +144,17 @@ func (r *AuthRouter) GetMe(c *echo.Context) error {
 		})
 	}
 
+	accessToken, expiresIn, err := r.jwtService.GenerateAccessToken(user)
+	if err != nil {
+		return c.JSON(http.StatusOK, map[string]any{
+			"user": user,
+		})
+	}
+
 	return c.JSON(http.StatusOK, map[string]any{
-		"user": user,
+		"user":         user,
+		"access_token": accessToken,
+		"expires_in":   expiresIn,
 	})
 }
 

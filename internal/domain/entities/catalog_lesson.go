@@ -202,10 +202,11 @@ func (ca *ContentAsset) BeforeCreate(tx *gorm.DB) error {
 type CourseReviewStatus string
 
 const (
-	CourseReviewStatusPending         CourseReviewStatus = "pending"
+	CourseReviewStatusPending          CourseReviewStatus = "pending"
 	CourseReviewStatusChangesRequested CourseReviewStatus = "changes_requested"
-	CourseReviewStatusApproved        CourseReviewStatus = "approved"
-	CourseReviewStatusRejected        CourseReviewStatus = "rejected"
+	CourseReviewStatusApproved         CourseReviewStatus = "approved"
+	CourseReviewStatusRejected         CourseReviewStatus = "rejected"
+	CourseReviewStatusWithdrawn        CourseReviewStatus = "withdrawn"
 )
 
 // CourseReviewRequest modela una solicitud de revisión/PR enviada por un docente para publicación.
@@ -216,7 +217,8 @@ type CourseReviewRequest struct {
 	ReviewerAdminID *string            `gorm:"type:varchar(36);index" json:"reviewer_admin_id"`
 	Status          CourseReviewStatus `gorm:"type:varchar(20);default:'pending';not null;index" json:"status"`
 	FeedbackNotes   *string            `gorm:"type:text" json:"feedback_notes"`
-	DiffSummary     string             `gorm:"type:json;not null" json:"diff_summary"`
+	DiffSummary     string             `gorm:"type:text;not null" json:"diff_summary"`
+	ChangeSummary   *string            `gorm:"type:text" json:"change_summary"`
 	SubmittedAt     time.Time          `json:"submitted_at"`
 	ReviewedAt      *time.Time         `json:"reviewed_at"`
 

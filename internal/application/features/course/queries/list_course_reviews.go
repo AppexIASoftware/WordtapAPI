@@ -20,8 +20,8 @@ func NewListCourseReviewsHandler(repo repositories.CourseReviewRepository) *List
 	return &ListCourseReviewsHandler{repo: repo}
 }
 func (h *ListCourseReviewsHandler) Handle(ctx context.Context, q ListCourseReviewsQuery) ([]entities.CourseReviewRequest, error) {
-	if q.RequesterRole != entities.RoleAdmin || q.RequesterID == "" {
-		return nil, errors.New("forbidden: admin role required")
+	if (q.RequesterRole != entities.RoleAdmin && q.RequesterRole != entities.RoleModerator) || q.RequesterID == "" {
+		return nil, errors.New("forbidden: admin or moderator role required")
 	}
 	return h.repo.ListPending(ctx)
 }
