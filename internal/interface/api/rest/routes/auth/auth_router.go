@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/labstack/echo/v5"
@@ -17,11 +18,17 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
 )
 
+type userCacheEntry struct {
+	user      *entities.User
+	expiresAt time.Time
+}
+
 type AuthRouter struct {
 	loginWithGoogleHandler *commands.LoginWithGoogleHandler
 	userRepo               repositories.UserRepository
 	teacherAppRepo         repositories.TeacherApplicationRepository
 	jwtService             *security.JWTService
+	userCache              sync.Map
 }
 
 func NewAuthRouter(
@@ -118,16 +125,34 @@ func (r *AuthRouter) GetMe(c *echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	user, err := r.userRepo.FindByID(ctx, userID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]any{
-				"error": "user not found",
+	var user *entities.User
+	if val, ok := r.userCache.Load(userID); ok {
+		entry := val.(userCacheEntry)
+		if time.Now().Before(entry.expiresAt) {
+			user = entry.user
+		}
+	}
+
+	if user == nil {
+		var err error
+		user, err = r.userRepo.FindByID(ctx, userID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return c.JSON(http.StatusNotFound, map[string]any{
+					"error": "user not found",
+				})
+			}
+			return c.JSON(http.StatusInternalServerError, map[string]any{
+				"error": "failed to retrieve user profile",
 			})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "failed to retrieve user profile",
-		})
+
+		if user.IsActive {
+			r.userCache.Store(userID, userCacheEntry{
+				user:      user,
+				expiresAt: time.Now().Add(30 * time.Second),
+			})
+		}
 	}
 
 	if !user.IsActive {

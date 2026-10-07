@@ -2,6 +2,8 @@ package queries
 
 import (
 	"context"
+	"sync"
+	"time"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -13,7 +15,10 @@ type PublicSettingsDTO struct {
 }
 
 type GetPublicSettingsHandler struct {
-	repo repositories.PlatformSettingRepository
+	repo      repositories.PlatformSettingRepository
+	mu        sync.RWMutex
+	cache     *PublicSettingsDTO
+	expiresAt time.Time
 }
 
 func NewGetPublicSettingsHandler(repo repositories.PlatformSettingRepository) *GetPublicSettingsHandler {
@@ -21,6 +26,14 @@ func NewGetPublicSettingsHandler(repo repositories.PlatformSettingRepository) *G
 }
 
 func (h *GetPublicSettingsHandler) Handle(ctx context.Context) (*PublicSettingsDTO, error) {
+	h.mu.RLock()
+	if h.cache != nil && time.Now().Before(h.expiresAt) {
+		cached := *h.cache
+		h.mu.RUnlock()
+		return &cached, nil
+	}
+	h.mu.RUnlock()
+
 	settings, err := h.repo.GetAll(ctx)
 	if err != nil {
 		return nil, err
@@ -48,6 +61,11 @@ func (h *GetPublicSettingsHandler) Handle(ctx context.Context) (*PublicSettingsD
 			}
 		}
 	}
+
+	h.mu.Lock()
+	h.cache = result
+	h.expiresAt = time.Now().Add(2 * time.Minute)
+	h.mu.Unlock()
 
 	return result, nil
 }

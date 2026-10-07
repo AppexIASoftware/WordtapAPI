@@ -47,9 +47,13 @@ func (h *ListCourseLessonsHandler) Handle(ctx context.Context, query ListCourseL
 			return nil, ErrCourseLessonsAccessDenied
 		}
 
-		lessons, err := h.lessonRepo.FindByCourseID(ctx, query.CourseID)
-		if err != nil {
-			return nil, err
+		lessons := course.Lessons
+		if len(lessons) == 0 && h.lessonRepo != nil {
+			var err error
+			lessons, err = h.lessonRepo.FindByCourseID(ctx, query.CourseID)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		if !isOwner && !isAdmin && !isModerator {

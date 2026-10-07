@@ -29,14 +29,13 @@ func (r *MySQLCourseRepository) FindByAuthor(ctx context.Context, authorID strin
 	courses := make([]entities.Course, 0)
 	err := r.db.WithContext(ctx).
 		Where("created_by = ?", authorID).
+		Preload("Author").
 		Preload("Lessons", func(db *gorm.DB) *gorm.DB {
 			return db.Order("lessons.sort_order ASC, lessons.created_at ASC")
 		}).
 		Preload("Lessons.Items", func(db *gorm.DB) *gorm.DB {
 			return db.Order("lesson_items.sort_order ASC")
 		}).
-		Preload("Lessons.Items.VocabularyItem").
-		Preload("Lessons.Items.Phrase").
 		Order("created_at DESC").
 		Find(&courses).Error
 	if err != nil {
@@ -72,8 +71,6 @@ func (r *MySQLCourseRepository) FindByID(ctx context.Context, id string) (*entit
 		Preload("Lessons.Items", func(db *gorm.DB) *gorm.DB {
 			return db.Order("lesson_items.sort_order ASC")
 		}).
-		Preload("Lessons.Items.VocabularyItem").
-		Preload("Lessons.Items.Phrase").
 		Where("id = ?", id).
 		First(&course).Error
 	if err != nil {

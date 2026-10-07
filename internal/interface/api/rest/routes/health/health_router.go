@@ -38,7 +38,12 @@ func (h *HealthRouter) CheckHealth(c *echo.Context) error {
 		if err != nil {
 			pingError = err.Error()
 		} else if err := sqlDB.Ping(); err != nil {
-			pingError = err.Error()
+			// Si una conexión inactiva expiró en el servidor remoto, reintentar con una conexión fresca del pool
+			if retryErr := sqlDB.Ping(); retryErr != nil {
+				pingError = retryErr.Error()
+			} else {
+				dbConnected = true
+			}
 		} else {
 			dbConnected = true
 		}

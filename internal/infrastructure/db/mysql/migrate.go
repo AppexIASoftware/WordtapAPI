@@ -129,6 +129,18 @@ func AutoMigrate(db *gorm.DB) error {
 		}
 	}
 
+	// 3. Índices compuestos de alto rendimiento para eliminar filesort y escaneo de tablas
+	indexes := []string{
+		`CREATE INDEX idx_courses_author_created ON courses (created_by, created_at DESC)`,
+		`CREATE INDEX idx_teacher_apps_status_created ON teacher_applications (status, created_at DESC)`,
+		`CREATE INDEX idx_course_reviews_instructor ON course_review_requests (instructor_id, submitted_at DESC)`,
+		`CREATE INDEX idx_lessons_course_order_created ON lessons (course_id, sort_order ASC, created_at ASC)`,
+		`CREATE INDEX idx_items_lesson_order ON lesson_items (lesson_id, sort_order ASC)`,
+	}
+	for _, idx := range indexes {
+		_ = db.Exec(idx)
+	}
+
 	fmt.Println("Database migration completed successfully!")
 	return nil
 }
