@@ -36,11 +36,13 @@ type ContentBankItem struct {
 	Explanation *string       `gorm:"type:text" json:"explanation"`
 	Metadata    string        `gorm:"type:json;not null" json:"metadata"` // Metadatos específicos dinámicos según el tipo de banco
 	Status      ContentStatus `gorm:"type:varchar(20);default:'published';not null" json:"status"`
+	CreatedBy   *string       `gorm:"type:varchar(36);index" json:"created_by,omitempty"`
 	CreatedAt   time.Time     `json:"created_at"`
 	UpdatedAt   time.Time     `json:"updated_at"`
 
 	BankTypeRef *ContentBankType `gorm:"foreignKey:BankType;references:Slug;constraint:OnDelete:CASCADE" json:"bank_type_ref,omitempty"`
 	Category    *ContentCategory `gorm:"foreignKey:CategoryID;constraint:OnDelete:SET NULL" json:"category,omitempty"`
+	Author      *User            `gorm:"foreignKey:CreatedBy;constraint:OnDelete:SET NULL" json:"author,omitempty"`
 }
 
 func (cbi *ContentBankItem) BeforeCreate(tx *gorm.DB) error {
