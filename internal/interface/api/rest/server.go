@@ -20,6 +20,8 @@ import (
 	teacherAppCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/commands"
 	teacherAppQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/commands"
+	vaultCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/vault/commands"
+	vaultQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/vault/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	infraRepo "github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
@@ -30,6 +32,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/lesson"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/setting"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/teacher_application"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/vault"
 )
 
 type Server struct {
@@ -81,6 +84,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	courseReviewRepo := infraRepo.NewMySQLCourseReviewRepository(db)
 	teacherAppRepo := infraRepo.NewMySQLTeacherApplicationRepository(db)
 	settingRepo := infraRepo.NewMySQLPlatformSettingRepository(db)
+	contentBankRepo := infraRepo.NewMySQLContentBankRepository(db)
 
 	// Casos de uso
 	loginWithGoogleHandler := commands.NewLoginWithGoogleHandler(userRepo, googleVerifier, jwtService, teacherAppRepo)
@@ -116,6 +120,13 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	saveLessonItemHandler := lessonCmd.NewSaveLessonItemHandler(lessonRepo, courseRepo)
 	deleteLessonItemHandler := lessonCmd.NewDeleteLessonItemHandler(lessonRepo, courseRepo)
 
+	// Vault Command & Query handlers
+	listVaultTypesHandler := vaultQuery.NewListVaultTypesHandler(contentBankRepo)
+	listVaultItemsHandler := vaultQuery.NewListVaultItemsHandler(contentBankRepo)
+	createVaultItemHandler := vaultCmd.NewCreateVaultItemHandler(contentBankRepo)
+	updateVaultItemHandler := vaultCmd.NewUpdateVaultItemHandler(contentBankRepo)
+	deleteVaultItemHandler := vaultCmd.NewDeleteVaultItemHandler(contentBankRepo)
+
 	// Routers
 	healthRouter := health.NewHealthRouter(db)
 	lessonRouter := lesson.NewLessonRouter(
@@ -149,6 +160,13 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		getAllSettingsHandler,
 		setSettingHandler,
 	)
+	vaultRouter := vault.NewVaultRouter(
+		listVaultTypesHandler,
+		listVaultItemsHandler,
+		createVaultItemHandler,
+		updateVaultItemHandler,
+		deleteVaultItemHandler,
+	)
 
 	// Middlewares específicos
 	authRequired := restMiddleware.RequireAuth(jwtService)
@@ -180,6 +198,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	courseReviewRouter.RegisterRoutes(v1, authRequired, restMiddleware.RequireRole(entities.RoleInstructor), adminOrModerator)
 	teacherAppRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
 	settingRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
+	vaultRouter.RegisterRoutes(v1, authRequired, staffRoles, adminOrModerator, instructorOrAdmin)
 
 	return &Server{App: e}, nil
 }

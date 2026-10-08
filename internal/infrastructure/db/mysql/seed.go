@@ -159,6 +159,11 @@ func Seed(db *gorm.DB) error {
 		}
 	}
 
+	// 1.2 Unidades Oficiales del Banco de Contenidos (Universal Learning Units)
+	if err := seedContentBankItems(db); err != nil {
+		return fmt.Errorf("failed to seed content bank items: %w", err)
+	}
+
 	// 2. Cursos
 	var defaultTeacher entities.User
 	var defaultTeacherID *string

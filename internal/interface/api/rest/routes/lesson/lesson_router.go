@@ -227,11 +227,12 @@ func (r *LessonRouter) DeleteLesson(c *echo.Context) error {
 }
 
 type SaveLessonItemRequest struct {
-	ID          string  `json:"id"`
-	ItemType    string  `json:"item_type"`
-	ContentText *string `json:"content_text"`
-	SortOrder   int     `json:"sort_order"`
-	IsRequired  bool    `json:"is_required"`
+	ID                string  `json:"id"`
+	ContentBankItemID *string `json:"content_bank_item_id"`
+	ItemType          string  `json:"item_type"`
+	ContentText       *string `json:"content_text"`
+	SortOrder         int     `json:"sort_order"`
+	IsRequired        bool    `json:"is_required"`
 }
 
 // SaveLessonItem handles POST /api/v1/lessons/:id/items
@@ -254,14 +255,15 @@ func (r *LessonRouter) SaveLessonItem(c *echo.Context) error {
 
 	ctx := c.Request().Context()
 	item, err := r.saveLessonItemHandler.Handle(ctx, commands.SaveLessonItemCommand{
-		ItemID:        req.ID,
-		LessonID:      lessonID,
-		ItemType:      entities.LessonContentType(req.ItemType),
-		ContentText:   req.ContentText,
-		SortOrder:     req.SortOrder,
-		IsRequired:    req.IsRequired,
-		RequesterID:   userID,
-		RequesterRole: entities.UserRole(roleStr),
+		ItemID:            req.ID,
+		LessonID:          lessonID,
+		ContentBankItemID: req.ContentBankItemID,
+		ItemType:          entities.LessonContentType(req.ItemType),
+		ContentText:       req.ContentText,
+		SortOrder:         req.SortOrder,
+		IsRequired:        req.IsRequired,
+		RequesterID:       userID,
+		RequesterRole:     entities.UserRole(roleStr),
 	})
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]any{"error": "failed to save lesson card", "details": err.Error()})

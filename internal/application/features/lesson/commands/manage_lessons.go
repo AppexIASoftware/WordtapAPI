@@ -212,14 +212,15 @@ func (h *DeleteLessonHandler) Handle(ctx context.Context, cmd DeleteLessonComman
 // --- Save Lesson Item (Card/Step) ---
 
 type SaveLessonItemCommand struct {
-	ItemID        string
-	LessonID      string
-	ItemType      entities.LessonContentType
-	ContentText   *string
-	SortOrder     int
-	IsRequired    bool
-	RequesterID   string
-	RequesterRole entities.UserRole
+	ItemID            string
+	LessonID          string
+	ContentBankItemID *string
+	ItemType          entities.LessonContentType
+	ContentText       *string
+	SortOrder         int
+	IsRequired        bool
+	RequesterID       string
+	RequesterRole     entities.UserRole
 }
 
 type SaveLessonItemHandler struct {
@@ -265,12 +266,13 @@ func (h *SaveLessonItemHandler) Handle(ctx context.Context, cmd SaveLessonItemCo
 	}
 
 	item := &entities.LessonItem{
-		ID:          itemID,
-		LessonID:    cmd.LessonID,
-		ItemType:    itemType,
-		ContentText: cmd.ContentText,
-		SortOrder:   cmd.SortOrder,
-		IsRequired:  cmd.IsRequired,
+		ID:                itemID,
+		LessonID:          cmd.LessonID,
+		ContentBankItemID: cmd.ContentBankItemID,
+		ItemType:          itemType,
+		ContentText:       cmd.ContentText,
+		SortOrder:         cmd.SortOrder,
+		IsRequired:        cmd.IsRequired,
 	}
 
 	if err := h.lessonRepo.SaveItem(ctx, item); err != nil {
