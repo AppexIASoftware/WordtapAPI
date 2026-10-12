@@ -49,6 +49,7 @@ func (r *MySQLCourseRepository) FindPublished(ctx context.Context) ([]entities.C
 	courses := make([]entities.Course, 0)
 	err := r.db.WithContext(ctx).
 		Where("status = ?", entities.ContentStatusPublished).
+		Preload("Author").
 		Preload("Lessons", func(db *gorm.DB) *gorm.DB {
 			return db.Where("status = ?", entities.ContentStatusPublished).Order("lessons.sort_order ASC, lessons.created_at ASC")
 		}).

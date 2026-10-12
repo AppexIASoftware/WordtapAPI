@@ -21,7 +21,15 @@ type PublicLessonDTO struct {
 	UpdatedAt        time.Time              `json:"updated_at"`
 }
 
-// PublicCourseDTO proyecta un curso para catálogo y detalle público anónimo sin datos de autor ni tarjetas privadas.
+// PublicAuthorDTO representa los datos públicos del autor/docente de un curso.
+type PublicAuthorDTO struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Role      string  `json:"role"`
+	AvatarURL *string `json:"avatar_url,omitempty"`
+}
+
+// PublicCourseDTO proyecta un curso para catálogo y detalle público con autor sanitizado.
 type PublicCourseDTO struct {
 	ID            string                 `json:"id"`
 	Title         string                 `json:"title"`
@@ -35,6 +43,7 @@ type PublicCourseDTO struct {
 	CoverImageURL *string                `json:"cover_image_url,omitempty"`
 	SourceLang    string                 `json:"source_lang"`
 	TargetLang    string                 `json:"target_lang"`
+	Author        *PublicAuthorDTO       `json:"author,omitempty"`
 	LessonsCount  int                    `json:"lessons_count"`
 	Lessons       []PublicLessonDTO      `json:"lessons,omitempty"`
 	CreatedAt     time.Time              `json:"created_at"`
@@ -62,6 +71,16 @@ func ToPublicCourseDTO(c *entities.Course) PublicCourseDTO {
 		}
 	}
 
+	var authorDTO *PublicAuthorDTO
+	if c.Author != nil {
+		authorDTO = &PublicAuthorDTO{
+			ID:        c.Author.ID,
+			Name:      c.Author.Name,
+			Role:      string(c.Author.Role),
+			AvatarURL: c.Author.AvatarURL,
+		}
+	}
+
 	return PublicCourseDTO{
 		ID:            c.ID,
 		Title:         c.Title,
@@ -75,6 +94,7 @@ func ToPublicCourseDTO(c *entities.Course) PublicCourseDTO {
 		CoverImageURL: c.CoverImageURL,
 		SourceLang:    c.SourceLang,
 		TargetLang:    c.TargetLang,
+		Author:        authorDTO,
 		LessonsCount:  len(publicLessons),
 		Lessons:       publicLessons,
 		CreatedAt:     c.CreatedAt,
