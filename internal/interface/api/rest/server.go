@@ -13,6 +13,8 @@ import (
 
 	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
 	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
+	classroomCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/commands"
+	classroomQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/queries"
 	lessonCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/commands"
 	lessonQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/queries"
 	settingCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/platform_setting/commands"
@@ -27,6 +29,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
 	restMiddleware "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/middleware"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/auth"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/classroom"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/course"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/health"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/lesson"
@@ -85,9 +88,14 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	teacherAppRepo := infraRepo.NewMySQLTeacherApplicationRepository(db)
 	settingRepo := infraRepo.NewMySQLPlatformSettingRepository(db)
 	contentBankRepo := infraRepo.NewMySQLContentBankRepository(db)
+	classroomRepo := infraRepo.NewMySQLClassroomRepository(db)
 
 	// Casos de uso
 	loginWithGoogleHandler := commands.NewLoginWithGoogleHandler(userRepo, googleVerifier, jwtService, teacherAppRepo)
+	createClassroomHandler := classroomCmd.NewCreateClassroomHandler(classroomRepo)
+	enrollStudentHandler := classroomCmd.NewEnrollStudentHandler(classroomRepo)
+	listClassroomsHandler := classroomQuery.NewListTeacherClassroomsHandler(classroomRepo)
+	getStumbleListHandler := classroomQuery.NewGetStumbleListHandler(classroomRepo)
 	createCourseHandler := courseCmd.NewCreateCourseHandler(courseRepo)
 	updateCourseHandler := courseCmd.NewUpdateCourseHandler(courseRepo, courseReviewRepo)
 	deleteCourseHandler := courseCmd.NewDeleteCourseHandler(courseRepo)
@@ -167,6 +175,12 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		updateVaultItemHandler,
 		deleteVaultItemHandler,
 	)
+	classroomRouter := classroom.NewClassroomRouter(
+		createClassroomHandler,
+		enrollStudentHandler,
+		listClassroomsHandler,
+		getStumbleListHandler,
+	)
 
 	// Middlewares específicos
 	authRequired := restMiddleware.RequireAuth(jwtService)
@@ -199,6 +213,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	teacherAppRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
 	settingRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
 	vaultRouter.RegisterRoutes(v1, authRequired, staffRoles, adminOrModerator, instructorOrAdmin)
+	classroomRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
 
 	return &Server{App: e}, nil
 }
