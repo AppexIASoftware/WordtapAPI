@@ -63,6 +63,10 @@ func (m *mockClassroomRepo) CreateStumble(ctx context.Context, stumble *entities
 	return nil
 }
 
+func (m *mockClassroomRepo) Update(ctx context.Context, classroom *entities.Classroom) error {
+	return nil
+}
+
 func TestCreateClassroomHandler(t *testing.T) {
 	repo := newMockClassroomRepo()
 	handler := commands.NewCreateClassroomHandler(repo)

@@ -80,16 +80,27 @@ func (m *mockClassroomRepo) CreateStumble(ctx context.Context, s *entities.Stude
 	return nil
 }
 
+func (m *mockClassroomRepo) Update(ctx context.Context, c *entities.Classroom) error {
+	for i, existing := range m.classrooms {
+		if existing.ID == c.ID {
+			m.classrooms[i] = *c
+			return nil
+		}
+	}
+	return nil
+}
+
 func setupClassroomRouter() (*echo.Echo, *mockClassroomRepo) {
 	e := echo.New()
 	repo := newMockClassroomRepo()
 
 	createHandler := classroomCmd.NewCreateClassroomHandler(repo)
+	updateHandler := classroomCmd.NewUpdateClassroomHandler(repo)
 	enrollHandler := classroomCmd.NewEnrollStudentHandler(repo)
 	listHandler := classroomQuery.NewListTeacherClassroomsHandler(repo)
 	stumblesHandler := classroomQuery.NewGetStumbleListHandler(repo)
 
-	r := classroom.NewClassroomRouter(createHandler, enrollHandler, listHandler, stumblesHandler)
+	r := classroom.NewClassroomRouter(createHandler, updateHandler, enrollHandler, listHandler, stumblesHandler)
 
 	v1 := e.Group("/api/v1")
 	passMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -104,7 +115,7 @@ func setupClassroomRouter() (*echo.Echo, *mockClassroomRepo) {
 }
 
 func TestClassroomRouter_CreateAndList(t *testing.T) {
-	e, _ := setupClassroomRouter()
+	e, repo := setupClassroomRouter()
 
 	t.Run("POST /api/v1/teacher/classrooms crea aula exitosamente", func(t *testing.T) {
 		payload := map[string]any{
@@ -132,6 +143,34 @@ func TestClassroomRouter_CreateAndList(t *testing.T) {
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("código de estado esperado %d, obtenido %d", http.StatusOK, rec.Code)
+		}
+	})
+
+	t.Run("PUT /api/v1/teacher/classrooms/:id actualiza aula", func(t *testing.T) {
+		// Crear aula previa en el repo mock
+		_ = repo.Create(context.Background(), &entities.Classroom{
+			ID:        "cls-100",
+			TeacherID: "teacher-uuid-1",
+			Name:      "Aula Original",
+			Level:     "A2",
+			Code:      "WT-A2-9999",
+		})
+
+		updatePayload := map[string]any{
+			"name":              "Aula Actualizada",
+			"level":             "B1 Intermediate",
+			"weekly_goal_words": 60,
+		}
+		body, _ := json.Marshal(updatePayload)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/teacher/classrooms/cls-100", bytes.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("código de estado esperado %d, obtenido %d. Body: %s", http.StatusOK, rec.Code, rec.Body.String())
 		}
 	})
 }

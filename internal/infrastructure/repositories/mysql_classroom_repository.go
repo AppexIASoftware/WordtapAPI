@@ -125,3 +125,8 @@ func (r *MySQLClassroomRepository) ListStumbles(ctx context.Context, classroomID
 func (r *MySQLClassroomRepository) CreateStumble(ctx context.Context, stumble *entities.StudentStumble) error {
 	return r.db.WithContext(ctx).Create(stumble).Error
 }
+
+// Update actualiza los atributos y configuración de un aula virtual existente.
+func (r *MySQLClassroomRepository) Update(ctx context.Context, classroom *entities.Classroom) error {
+	return r.db.WithContext(ctx).Save(classroom).Error
+}

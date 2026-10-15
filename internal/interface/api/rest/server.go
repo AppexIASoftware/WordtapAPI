@@ -93,6 +93,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	// Casos de uso
 	loginWithGoogleHandler := commands.NewLoginWithGoogleHandler(userRepo, googleVerifier, jwtService, teacherAppRepo)
 	createClassroomHandler := classroomCmd.NewCreateClassroomHandler(classroomRepo)
+	updateClassroomHandler := classroomCmd.NewUpdateClassroomHandler(classroomRepo)
 	enrollStudentHandler := classroomCmd.NewEnrollStudentHandler(classroomRepo)
 	listClassroomsHandler := classroomQuery.NewListTeacherClassroomsHandler(classroomRepo)
 	getStumbleListHandler := classroomQuery.NewGetStumbleListHandler(classroomRepo)
@@ -177,6 +178,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	)
 	classroomRouter := classroom.NewClassroomRouter(
 		createClassroomHandler,
+		updateClassroomHandler,
 		enrollStudentHandler,
 		listClassroomsHandler,
 		getStumbleListHandler,

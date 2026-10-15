@@ -14,6 +14,7 @@ import (
 
 type ClassroomRouter struct {
 	createClassroomHandler *commands.CreateClassroomHandler
+	updateClassroomHandler *commands.UpdateClassroomHandler
 	enrollStudentHandler   *commands.EnrollStudentHandler
 	listClassroomsHandler  *queries.ListTeacherClassroomsHandler
 	getStumbleListHandler  *queries.GetStumbleListHandler
@@ -21,12 +22,14 @@ type ClassroomRouter struct {
 
 func NewClassroomRouter(
 	createClassroomHandler *commands.CreateClassroomHandler,
+	updateClassroomHandler *commands.UpdateClassroomHandler,
 	enrollStudentHandler *commands.EnrollStudentHandler,
 	listClassroomsHandler *queries.ListTeacherClassroomsHandler,
 	getStumbleListHandler *queries.GetStumbleListHandler,
 ) *ClassroomRouter {
 	return &ClassroomRouter{
 		createClassroomHandler: createClassroomHandler,
+		updateClassroomHandler: updateClassroomHandler,
 		enrollStudentHandler:   enrollStudentHandler,
 		listClassroomsHandler:  listClassroomsHandler,
 		getStumbleListHandler:  getStumbleListHandler,
@@ -42,6 +45,7 @@ func (r *ClassroomRouter) RegisterRoutes(
 	teacherGroup := v1.Group("/teacher/classrooms")
 	teacherGroup.Use(authRequired, instructorOrAdmin)
 	teacherGroup.POST("", r.CreateClassroom)
+	teacherGroup.PUT("/:id", r.UpdateClassroom)
 	teacherGroup.GET("", r.ListTeacherClassrooms)
 	teacherGroup.GET("/:id/stumbles", r.GetClassroomStumbles)
 
@@ -50,6 +54,16 @@ func (r *ClassroomRouter) RegisterRoutes(
 }
 
 type CreateClassroomRequest struct {
+	Name            string   `json:"name"`
+	Level           string   `json:"level"`
+	CourseID        *string  `json:"course_id"`
+	CourseIDs       []string `json:"course_ids"`
+	GameIDs         []string `json:"game_ids"`
+	WeeklyGoalWords int      `json:"weekly_goal_words"`
+	Description     *string  `json:"description"`
+}
+
+type UpdateClassroomRequest struct {
 	Name            string   `json:"name"`
 	Level           string   `json:"level"`
 	CourseID        *string  `json:"course_id"`
@@ -89,6 +103,55 @@ func (r *ClassroomRouter) CreateClassroom(c *echo.Context) error {
 		})
 	}
 
+	return c.JSON(http.StatusCreated, map[string]any{
+		"success": true,
+		"data":    formatClassroomDTO(classroom),
+	})
+}
+
+func (r *ClassroomRouter) UpdateClassroom(c *echo.Context) error {
+	userID, ok := c.Get("user_id").(string)
+	if !ok || userID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+	}
+
+	classroomID := c.Param("id")
+	if classroomID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]any{"error": "classroom id required"})
+	}
+
+	var req UpdateClassroomRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid request body"})
+	}
+
+	cmd := commands.UpdateClassroomCommand{
+		ClassroomID:     classroomID,
+		TeacherID:       userID,
+		Name:            req.Name,
+		Level:           req.Level,
+		CourseID:        req.CourseID,
+		CourseIDs:       req.CourseIDs,
+		GameIDs:         req.GameIDs,
+		WeeklyGoalWords: req.WeeklyGoalWords,
+		Description:     req.Description,
+	}
+
+	classroom, err := r.updateClassroomHandler.Handle(c.Request().Context(), cmd)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{
+			"error":   "failed to update classroom",
+			"details": err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"success": true,
+		"data":    formatClassroomDTO(classroom),
+	})
+}
+
+func formatClassroomDTO(classroom *entities.Classroom) map[string]any {
 	courseTitle := "Curso Asignado"
 	courseID := ""
 	if classroom.Course != nil {
@@ -118,7 +181,7 @@ func (r *ClassroomRouter) CreateClassroom(c *echo.Context) error {
 		}
 	}
 
-	createdDTO := map[string]any{
+	return map[string]any{
 		"id":              classroom.ID,
 		"name":            classroom.Name,
 		"code":            classroom.Code,
@@ -129,7 +192,7 @@ func (r *ClassroomRouter) CreateClassroom(c *echo.Context) error {
 		"weeklyGoalWords": classroom.WeeklyGoalWords,
 		"level":           classroom.Level,
 		"created":         classroom.CreatedAt.Format("02/01/2006"),
-		"studentsCount":   0,
+		"studentsCount":   len(classroom.Enrollments),
 		"stats": map[string]any{
 			"sub":     0,
 			"trial":   0,
@@ -139,11 +202,6 @@ func (r *ClassroomRouter) CreateClassroom(c *echo.Context) error {
 		"stumble":  []map[string]any{},
 		"students": []map[string]any{},
 	}
-
-	return c.JSON(http.StatusCreated, map[string]any{
-		"success": true,
-		"data":    createdDTO,
-	})
 }
 
 func (r *ClassroomRouter) ListTeacherClassrooms(c *echo.Context) error {

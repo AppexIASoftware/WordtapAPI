@@ -17,4 +17,5 @@ type ClassroomRepository interface {
 	ListEnrollments(ctx context.Context, classroomID string) ([]entities.ClassroomEnrollment, error)
 	ListStumbles(ctx context.Context, classroomID string) ([]entities.StudentStumble, error)
 	CreateStumble(ctx context.Context, stumble *entities.StudentStumble) error
+	Update(ctx context.Context, classroom *entities.Classroom) error
 }

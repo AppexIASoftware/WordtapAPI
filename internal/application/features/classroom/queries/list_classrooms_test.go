@@ -49,6 +49,10 @@ func (m *mockClassroomQueryRepo) CreateStumble(ctx context.Context, stumble *ent
 	return nil
 }
 
+func (m *mockClassroomQueryRepo) Update(ctx context.Context, classroom *entities.Classroom) error {
+	return nil
+}
+
 func TestListTeacherClassroomsHandler(t *testing.T) {
 	repo := &mockClassroomQueryRepo{
 		classrooms: []entities.Classroom{
