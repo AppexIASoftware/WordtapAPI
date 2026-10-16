@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -35,7 +36,7 @@ func (h *DeleteCourseHandler) Handle(ctx context.Context, cmd DeleteCourseComman
 
 	if cmd.RequesterRole != entities.RoleAdmin && cmd.RequesterRole != entities.RoleModerator {
 		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return errors.New("forbidden: only course author, admin or moderator can delete this course")
+			return apperrors.New("No tienes permisos para eliminar este curso.")
 		}
 	}
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -26,7 +27,7 @@ func NewEnrollStudentHandler(classroomRepo repositories.ClassroomRepository) *En
 func (h *EnrollStudentHandler) Handle(ctx context.Context, cmd EnrollStudentCommand) (*entities.ClassroomEnrollment, error) {
 	code := strings.TrimSpace(cmd.Code)
 	if code == "" {
-		return nil, errors.New("el código del aula es obligatorio")
+		return nil, apperrors.New("El código del aula es obligatorio.")
 	}
 	if cmd.StudentID == "" {
 		return nil, errors.New("el identificador del estudiante es obligatorio")
@@ -37,7 +38,7 @@ func (h *EnrollStudentHandler) Handle(ctx context.Context, cmd EnrollStudentComm
 		return nil, err
 	}
 	if classroom == nil || !classroom.IsActive {
-		return nil, errors.New("el código ingresado no corresponde a un aula activa")
+		return nil, apperrors.New("El código ingresado no corresponde a un aula activa.")
 	}
 
 	existing, err := h.classroomRepo.FindEnrollment(ctx, classroom.ID, cmd.StudentID)

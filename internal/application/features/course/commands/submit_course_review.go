@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -37,12 +38,12 @@ func (h *SubmitCourseReviewHandler) Handle(ctx context.Context, cmd SubmitCourse
 	}
 
 	if cmd.RequesterRole != entities.RoleInstructor || cmd.RequesterID == "" || course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-		return nil, errors.New("forbidden: only the owning teacher can submit a course for review")
+		return nil, apperrors.New("Solo el docente autor puede enviar el curso a revisión.")
 	}
 
 	// State transition validation: can submit draft or published course (re-review)
 	if course.Status == entities.ContentStatusInReview {
-		return nil, errors.New("course is already in review queue")
+		return nil, apperrors.New("El curso ya está en revisión.")
 	}
 	if course.Status != entities.ContentStatusDraft && course.Status != entities.ContentStatusPublished {
 		return nil, fmt.Errorf("cannot submit course with status '%s' for review", course.Status)

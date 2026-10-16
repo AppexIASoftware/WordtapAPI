@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
 var (
-	ErrCourseNotFound     = errors.New("course not found")
-	ErrCourseAccessDenied = errors.New("access denied: course is not published")
+	ErrCourseNotFound     = apperrors.New("No se encontró el curso.")
+	ErrCourseAccessDenied = apperrors.New("No tienes permisos para ver este curso.")
 )
 
 type GetCourseDetailQuery struct {

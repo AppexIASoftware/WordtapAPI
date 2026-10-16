@@ -9,6 +9,7 @@ import (
 	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
 	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
 type CourseRouter struct {
@@ -95,16 +96,12 @@ func (r *CourseRouter) CreateCourse(c *echo.Context) error {
 	userIDVal := c.Get("user_id")
 	userID, ok := userIDVal.(string)
 	if !ok || userID == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]any{
-			"error": "unauthorized context",
-		})
+		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 	}
 
 	var req CreateCourseRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error": "invalid request body",
-		})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	ctx := c.Request().Context()
@@ -124,10 +121,7 @@ func (r *CourseRouter) CreateCourse(c *echo.Context) error {
 		AuthorID:      userID,
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to create course",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo crear el curso.", err)
 	}
 
 	return c.JSON(http.StatusCreated, course)
@@ -137,9 +131,7 @@ func (r *CourseRouter) CreateCourse(c *echo.Context) error {
 func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 	courseID := c.Param("id")
 	if courseID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error": "missing course id parameter",
-		})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del curso.")
 	}
 
 	userIDVal := c.Get("user_id")
@@ -150,9 +142,7 @@ func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 
 	var req UpdateCourseRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error": "invalid request body",
-		})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	var tierPtr *entities.AccessTier
@@ -175,10 +165,7 @@ func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 		RequesterRole: entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to update course",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo actualizar el curso.", err)
 	}
 
 	return c.JSON(http.StatusOK, updated)
@@ -188,9 +175,7 @@ func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 func (r *CourseRouter) DeleteCourse(c *echo.Context) error {
 	courseID := c.Param("id")
 	if courseID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error": "missing course id parameter",
-		})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del curso.")
 	}
 
 	userIDVal := c.Get("user_id")
@@ -206,10 +191,7 @@ func (r *CourseRouter) DeleteCourse(c *echo.Context) error {
 		RequesterRole: entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to delete course",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo eliminar el curso.", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
@@ -222,9 +204,7 @@ func (r *CourseRouter) DeleteCourse(c *echo.Context) error {
 func (r *CourseRouter) GetCourseDetail(c *echo.Context) error {
 	courseID := c.Param("id")
 	if courseID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error": "missing course id parameter",
-		})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del curso.")
 	}
 
 	userID, _ := c.Get("user_id").(string)
@@ -239,17 +219,11 @@ func (r *CourseRouter) GetCourseDetail(c *echo.Context) error {
 	if err != nil {
 		if errors.Is(err, courseQuery.ErrCourseAccessDenied) {
 			if userID == "" {
-				return c.JSON(http.StatusNotFound, map[string]any{
-					"error": "course not found",
-				})
+				return response.Fail(c, http.StatusNotFound, "No se encontró el curso.")
 			}
-			return c.JSON(http.StatusForbidden, map[string]any{
-				"error": "access denied: course is not published",
-			})
+			return response.Fail(c, http.StatusForbidden, "No tienes permisos para ver este curso.")
 		}
-		return c.JSON(http.StatusNotFound, map[string]any{
-			"error": "course not found",
-		})
+		return response.Fail(c, http.StatusNotFound, "No se encontró el curso.")
 	}
 
 	isOwner := userID != "" && course.CreatedBy != nil && *course.CreatedBy == userID
@@ -266,17 +240,13 @@ func (r *CourseRouter) GetCourseDetail(c *echo.Context) error {
 func (r *CourseRouter) GetTeacherCourseDetail(c *echo.Context) error {
 	courseID := c.Param("id")
 	if courseID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error": "missing course id parameter",
-		})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del curso.")
 	}
 
 	userIDVal := c.Get("user_id")
 	userID, ok := userIDVal.(string)
 	if !ok || userID == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]any{
-			"error": "unauthorized context",
-		})
+		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 	}
 
 	roleVal := c.Get("user_role")
@@ -290,21 +260,15 @@ func (r *CourseRouter) GetTeacherCourseDetail(c *echo.Context) error {
 	})
 	if err != nil {
 		if errors.Is(err, courseQuery.ErrCourseAccessDenied) {
-			return c.JSON(http.StatusForbidden, map[string]any{
-				"error": "access denied: not the owner of this course",
-			})
+			return response.Fail(c, http.StatusForbidden, "No tienes permisos para ver este curso.")
 		}
-		return c.JSON(http.StatusNotFound, map[string]any{
-			"error": "course not found",
-		})
+		return response.Fail(c, http.StatusNotFound, "No se encontró el curso.")
 	}
 
 	isOwner := course.CreatedBy != nil && *course.CreatedBy == userID
 	isAdmin := entities.UserRole(roleStr) == entities.RoleAdmin
 	if !isOwner && !isAdmin {
-		return c.JSON(http.StatusForbidden, map[string]any{
-			"error": "access denied: not the owner of this course",
-		})
+		return response.Fail(c, http.StatusForbidden, "No tienes permisos para ver este curso.")
 	}
 
 	return c.JSON(http.StatusOK, course)
@@ -315,9 +279,7 @@ func (r *CourseRouter) ListTeacherCourses(c *echo.Context) error {
 	userIDVal := c.Get("user_id")
 	userID, ok := userIDVal.(string)
 	if !ok || userID == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]any{
-			"error": "unauthorized context",
-		})
+		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 	}
 
 	ctx := c.Request().Context()
@@ -325,10 +287,7 @@ func (r *CourseRouter) ListTeacherCourses(c *echo.Context) error {
 		AuthorID: userID,
 	})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{
-			"error":   "failed to retrieve teacher courses",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar tus cursos.", err)
 	}
 
 	return c.JSON(http.StatusOK, courses)
@@ -342,9 +301,7 @@ type SubmitCourseReviewRequest struct {
 func (r *CourseRouter) SubmitCourseReview(c *echo.Context) error {
 	courseID := c.Param("id")
 	if courseID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error": "missing course id parameter",
-		})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del curso.")
 	}
 
 	userIDVal := c.Get("user_id")
@@ -364,10 +321,7 @@ func (r *CourseRouter) SubmitCourseReview(c *echo.Context) error {
 		ChangeSummary: req.ChangeSummary,
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to submit course for review",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo enviar el curso a revisión.", err)
 	}
 
 	return c.JSON(http.StatusOK, submitted)
@@ -378,10 +332,7 @@ func (r *CourseRouter) ListPublicCourses(c *echo.Context) error {
 	ctx := c.Request().Context()
 	courses, err := r.listPublishedCoursesHandler.Handle(ctx, courseQuery.ListPublishedCoursesQuery{})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{
-			"error":   "failed to retrieve public course catalog",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusInternalServerError, "No se pudo cargar el catálogo de cursos.", err)
 	}
 
 	publicCourses := make([]PublicCourseDTO, 0, len(courses))

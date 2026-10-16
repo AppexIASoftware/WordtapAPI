@@ -2,8 +2,8 @@ package commands
 
 import (
 	"context"
-	"errors"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -25,16 +25,16 @@ func NewDeleteVaultItemHandler(repo repositories.ContentBankRepository) *DeleteV
 func (h *DeleteVaultItemHandler) Handle(ctx context.Context, cmd DeleteVaultItemCommand) error {
 	item, err := h.repo.FindItemByID(ctx, cmd.ID)
 	if err != nil {
-		return errors.New("vault item not found")
+		return apperrors.New("No se encontró el ítem.")
 	}
 
 	if item.CreatedBy == nil {
 		if cmd.Role != entities.RoleAdmin && cmd.Role != entities.RoleModerator {
-			return errors.New("forbidden: only administrators and moderators can delete official vault items")
+			return apperrors.New("Solo administradores y moderadores pueden eliminar ítems oficiales.")
 		}
 	} else {
 		if cmd.Role != entities.RoleAdmin && *item.CreatedBy != cmd.RequesterID {
-			return errors.New("forbidden: you can only delete your own private vault items")
+			return apperrors.New("Solo puedes eliminar tus propios ítems.")
 		}
 	}
 

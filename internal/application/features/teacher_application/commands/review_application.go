@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -31,7 +32,7 @@ func (h *ReviewApplicationHandler) Handle(ctx context.Context, cmd ReviewApplica
 		return nil, errors.New("application_id is required")
 	}
 	if cmd.ReviewerRole != entities.RoleAdmin && cmd.ReviewerRole != entities.RoleModerator {
-		return nil, errors.New("forbidden: only administrators or moderators can review applications")
+		return nil, apperrors.New("No tienes permisos para revisar postulaciones.")
 	}
 
 	app, err := h.appRepo.FindByID(ctx, cmd.ApplicationID)
@@ -42,28 +43,28 @@ func (h *ReviewApplicationHandler) Handle(ctx context.Context, cmd ReviewApplica
 	switch action {
 	case "approve":
 		if app.Status == entities.ApplicationStatusApproved {
-			return nil, errors.New("application is already approved")
+			return nil, apperrors.New("La postulación ya se encuentra aprobada.")
 		}
 		if err := h.appRepo.ApproveInTx(ctx, cmd.ApplicationID, cmd.ReviewerID); err != nil {
 			return nil, fmt.Errorf("failed to approve application: %w", err)
 		}
 	case "reject":
 		if app.Status == entities.ApplicationStatusApproved {
-			return nil, errors.New("cannot reject an already approved application; suspend instead")
+			return nil, apperrors.New("No se puede rechazar una postulación ya aprobada. Puedes suspenderla en su lugar.")
 		}
 		if err := h.appRepo.RejectInTx(ctx, cmd.ApplicationID, cmd.ReviewerID, strings.TrimSpace(cmd.RejectionReason)); err != nil {
 			return nil, fmt.Errorf("failed to reject application: %w", err)
 		}
 	case "suspend":
 		if app.Status != entities.ApplicationStatusApproved {
-			return nil, errors.New("only approved applications can be suspended")
+			return nil, apperrors.New("Solo las postulaciones aprobadas pueden suspenderse.")
 		}
 		if err := h.appRepo.SuspendInTx(ctx, cmd.ApplicationID, cmd.ReviewerID, strings.TrimSpace(cmd.RejectionReason)); err != nil {
 			return nil, fmt.Errorf("failed to suspend application: %w", err)
 		}
 	case "reactivate":
 		if app.Status != entities.ApplicationStatusSuspended && app.Status != entities.ApplicationStatusRejected {
-			return nil, errors.New("only suspended or rejected applications can be reactivated")
+			return nil, apperrors.New("Solo las postulaciones suspendidas o rechazadas pueden reactivarse.")
 		}
 		if err := h.appRepo.ReactivateInTx(ctx, cmd.ApplicationID, cmd.ReviewerID); err != nil {
 			return nil, fmt.Errorf("failed to reactivate application: %w", err)

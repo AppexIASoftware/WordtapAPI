@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -41,7 +42,7 @@ func NewCreateCourseHandler(courseRepo repositories.CourseRepository) *CreateCou
 func (h *CreateCourseHandler) Handle(ctx context.Context, cmd CreateCourseCommand) (*entities.Course, error) {
 	title := strings.TrimSpace(cmd.Title)
 	if title == "" {
-		return nil, errors.New("course title is required")
+		return nil, apperrors.New("El título del curso es obligatorio.")
 	}
 	if cmd.AuthorID == "" {
 		return nil, errors.New("author id is required")

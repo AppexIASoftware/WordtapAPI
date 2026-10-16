@@ -11,6 +11,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
 type LessonRouter struct {
@@ -66,16 +67,16 @@ func (r *LessonRouter) RegisterRoutes(
 func (r *LessonRouter) GetLessonDetail(c *echo.Context) error {
 	identifier := c.Param("id")
 	if identifier == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "missing lesson identifier"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador de la lección.")
 	}
 
 	ctx := c.Request().Context()
 	dto, err := r.getLessonDetailHandler.Handle(ctx, queries.GetLessonDetailQuery{Identifier: identifier})
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]any{"error": "lesson not found"})
+			return response.Fail(c, http.StatusNotFound, "No se encontró la lección.")
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]any{"error": "failed to fetch lesson detail"})
+		return response.Error(c, http.StatusInternalServerError, "No se pudo cargar la lección.", err)
 	}
 
 	return c.JSON(http.StatusOK, dto)
@@ -85,7 +86,7 @@ func (r *LessonRouter) GetLessonDetail(c *echo.Context) error {
 func (r *LessonRouter) ListCourseLessons(c *echo.Context) error {
 	courseID := c.Param("course_id")
 	if courseID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "missing course id parameter"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del curso.")
 	}
 
 	userID, _ := c.Get("user_id").(string)
@@ -100,17 +101,14 @@ func (r *LessonRouter) ListCourseLessons(c *echo.Context) error {
 	if err != nil {
 		if errors.Is(err, queries.ErrCourseLessonsAccessDenied) {
 			if userID == "" {
-				return c.JSON(http.StatusNotFound, map[string]any{"error": "course not found"})
+				return response.Fail(c, http.StatusNotFound, "No se encontró el curso.")
 			}
-			return c.JSON(http.StatusForbidden, map[string]any{"error": "access denied: course is not published"})
+			return response.Fail(c, http.StatusForbidden, "No tienes permisos para ver las lecciones de este curso.")
 		}
 		if errors.Is(err, queries.ErrCourseLessonsNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]any{"error": "course not found"})
+			return response.Fail(c, http.StatusNotFound, "No se encontró el curso.")
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]any{
-			"error":   "failed to fetch course lessons",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar las lecciones.", err)
 	}
 
 	return c.JSON(http.StatusOK, lessons)
@@ -127,12 +125,12 @@ type CreateLessonRequest struct {
 func (r *LessonRouter) CreateLesson(c *echo.Context) error {
 	courseID := c.Param("course_id")
 	if courseID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "missing course id parameter"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del curso.")
 	}
 
 	var req CreateLessonRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid request body", "details": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	userIDVal := c.Get("user_id")
@@ -152,7 +150,7 @@ func (r *LessonRouter) CreateLesson(c *echo.Context) error {
 		RequesterRole:    entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "failed to create lesson", "details": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo crear la lección.", err)
 	}
 
 	return c.JSON(http.StatusCreated, lesson)
@@ -169,12 +167,12 @@ type UpdateLessonRequest struct {
 func (r *LessonRouter) UpdateLesson(c *echo.Context) error {
 	lessonID := c.Param("id")
 	if lessonID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "missing lesson id parameter"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador de la lección.")
 	}
 
 	var req UpdateLessonRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid request body", "details": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	userIDVal := c.Get("user_id")
@@ -194,7 +192,7 @@ func (r *LessonRouter) UpdateLesson(c *echo.Context) error {
 		RequesterRole:    entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "failed to update lesson", "details": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo actualizar la lección.", err)
 	}
 
 	return c.JSON(http.StatusOK, lesson)
@@ -204,7 +202,7 @@ func (r *LessonRouter) UpdateLesson(c *echo.Context) error {
 func (r *LessonRouter) DeleteLesson(c *echo.Context) error {
 	lessonID := c.Param("id")
 	if lessonID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "missing lesson id parameter"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador de la lección.")
 	}
 
 	userIDVal := c.Get("user_id")
@@ -220,7 +218,7 @@ func (r *LessonRouter) DeleteLesson(c *echo.Context) error {
 		RequesterRole: entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "failed to delete lesson", "details": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo eliminar la lección.", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"status": "deleted", "lesson_id": lessonID})
@@ -239,12 +237,12 @@ type SaveLessonItemRequest struct {
 func (r *LessonRouter) SaveLessonItem(c *echo.Context) error {
 	lessonID := c.Param("id")
 	if lessonID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "missing lesson id parameter"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador de la lección.")
 	}
 
 	var req SaveLessonItemRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid request body", "details": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	userIDVal := c.Get("user_id")
@@ -266,7 +264,7 @@ func (r *LessonRouter) SaveLessonItem(c *echo.Context) error {
 		RequesterRole:     entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "failed to save lesson card", "details": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo guardar la tarjeta de la lección.", err)
 	}
 
 	return c.JSON(http.StatusOK, item)
@@ -277,7 +275,7 @@ func (r *LessonRouter) DeleteLessonItem(c *echo.Context) error {
 	lessonID := c.Param("id")
 	itemID := c.Param("item_id")
 	if lessonID == "" || itemID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "missing lesson or item id parameter"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador de la lección o de la tarjeta.")
 	}
 
 	userIDVal := c.Get("user_id")
@@ -294,7 +292,7 @@ func (r *LessonRouter) DeleteLessonItem(c *echo.Context) error {
 		RequesterRole: entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "failed to delete lesson card", "details": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo eliminar la tarjeta de la lección.", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"status": "deleted", "item_id": itemID})

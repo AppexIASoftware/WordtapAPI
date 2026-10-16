@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -28,7 +29,7 @@ func (h *WithdrawCourseReviewHandler) Handle(ctx context.Context, cmd WithdrawCo
 		return nil, errors.New("id is required")
 	}
 	if cmd.RequesterRole != entities.RoleInstructor || cmd.RequesterID == "" {
-		return nil, errors.New("forbidden: only instructor can withdraw a course review request")
+		return nil, apperrors.New("Solo el docente autor puede retirar el curso de revisión.")
 	}
 
 	request, err := h.reviewRepo.Withdraw(ctx, cmd.ID, cmd.RequesterID)

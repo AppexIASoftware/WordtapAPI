@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -63,7 +64,7 @@ func (h *CreateLessonHandler) Handle(ctx context.Context, cmd CreateLessonComman
 	}
 	title := strings.TrimSpace(cmd.Title)
 	if title == "" {
-		return nil, errors.New("lesson title is required")
+		return nil, apperrors.New("El título de la lección es obligatorio.")
 	}
 
 	course, err := h.courseRepo.FindByID(ctx, cmd.CourseID)
@@ -73,7 +74,7 @@ func (h *CreateLessonHandler) Handle(ctx context.Context, cmd CreateLessonComman
 
 	if cmd.RequesterRole != entities.RoleAdmin {
 		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return nil, errors.New("forbidden: only course author or admin can create lessons")
+			return nil, apperrors.New("No tienes permisos para crear lecciones en este curso.")
 		}
 	}
 
@@ -138,7 +139,7 @@ func (h *UpdateLessonHandler) Handle(ctx context.Context, cmd UpdateLessonComman
 
 	if cmd.RequesterRole != entities.RoleAdmin {
 		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return nil, errors.New("forbidden: only course author or admin can update this lesson")
+			return nil, apperrors.New("No tienes permisos para actualizar esta lección.")
 		}
 	}
 
@@ -202,7 +203,7 @@ func (h *DeleteLessonHandler) Handle(ctx context.Context, cmd DeleteLessonComman
 
 	if cmd.RequesterRole != entities.RoleAdmin {
 		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return errors.New("forbidden: only course author or admin can delete this lesson")
+			return apperrors.New("No tienes permisos para eliminar esta lección.")
 		}
 	}
 
@@ -251,7 +252,7 @@ func (h *SaveLessonItemHandler) Handle(ctx context.Context, cmd SaveLessonItemCo
 
 	if cmd.RequesterRole != entities.RoleAdmin {
 		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return nil, errors.New("forbidden: only course author or admin can modify lesson cards")
+			return nil, apperrors.New("No tienes permisos para modificar las tarjetas de esta lección.")
 		}
 	}
 
@@ -319,7 +320,7 @@ func (h *DeleteLessonItemHandler) Handle(ctx context.Context, cmd DeleteLessonIt
 
 	if cmd.RequesterRole != entities.RoleAdmin {
 		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return errors.New("forbidden: only course author or admin can delete lesson cards")
+			return apperrors.New("No tienes permisos para eliminar tarjetas de esta lección.")
 		}
 	}
 

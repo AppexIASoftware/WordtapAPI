@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -51,7 +52,7 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 	// Ownership check: only author, admin or moderator can edit
 	if cmd.RequesterRole != entities.RoleAdmin && cmd.RequesterRole != entities.RoleModerator {
 		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return nil, errors.New("forbidden: cannot edit a course created by another author")
+			return nil, apperrors.New("No puedes editar un curso creado por otro docente.")
 		}
 	}
 

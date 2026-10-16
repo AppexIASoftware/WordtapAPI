@@ -2,10 +2,10 @@ package commands
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -35,18 +35,18 @@ func NewUpdateVaultItemHandler(repo repositories.ContentBankRepository) *UpdateV
 func (h *UpdateVaultItemHandler) Handle(ctx context.Context, cmd UpdateVaultItemCommand) (*entities.ContentBankItem, error) {
 	item, err := h.repo.FindItemByID(ctx, cmd.ID)
 	if err != nil {
-		return nil, errors.New("vault item not found")
+		return nil, apperrors.New("No se encontró el ítem.")
 	}
 
 	if item.CreatedBy == nil {
 		// Ítem Oficial
 		if cmd.Role != entities.RoleAdmin && cmd.Role != entities.RoleModerator {
-			return nil, errors.New("forbidden: only administrators and moderators can update official vault items")
+			return nil, apperrors.New("Solo administradores y moderadores pueden actualizar ítems oficiales.")
 		}
 	} else {
 		// Ítem Privado de Docente
 		if cmd.Role != entities.RoleAdmin && *item.CreatedBy != cmd.RequesterID {
-			return nil, errors.New("forbidden: you can only update your own private vault items")
+			return nil, apperrors.New("Solo puedes actualizar tus propios ítems.")
 		}
 	}
 

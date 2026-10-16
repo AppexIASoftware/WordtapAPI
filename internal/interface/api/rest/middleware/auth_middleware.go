@@ -8,6 +8,7 @@ import (
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
 // RequireAuth valida el token Bearer JWT en el encabezado Authorization e inyecta la identidad en el contexto.
@@ -16,24 +17,18 @@ func RequireAuth(jwtService *security.JWTService) echo.MiddlewareFunc {
 		return func(c *echo.Context) error {
 			authHeader := c.Request().Header.Get("Authorization")
 			if authHeader == "" {
-				return c.JSON(http.StatusUnauthorized, map[string]any{
-					"error": "missing authorization header",
-				})
+				return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 			}
 
 			parts := strings.SplitN(authHeader, " ", 2)
 			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-				return c.JSON(http.StatusUnauthorized, map[string]any{
-					"error": "invalid authorization format, expected 'Bearer <token>'",
-				})
+				return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 			}
 
 			tokenString := strings.TrimSpace(parts[1])
 			claims, err := jwtService.ValidateAccessToken(tokenString)
 			if err != nil {
-				return c.JSON(http.StatusUnauthorized, map[string]any{
-					"error": "invalid or expired token",
-				})
+				return response.Fail(c, http.StatusUnauthorized, "Tu sesión expiró. Inicia sesión nuevamente.")
 			}
 
 			// Inyectar datos del usuario autenticado en el contexto de la petición
@@ -90,9 +85,7 @@ func RequireRole(allowedRoles ...entities.UserRole) echo.MiddlewareFunc {
 				}
 			}
 
-			return c.JSON(http.StatusForbidden, map[string]any{
-				"error": "insufficient permissions for this resource",
-			})
+			return response.Fail(c, http.StatusForbidden, "No tienes permisos para realizar esta acción.")
 		}
 	}
 }

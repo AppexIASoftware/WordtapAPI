@@ -7,6 +7,7 @@ import (
 
 	settingCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/platform_setting/commands"
 	settingQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/platform_setting/queries"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
 type SettingRouter struct {
@@ -46,10 +47,7 @@ func (r *SettingRouter) GetPublicSettings(c *echo.Context) error {
 	ctx := c.Request().Context()
 	settings, err := r.getPublicHandler.Handle(ctx)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{
-			"error":   "failed to fetch public settings",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusInternalServerError, "No se pudo cargar la configuración pública.", err)
 	}
 	return c.JSON(http.StatusOK, settings)
 }
@@ -58,10 +56,7 @@ func (r *SettingRouter) GetAllSettings(c *echo.Context) error {
 	ctx := c.Request().Context()
 	settings, err := r.getAllHandler.Handle(ctx)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{
-			"error":   "failed to fetch platform settings",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusInternalServerError, "No se pudo cargar la configuración de la plataforma.", err)
 	}
 	return c.JSON(http.StatusOK, settings)
 }
@@ -74,7 +69,7 @@ type UpdateSettingRequest struct {
 func (r *SettingRouter) UpdateSetting(c *echo.Context) error {
 	var req UpdateSettingRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid payload"})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	ctx := c.Request().Context()
@@ -82,10 +77,7 @@ func (r *SettingRouter) UpdateSetting(c *echo.Context) error {
 		Key:   req.Key,
 		Value: req.Value,
 	}); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to update setting",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo actualizar la configuración.", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{

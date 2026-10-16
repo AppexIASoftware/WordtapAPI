@@ -8,6 +8,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
 type CourseReviewRouter struct {
@@ -47,7 +48,7 @@ func (r *CourseReviewRouter) Submit(c *echo.Context) error {
 		ChangeSummary: body.ChangeSummary,
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "failed to submit course for review", "details": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo enviar el curso a revisión.", err)
 	}
 	return c.JSON(http.StatusCreated, result)
 }
@@ -61,7 +62,7 @@ func (r *CourseReviewRouter) Withdraw(c *echo.Context) error {
 		RequesterRole: entities.UserRole(role),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "failed to withdraw course review", "details": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo retirar el curso de revisión.", err)
 	}
 	return c.JSON(http.StatusOK, result)
 }
@@ -71,7 +72,7 @@ func (r *CourseReviewRouter) Pending(c *echo.Context) error {
 	role, _ := c.Get("user_role").(string)
 	items, err := r.pending.Handle(c.Request().Context(), queries.ListCourseReviewsQuery{RequesterID: userID, RequesterRole: entities.UserRole(role)})
 	if err != nil {
-		return c.JSON(http.StatusForbidden, map[string]any{"error": err.Error()})
+		return response.Error(c, http.StatusForbidden, "No tienes permisos para ver las revisiones pendientes.", err)
 	}
 	return c.JSON(http.StatusOK, items)
 }
@@ -81,7 +82,7 @@ func (r *CourseReviewRouter) History(c *echo.Context) error {
 	role, _ := c.Get("user_role").(string)
 	items, err := r.history.Handle(c.Request().Context(), queries.ListTeacherCourseReviewsQuery{InstructorID: userID, RequesterID: userID, RequesterRole: entities.UserRole(role)})
 	if err != nil {
-		return c.JSON(http.StatusForbidden, map[string]any{"error": err.Error()})
+		return response.Error(c, http.StatusForbidden, "No tienes permisos para ver tu historial de revisiones.", err)
 	}
 	return c.JSON(http.StatusOK, items)
 }
@@ -94,13 +95,13 @@ type CourseReviewDecisionRequest struct {
 func (r *CourseReviewRouter) Decide(c *echo.Context) error {
 	var body CourseReviewDecisionRequest
 	if err := c.Bind(&body); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid decision body"})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 	userID, _ := c.Get("user_id").(string)
 	role, _ := c.Get("user_role").(string)
 	result, err := r.review.Handle(c.Request().Context(), commands.ReviewCourseCommand{ReviewID: c.Param("id"), ReviewerID: userID, ReviewerRole: entities.UserRole(role), Status: body.Status, FeedbackNotes: body.FeedbackNotes})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "failed to decide course review", "details": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo registrar la decisión de revisión.", err)
 	}
 	return c.JSON(http.StatusOK, result)
 }

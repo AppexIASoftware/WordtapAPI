@@ -8,6 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -44,7 +45,7 @@ func (h *ApplyTeacherHandler) Handle(ctx context.Context, cmd ApplyTeacherComman
 	}
 
 	if user.Role == entities.RoleInstructor || user.Role == entities.RoleAdmin {
-		return nil, errors.New("user is already an authorized instructor or admin")
+		return nil, apperrors.New("Tu cuenta ya tiene permisos de docente o administrador.")
 	}
 
 	// Verificar si ya tiene postulación previa

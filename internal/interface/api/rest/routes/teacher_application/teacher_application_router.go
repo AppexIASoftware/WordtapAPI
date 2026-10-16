@@ -10,6 +10,7 @@ import (
 	appCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/commands"
 	appQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
 type TeacherApplicationRouter struct {
@@ -67,7 +68,7 @@ func (r *TeacherApplicationRouter) Apply(c *echo.Context) error {
 	userIDVal := c.Get("user_id")
 	userID, ok := userIDVal.(string)
 	if !ok || userID == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "unauthorized context"})
+		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 	}
 
 	var req ApplyRequest
@@ -80,10 +81,7 @@ func (r *TeacherApplicationRouter) Apply(c *echo.Context) error {
 		Specialty: req.Specialty,
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to submit teacher application",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo enviar la postulación.", err)
 	}
 
 	return c.JSON(http.StatusCreated, app)
@@ -93,7 +91,7 @@ func (r *TeacherApplicationRouter) GetMyStatus(c *echo.Context) error {
 	userIDVal := c.Get("user_id")
 	userID, ok := userIDVal.(string)
 	if !ok || userID == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "unauthorized context"})
+		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 	}
 
 	ctx := c.Request().Context()
@@ -101,10 +99,7 @@ func (r *TeacherApplicationRouter) GetMyStatus(c *echo.Context) error {
 		UserID: userID,
 	})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{
-			"error":   "failed to check application status",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusInternalServerError, "No se pudo consultar el estado de tu postulación.", err)
 	}
 
 	return c.JSON(http.StatusOK, status)
@@ -128,10 +123,7 @@ func (r *TeacherApplicationRouter) List(c *echo.Context) error {
 		Offset: offset,
 	})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{
-			"error":   "failed to list applications",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar las postulaciones.", err)
 	}
 
 	return c.JSON(http.StatusOK, res)
@@ -140,7 +132,7 @@ func (r *TeacherApplicationRouter) List(c *echo.Context) error {
 func (r *TeacherApplicationRouter) Approve(c *echo.Context) error {
 	appID := c.Param("id")
 	if appID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "application id is required"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador de la postulación.")
 	}
 
 	reviewerID, _ := c.Get("user_id").(string)
@@ -154,10 +146,7 @@ func (r *TeacherApplicationRouter) Approve(c *echo.Context) error {
 		Action:        "approve",
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to approve application",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo aprobar la postulación.", err)
 	}
 
 	return c.JSON(http.StatusOK, app)
@@ -170,7 +159,7 @@ type RejectRequest struct {
 func (r *TeacherApplicationRouter) Reject(c *echo.Context) error {
 	appID := c.Param("id")
 	if appID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "application id is required"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador de la postulación.")
 	}
 
 	var req RejectRequest
@@ -188,10 +177,7 @@ func (r *TeacherApplicationRouter) Reject(c *echo.Context) error {
 		RejectionReason: req.Reason,
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to reject application",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo rechazar la postulación.", err)
 	}
 
 	return c.JSON(http.StatusOK, app)
@@ -204,7 +190,7 @@ type SuspendRequest struct {
 func (r *TeacherApplicationRouter) Suspend(c *echo.Context) error {
 	appID := c.Param("id")
 	if appID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "application id is required"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador de la postulación.")
 	}
 
 	var req SuspendRequest
@@ -222,10 +208,7 @@ func (r *TeacherApplicationRouter) Suspend(c *echo.Context) error {
 		RejectionReason: req.Reason,
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to suspend application",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo suspender la postulación.", err)
 	}
 
 	return c.JSON(http.StatusOK, app)
@@ -234,7 +217,7 @@ func (r *TeacherApplicationRouter) Suspend(c *echo.Context) error {
 func (r *TeacherApplicationRouter) Reactivate(c *echo.Context) error {
 	appID := c.Param("id")
 	if appID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "application id is required"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador de la postulación.")
 	}
 
 	reviewerID, _ := c.Get("user_id").(string)
@@ -248,10 +231,7 @@ func (r *TeacherApplicationRouter) Reactivate(c *echo.Context) error {
 		Action:        "reactivate",
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to reactivate application",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo reactivar la postulación.", err)
 	}
 
 	return c.JSON(http.StatusOK, app)
@@ -260,7 +240,7 @@ func (r *TeacherApplicationRouter) Reactivate(c *echo.Context) error {
 func (r *TeacherApplicationRouter) Delete(c *echo.Context) error {
 	appID := c.Param("id")
 	if appID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "application id is required"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador de la postulación.")
 	}
 
 	reviewerID, _ := c.Get("user_id").(string)
@@ -272,11 +252,8 @@ func (r *TeacherApplicationRouter) Delete(c *echo.Context) error {
 		ReviewerID:    reviewerID,
 		ReviewerRole:  entities.UserRole(roleStr),
 	}); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to delete application",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo eliminar la postulación.", err)
 	}
 
-	return c.JSON(http.StatusOK, map[string]any{"message": "application deleted successfully"})
+	return c.JSON(http.StatusOK, map[string]any{"message": "Postulación eliminada correctamente."})
 }

@@ -2,9 +2,9 @@ package commands
 
 import (
 	"context"
-	"errors"
 	"strings"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
@@ -24,7 +24,7 @@ func NewSetPlatformSettingHandler(repo repositories.PlatformSettingRepository) *
 func (h *SetPlatformSettingHandler) Handle(ctx context.Context, cmd SetPlatformSettingCommand) error {
 	key := strings.TrimSpace(cmd.Key)
 	if key == "" {
-		return errors.New("setting key cannot be empty")
+		return apperrors.New("La clave de configuración es obligatoria.")
 	}
 
 	return h.repo.Set(ctx, key, strings.TrimSpace(cmd.Value))

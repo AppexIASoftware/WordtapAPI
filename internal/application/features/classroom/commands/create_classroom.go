@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -34,7 +35,7 @@ func NewCreateClassroomHandler(classroomRepo repositories.ClassroomRepository) *
 func (h *CreateClassroomHandler) Handle(ctx context.Context, cmd CreateClassroomCommand) (*entities.Classroom, error) {
 	name := strings.TrimSpace(cmd.Name)
 	if name == "" {
-		return nil, errors.New("el nombre del aula es obligatorio")
+		return nil, apperrors.New("El nombre del aula es obligatorio.")
 	}
 	if cmd.TeacherID == "" {
 		return nil, errors.New("el identificador del docente es obligatorio")
@@ -74,7 +75,7 @@ func (h *CreateClassroomHandler) Handle(ctx context.Context, cmd CreateClassroom
 	}
 
 	if uniqueCode == "" {
-		return nil, errors.New("no fue posible generar un código único de aula; intente nuevamente")
+		return nil, apperrors.New("No fue posible generar un código único de aula. Intenta nuevamente.")
 	}
 
 	var assignedCoursesStr *string

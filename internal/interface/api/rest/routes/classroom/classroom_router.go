@@ -10,6 +10,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/commands"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
 type ClassroomRouter struct {
@@ -76,12 +77,12 @@ type UpdateClassroomRequest struct {
 func (r *ClassroomRouter) CreateClassroom(c *echo.Context) error {
 	userID, ok := c.Get("user_id").(string)
 	if !ok || userID == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 	}
 
 	var req CreateClassroomRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid request body"})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	cmd := commands.CreateClassroomCommand{
@@ -97,10 +98,7 @@ func (r *ClassroomRouter) CreateClassroom(c *echo.Context) error {
 
 	classroom, err := r.createClassroomHandler.Handle(c.Request().Context(), cmd)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to create classroom",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo crear el aula.", err)
 	}
 
 	return c.JSON(http.StatusCreated, map[string]any{
@@ -112,17 +110,17 @@ func (r *ClassroomRouter) CreateClassroom(c *echo.Context) error {
 func (r *ClassroomRouter) UpdateClassroom(c *echo.Context) error {
 	userID, ok := c.Get("user_id").(string)
 	if !ok || userID == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 	}
 
 	classroomID := c.Param("id")
 	if classroomID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "classroom id required"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del aula.")
 	}
 
 	var req UpdateClassroomRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid request body"})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	cmd := commands.UpdateClassroomCommand{
@@ -139,10 +137,7 @@ func (r *ClassroomRouter) UpdateClassroom(c *echo.Context) error {
 
 	classroom, err := r.updateClassroomHandler.Handle(c.Request().Context(), cmd)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to update classroom",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo actualizar el aula.", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
@@ -207,20 +202,17 @@ func formatClassroomDTO(classroom *entities.Classroom) map[string]any {
 func (r *ClassroomRouter) ListTeacherClassrooms(c *echo.Context) error {
 	userID, ok := c.Get("user_id").(string)
 	if !ok || userID == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 	}
 
 	classrooms, err := r.listClassroomsHandler.Handle(c.Request().Context(), queries.ListTeacherClassroomsQuery{
 		TeacherID: userID,
 	})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{
-			"error":   "failed to list classrooms",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar las aulas.", err)
 	}
 
-	response := make([]map[string]any, 0, len(classrooms))
+	payload := make([]map[string]any, 0, len(classrooms))
 	for _, cls := range classrooms {
 		// Mapear estudiantes
 		studentsList := make([]map[string]any, 0, len(cls.Enrollments))
@@ -330,7 +322,7 @@ func (r *ClassroomRouter) ListTeacherClassrooms(c *echo.Context) error {
 			weeklyGoal = 50
 		}
 
-		response = append(response, map[string]any{
+		payload = append(payload, map[string]any{
 			"id":              cls.ID,
 			"name":            cls.Name,
 			"code":            cls.Code,
@@ -355,24 +347,21 @@ func (r *ClassroomRouter) ListTeacherClassrooms(c *echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]any{
 		"success": true,
-		"data":    response,
+		"data":    payload,
 	})
 }
 
 func (r *ClassroomRouter) GetClassroomStumbles(c *echo.Context) error {
 	classroomID := c.Param("id")
 	if classroomID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "classroom id required"})
+		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del aula.")
 	}
 
 	stumbles, err := r.getStumbleListHandler.Handle(c.Request().Context(), queries.GetStumbleListQuery{
 		ClassroomID: classroomID,
 	})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{
-			"error":   "failed to get stumble list",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusInternalServerError, "No se pudo cargar la lista de tropiezos.", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
@@ -388,12 +377,12 @@ type JoinClassroomRequest struct {
 func (r *ClassroomRouter) JoinClassroom(c *echo.Context) error {
 	userID, ok := c.Get("user_id").(string)
 	if !ok || userID == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 	}
 
 	var req JoinClassroomRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid request body"})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	enrollment, err := r.enrollStudentHandler.Handle(c.Request().Context(), commands.EnrollStudentCommand{
@@ -401,10 +390,7 @@ func (r *ClassroomRouter) JoinClassroom(c *echo.Context) error {
 		StudentID: userID,
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error":   "failed to join classroom",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusBadRequest, "No se pudo unir al aula.", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{

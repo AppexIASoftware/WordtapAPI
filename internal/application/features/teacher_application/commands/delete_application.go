@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -28,7 +29,7 @@ func (h *DeleteApplicationHandler) Handle(ctx context.Context, cmd DeleteApplica
 		return errors.New("application_id is required")
 	}
 	if cmd.ReviewerRole != entities.RoleAdmin && cmd.ReviewerRole != entities.RoleModerator {
-		return errors.New("forbidden: only administrators or moderators can delete applications")
+		return apperrors.New("No tienes permisos para eliminar postulaciones.")
 	}
 
 	if _, err := h.appRepo.FindByID(ctx, cmd.ApplicationID); err != nil {

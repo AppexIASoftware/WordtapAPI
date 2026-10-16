@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -41,7 +42,7 @@ func (h *CreateVaultItemHandler) Handle(ctx context.Context, cmd CreateVaultItem
 	bankType := strings.TrimSpace(cmd.BankType)
 
 	if prompt == "" || target == "" || bankType == "" {
-		return nil, errors.New("prompt_text, target_text and bank_type are required")
+		return nil, apperrors.New("Completa el texto de origen, el texto de destino y el tipo de contenido.")
 	}
 
 	cefr := strings.ToUpper(strings.TrimSpace(cmd.CEFRLevel))
@@ -64,7 +65,7 @@ func (h *CreateVaultItemHandler) Handle(ctx context.Context, cmd CreateVaultItem
 
 	if cmd.IsOfficial {
 		if cmd.Role != entities.RoleAdmin && cmd.Role != entities.RoleModerator {
-			return nil, errors.New("forbidden: only administrators and moderators can create official vault items")
+			return nil, apperrors.New("Solo administradores y moderadores pueden crear ítems oficiales.")
 		}
 		createdBy = nil
 	} else {

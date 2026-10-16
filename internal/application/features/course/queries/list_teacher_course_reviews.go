@@ -2,8 +2,8 @@ package queries
 
 import (
 	"context"
-	"errors"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -22,7 +22,7 @@ func NewListTeacherCourseReviewsHandler(repo repositories.CourseReviewRepository
 }
 func (h *ListTeacherCourseReviewsHandler) Handle(ctx context.Context, q ListTeacherCourseReviewsQuery) ([]entities.CourseReviewRequest, error) {
 	if q.RequesterRole != entities.RoleInstructor || q.RequesterID == "" || q.InstructorID != q.RequesterID {
-		return nil, errors.New("forbidden: teachers can only read their own review history")
+		return nil, apperrors.New("Solo puedes ver tu propio historial de revisiones.")
 	}
 	return h.repo.ListByInstructor(ctx, q.InstructorID)
 }

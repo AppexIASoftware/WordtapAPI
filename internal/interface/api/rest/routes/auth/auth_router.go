@@ -16,6 +16,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
 type userCacheEntry struct {
@@ -64,16 +65,12 @@ type GoogleLoginRequest struct {
 func (r *AuthRouter) LoginWithGoogle(c *echo.Context) error {
 	var req GoogleLoginRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error": "invalid request body",
-		})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	token := strings.TrimSpace(req.IDToken)
 	if token == "" {
-		return c.JSON(http.StatusBadRequest, map[string]any{
-			"error": "id_token is required in request body",
-		})
+		return response.Fail(c, http.StatusBadRequest, "No se recibió la credencial de acceso.")
 	}
 
 	// Extraer y sanitizar IP de origen
@@ -105,10 +102,7 @@ func (r *AuthRouter) LoginWithGoogle(c *echo.Context) error {
 				"reason":  reason,
 			})
 		}
-		return c.JSON(http.StatusUnauthorized, map[string]any{
-			"error":   "authentication failed",
-			"details": err.Error(),
-		})
+		return response.Error(c, http.StatusUnauthorized, "No se pudo iniciar sesión.", err)
 	}
 
 	return c.JSON(http.StatusOK, result)
@@ -119,9 +113,7 @@ func (r *AuthRouter) GetMe(c *echo.Context) error {
 	userIDVal := c.Get("user_id")
 	userID, ok := userIDVal.(string)
 	if !ok || userID == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]any{
-			"error": "unauthorized context",
-		})
+		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 	}
 
 	ctx := c.Request().Context()
@@ -138,13 +130,9 @@ func (r *AuthRouter) GetMe(c *echo.Context) error {
 		user, err = r.userRepo.FindByID(ctx, userID)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return c.JSON(http.StatusNotFound, map[string]any{
-					"error": "user not found",
-				})
+				return response.Fail(c, http.StatusNotFound, "No se encontró el usuario.")
 			}
-			return c.JSON(http.StatusInternalServerError, map[string]any{
-				"error": "failed to retrieve user profile",
-			})
+			return response.Error(c, http.StatusInternalServerError, "No se pudo cargar tu perfil.", err)
 		}
 
 		if user.IsActive {
@@ -243,14 +231,10 @@ func (r *AuthRouter) DevLogin(c *echo.Context) error {
 			ProviderAccountID: email,
 		}
 		if err := r.userRepo.CreateWithInitialState(ctx, user, authAccount); err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]any{
-				"error": "failed to create dev user",
-			})
+			return response.Error(c, http.StatusInternalServerError, "No se pudo crear el usuario de desarrollo.", err)
 		}
 	} else if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{
-			"error": "database error finding user",
-		})
+		return response.Error(c, http.StatusInternalServerError, "No se pudo consultar el usuario.", err)
 	}
 
 	if !user.IsActive {
@@ -269,12 +253,12 @@ func (r *AuthRouter) DevLogin(c *echo.Context) error {
 
 	accessToken, expiresIn, err := r.jwtService.GenerateAccessToken(user)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{"error": "failed to generate access token"})
+		return response.Error(c, http.StatusInternalServerError, "No se pudo iniciar la sesión.", err)
 	}
 
 	refreshToken, refreshHash, expiresAt, err := r.jwtService.GenerateRefreshToken()
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{"error": "failed to generate refresh token"})
+		return response.Error(c, http.StatusInternalServerError, "No se pudo iniciar la sesión.", err)
 	}
 
 	session := &entities.UserSession{

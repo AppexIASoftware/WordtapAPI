@@ -9,6 +9,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/vault/commands"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/vault/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
 type VaultRouter struct {
@@ -86,7 +87,7 @@ type UpdateVaultItemRequest struct {
 func (r *VaultRouter) ListTypes(c *echo.Context) error {
 	types, err := r.listTypesHandler.Handle(c.Request().Context())
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{"error": "failed to list vault types"})
+		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar los tipos de contenido.", err)
 	}
 	return c.JSON(http.StatusOK, types)
 }
@@ -132,7 +133,7 @@ func (r *VaultRouter) ListOfficialItems(c *echo.Context) error {
 		Offset:      offset,
 	})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar los ítems de la bóveda.", err)
 	}
 	return c.JSON(http.StatusOK, res)
 }
@@ -143,7 +144,7 @@ func (r *VaultRouter) CreateOfficialItem(c *echo.Context) error {
 
 	var req CreateVaultItemRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid request body"})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	item, err := r.createItemHandler.Handle(c.Request().Context(), commands.CreateVaultItemCommand{
@@ -161,7 +162,7 @@ func (r *VaultRouter) CreateOfficialItem(c *echo.Context) error {
 		Role:        entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo crear el ítem.", err)
 	}
 	return c.JSON(http.StatusCreated, item)
 }
@@ -173,7 +174,7 @@ func (r *VaultRouter) UpdateOfficialItem(c *echo.Context) error {
 
 	var req UpdateVaultItemRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid request body"})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	item, err := r.updateItemHandler.Handle(c.Request().Context(), commands.UpdateVaultItemCommand{
@@ -190,7 +191,7 @@ func (r *VaultRouter) UpdateOfficialItem(c *echo.Context) error {
 		Role:        entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo actualizar el ítem.", err)
 	}
 	return c.JSON(http.StatusOK, item)
 }
@@ -206,7 +207,7 @@ func (r *VaultRouter) DeleteOfficialItem(c *echo.Context) error {
 		Role:        entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo eliminar el ítem.", err)
 	}
 	return c.JSON(http.StatusOK, map[string]any{"deleted": true, "id": id})
 }
@@ -253,7 +254,7 @@ func (r *VaultRouter) ListTeacherPrivateItems(c *echo.Context) error {
 		Offset:      offset,
 	})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{"error": err.Error()})
+		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar tus ítems.", err)
 	}
 	return c.JSON(http.StatusOK, res)
 }
@@ -264,7 +265,7 @@ func (r *VaultRouter) CreateTeacherPrivateItem(c *echo.Context) error {
 
 	var req CreateVaultItemRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid request body"})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	item, err := r.createItemHandler.Handle(c.Request().Context(), commands.CreateVaultItemCommand{
@@ -282,7 +283,7 @@ func (r *VaultRouter) CreateTeacherPrivateItem(c *echo.Context) error {
 		Role:        entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo crear el ítem.", err)
 	}
 	return c.JSON(http.StatusCreated, item)
 }
@@ -294,7 +295,7 @@ func (r *VaultRouter) UpdateTeacherPrivateItem(c *echo.Context) error {
 
 	var req UpdateVaultItemRequest
 	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid request body"})
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
 	item, err := r.updateItemHandler.Handle(c.Request().Context(), commands.UpdateVaultItemCommand{
@@ -311,7 +312,7 @@ func (r *VaultRouter) UpdateTeacherPrivateItem(c *echo.Context) error {
 		Role:        entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo actualizar el ítem.", err)
 	}
 	return c.JSON(http.StatusOK, item)
 }
@@ -327,7 +328,7 @@ func (r *VaultRouter) DeleteTeacherPrivateItem(c *echo.Context) error {
 		Role:        entities.UserRole(roleStr),
 	})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return response.Error(c, http.StatusBadRequest, "No se pudo eliminar el ítem.", err)
 	}
 	return c.JSON(http.StatusOK, map[string]any{"deleted": true, "id": id})
 }
