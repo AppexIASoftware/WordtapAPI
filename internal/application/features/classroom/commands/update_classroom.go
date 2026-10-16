@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -37,7 +38,7 @@ func NewUpdateClassroomHandler(classroomRepo repositories.ClassroomRepository) *
 func (h *UpdateClassroomHandler) Handle(ctx context.Context, cmd UpdateClassroomCommand) (*entities.Classroom, error) {
 	name := strings.TrimSpace(cmd.Name)
 	if name == "" {
-		return nil, errors.New("el nombre del aula es obligatorio")
+		return nil, apperrors.New("El nombre del aula es obligatorio.")
 	}
 	if cmd.TeacherID == "" {
 		return nil, errors.New("el identificador del docente es obligatorio")
@@ -51,10 +52,10 @@ func (h *UpdateClassroomHandler) Handle(ctx context.Context, cmd UpdateClassroom
 		return nil, err
 	}
 	if classroom == nil {
-		return nil, errors.New("aula no encontrada")
+		return nil, apperrors.New("No se encontró el aula.")
 	}
 	if classroom.TeacherID != cmd.TeacherID {
-		return nil, errors.New("no tiene permisos para modificar esta aula")
+		return nil, apperrors.New("No tienes permisos para modificar esta aula.")
 	}
 
 	level := strings.TrimSpace(cmd.Level)
@@ -62,7 +63,11 @@ func (h *UpdateClassroomHandler) Handle(ctx context.Context, cmd UpdateClassroom
 		classroom.Level = level
 	}
 	classroom.Name = name
-	classroom.Description = cmd.Description
+	// Solo se sobrescribe cuando el campo viaja en la petición: un PUT parcial
+	// (por ejemplo cambiar solo los minijuegos) no debe borrar la descripción.
+	if cmd.Description != nil {
+		classroom.Description = cmd.Description
+	}
 
 	if cmd.CourseID != nil && *cmd.CourseID != "" {
 		classroom.CourseID = cmd.CourseID

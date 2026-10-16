@@ -99,6 +99,37 @@ func TestUpdateClassroomHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("Preserva la descripción cuando la petición no la envía", func(t *testing.T) {
+		original := "Descripción original del aula"
+		repo := &mockUpdateClassroomRepo{
+			classroom: &entities.Classroom{
+				ID:          "cls-1",
+				TeacherID:   "teacher-1",
+				Name:        "Aula Original",
+				Description: &original,
+			},
+		}
+
+		handler := commands.NewUpdateClassroomHandler(repo)
+		cmd := commands.UpdateClassroomCommand{
+			ClassroomID: "cls-1",
+			TeacherID:   "teacher-1",
+			Name:        "Aula Original",
+			GameIDs:     []string{"match", "custom_game-1"},
+		}
+
+		result, err := handler.Handle(ctx, cmd)
+		if err != nil {
+			t.Fatalf("error inesperado: %v", err)
+		}
+		if result.Description == nil || *result.Description != original {
+			t.Errorf("la descripción debía conservarse, obtenido %v", result.Description)
+		}
+		if result.ActiveGames == nil || *result.ActiveGames != "match,custom_game-1" {
+			t.Errorf("minijuegos esperados 'match,custom_game-1', obtenido %v", result.ActiveGames)
+		}
+	})
+
 	t.Run("Falla si docente no es propietario", func(t *testing.T) {
 		repo := &mockUpdateClassroomRepo{
 			classroom: &entities.Classroom{
