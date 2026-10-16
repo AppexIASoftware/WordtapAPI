@@ -51,6 +51,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&entities.GameAttempt{},
 		&entities.GameAnswer{},
 		&entities.UserGameUnlock{},
+		&entities.TeacherGame{},
 
 		// Diccionario y Notificaciones
 		&entities.TranslationEntry{},
