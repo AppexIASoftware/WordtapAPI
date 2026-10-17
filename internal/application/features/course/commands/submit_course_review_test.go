@@ -61,6 +61,9 @@ func (r *submissionCourseRepo) FindByAuthor(context.Context, string) ([]entities
 func (r *submissionCourseRepo) FindPublished(context.Context) ([]entities.Course, error) {
 	return nil, nil
 }
+func (r *submissionCourseRepo) FindAll(context.Context) ([]entities.Course, error) {
+	return nil, nil
+}
 func (r *submissionCourseRepo) Update(context.Context, *entities.Course) error { return nil }
 func (r *submissionCourseRepo) Delete(context.Context, string) error           { return nil }
 

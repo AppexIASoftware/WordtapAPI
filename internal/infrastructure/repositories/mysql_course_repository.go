@@ -61,6 +61,25 @@ func (r *MySQLCourseRepository) FindPublished(ctx context.Context) ([]entities.C
 	return courses, nil
 }
 
+// FindAll returns all courses regardless of author or status (for admin management).
+func (r *MySQLCourseRepository) FindAll(ctx context.Context) ([]entities.Course, error) {
+	courses := make([]entities.Course, 0)
+	err := r.db.WithContext(ctx).
+		Preload("Author").
+		Preload("Lessons", func(db *gorm.DB) *gorm.DB {
+			return db.Order("lessons.sort_order ASC, lessons.created_at ASC")
+		}).
+		Preload("Lessons.Items", func(db *gorm.DB) *gorm.DB {
+			return db.Order("lesson_items.sort_order ASC")
+		}).
+		Order("created_at DESC").
+		Find(&courses).Error
+	if err != nil {
+		return nil, err
+	}
+	return courses, nil
+}
+
 // FindByID retrieves a single course by its ID.
 func (r *MySQLCourseRepository) FindByID(ctx context.Context, id string) (*entities.Course, error) {
 	var course entities.Course

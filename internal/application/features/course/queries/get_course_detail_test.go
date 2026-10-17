@@ -23,6 +23,9 @@ func (m *mockCourseRepoForDetail) FindByAuthor(ctx context.Context, authorID str
 func (m *mockCourseRepoForDetail) FindPublished(ctx context.Context) ([]entities.Course, error) {
 	return nil, nil
 }
+func (m *mockCourseRepoForDetail) FindAll(ctx context.Context) ([]entities.Course, error) {
+	return m.courses, nil
+}
 func (m *mockCourseRepoForDetail) FindByID(ctx context.Context, id string) (*entities.Course, error) {
 	for _, c := range m.courses {
 		if c.ID == id {

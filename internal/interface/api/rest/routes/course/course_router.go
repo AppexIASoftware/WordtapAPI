@@ -19,6 +19,7 @@ type CourseRouter struct {
 	submitCourseReviewHandler   *courseCmd.SubmitCourseReviewHandler
 	listTeacherCoursesHandler   *courseQuery.ListTeacherCoursesHandler
 	listPublishedCoursesHandler *courseQuery.ListPublishedCoursesHandler
+	listAdminCoursesHandler     *courseQuery.ListAdminCoursesHandler
 	getCourseDetailHandler      *courseQuery.GetCourseDetailHandler
 }
 
@@ -29,6 +30,7 @@ func NewCourseRouter(
 	submitCourseReviewHandler *courseCmd.SubmitCourseReviewHandler,
 	listTeacherCoursesHandler *courseQuery.ListTeacherCoursesHandler,
 	listPublishedCoursesHandler *courseQuery.ListPublishedCoursesHandler,
+	listAdminCoursesHandler *courseQuery.ListAdminCoursesHandler,
 	getCourseDetailHandler *courseQuery.GetCourseDetailHandler,
 ) *CourseRouter {
 	return &CourseRouter{
@@ -38,6 +40,7 @@ func NewCourseRouter(
 		submitCourseReviewHandler:   submitCourseReviewHandler,
 		listTeacherCoursesHandler:   listTeacherCoursesHandler,
 		listPublishedCoursesHandler: listPublishedCoursesHandler,
+		listAdminCoursesHandler:     listAdminCoursesHandler,
 		getCourseDetailHandler:      getCourseDetailHandler,
 	}
 }
@@ -49,12 +52,16 @@ func (r *CourseRouter) RegisterRoutes(
 	catalogRoles echo.MiddlewareFunc,
 	staffRoles echo.MiddlewareFunc,
 	instructorOrAdmin echo.MiddlewareFunc,
+	adminOrModerator echo.MiddlewareFunc,
 ) {
 	// Course catalog (staff only: admin, moderator. Teacher has no access to Wordtap catalog)
 	v1.GET("/courses", r.ListPublicCourses, authRequired, catalogRoles)
 
 	// Course details (accessible by author, admin, moderator)
 	v1.GET("/courses/:id", r.GetCourseDetail, authRequired, staffRoles)
+
+	// Admin global courses list (all courses, any author, all statuses)
+	v1.GET("/admin/courses", r.ListAdminCourses, authRequired, adminOrModerator)
 
 	// Course management (teacher, admin, moderator)
 	coursesGroup := v1.Group("/courses")
@@ -341,4 +348,15 @@ func (r *CourseRouter) ListPublicCourses(c *echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, publicCourses)
+}
+
+// ListAdminCourses handles GET /api/v1/admin/courses (all courses across all authors and statuses)
+func (r *CourseRouter) ListAdminCourses(c *echo.Context) error {
+	ctx := c.Request().Context()
+	courses, err := r.listAdminCoursesHandler.Handle(ctx, courseQuery.ListAdminCoursesQuery{})
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "No se pudo cargar la lista administrativa de cursos.", err)
+	}
+
+	return c.JSON(http.StatusOK, courses)
 }

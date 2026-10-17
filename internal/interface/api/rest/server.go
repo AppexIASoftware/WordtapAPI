@@ -120,6 +120,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	listTeacherCourseReviewsHandler := courseQuery.NewListTeacherCourseReviewsHandler(courseReviewRepo)
 	listTeacherCoursesHandler := courseQuery.NewListTeacherCoursesHandler(courseRepo)
 	listPublishedCoursesHandler := courseQuery.NewListPublishedCoursesHandler(courseRepo)
+	listAdminCoursesHandler := courseQuery.NewListAdminCoursesHandler(courseRepo)
 	getCourseDetailHandler := courseQuery.NewGetCourseDetailHandler(courseRepo)
 
 	// Platform Setting Command & Query handlers
@@ -168,6 +169,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		submitCourseReviewHandler,
 		listTeacherCoursesHandler,
 		listPublishedCoursesHandler,
+		listAdminCoursesHandler,
 		getCourseDetailHandler,
 	)
 	teacherAppRouter := teacher_application.NewTeacherApplicationRouter(
@@ -231,7 +233,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	swaggerRouter.RegisterRoutes(e)
 	authRouter.RegisterRoutes(v1, authRequired)
 	lessonRouter.RegisterRoutes(v1, authRequired, staffRoles, instructorOrAdmin)
-	courseRouter.RegisterRoutes(v1, authRequired, catalogRoles, staffRoles, instructorOrAdmin)
+	courseRouter.RegisterRoutes(v1, authRequired, catalogRoles, staffRoles, instructorOrAdmin, adminOrModerator)
 	courseReviewRouter := course.NewCourseReviewRouter(submitCourseReviewHandler, withdrawCourseReviewHandler, reviewCourseHandler, listCourseReviewsHandler, listTeacherCourseReviewsHandler)
 	courseReviewRouter.RegisterRoutes(v1, authRequired, restMiddleware.RequireRole(entities.RoleInstructor), adminOrModerator)
 	teacherAppRouter.RegisterRoutes(v1, authRequired, adminOrModerator)

@@ -128,6 +128,10 @@ func (m *mockCourseRepository) FindPublished(ctx context.Context) ([]entities.Co
 	return published, nil
 }
 
+func (m *mockCourseRepository) FindAll(ctx context.Context) ([]entities.Course, error) {
+	return m.courses, nil
+}
+
 func (m *mockCourseRepository) FindByID(ctx context.Context, id string) (*entities.Course, error) {
 	for _, c := range m.courses {
 		if c.ID == id {
@@ -173,19 +177,20 @@ func setupTestServer() (*echo.Echo, *security.JWTService, *mockCourseRepository,
 	historyQuery := courseQuery.NewListTeacherCourseReviewsHandler(reviewRepo)
 	listQuery := courseQuery.NewListTeacherCoursesHandler(repo)
 	listPublishedQuery := courseQuery.NewListPublishedCoursesHandler(repo)
+	listAdminQuery := courseQuery.NewListAdminCoursesHandler(repo)
 	getQuery := courseQuery.NewGetCourseDetailHandler(repo)
 
-	router := course.NewCourseRouter(createCmd, updateCmd, deleteCmd, submitCmd, listQuery, listPublishedQuery, getQuery)
+	router := course.NewCourseRouter(createCmd, updateCmd, deleteCmd, submitCmd, listQuery, listPublishedQuery, listAdminQuery, getQuery)
 
 	authRequired := restMiddleware.RequireAuth(jwtSvc)
 	catalogRoles := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
 	staffRoles := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator)
 	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
+	adminOrMod := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
 
 	v1 := e.Group("/api/v1")
-	router.RegisterRoutes(v1, authRequired, catalogRoles, staffRoles, instructorOrAdmin)
+	router.RegisterRoutes(v1, authRequired, catalogRoles, staffRoles, instructorOrAdmin, adminOrMod)
 	reviewRouter := course.NewCourseReviewRouter(submitCmd, withdrawCmd, reviewCmd, pendingQuery, historyQuery)
-	adminOrMod := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
 	reviewRouter.RegisterRoutes(v1, authRequired, restMiddleware.RequireRole(entities.RoleInstructor), adminOrMod)
 
 	return e, jwtSvc, repo, reviewRepo
@@ -455,6 +460,39 @@ func TestCourseRoutesRBAC(t *testing.T) {
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK on course delete, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("admin courses list (GET /api/v1/admin/courses)", func(t *testing.T) {
+		// 1. Teacher -> 403 Forbidden
+		reqTeacher := httptest.NewRequest(http.MethodGet, "/api/v1/admin/courses", nil)
+		reqTeacher.Header.Set("Authorization", "Bearer "+teacherToken)
+		recTeacher := httptest.NewRecorder()
+		e.ServeHTTP(recTeacher, reqTeacher)
+		if recTeacher.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 Forbidden for teacher, got %d", recTeacher.Code)
+		}
+
+		// 2. Admin -> 200 OK (returns all courses)
+		adminToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+			ID:    "admin-root",
+			Email: "admin@wordtap.app",
+			Role:  entities.RoleAdmin,
+		})
+		reqAdmin := httptest.NewRequest(http.MethodGet, "/api/v1/admin/courses", nil)
+		reqAdmin.Header.Set("Authorization", "Bearer "+adminToken)
+		recAdmin := httptest.NewRecorder()
+		e.ServeHTTP(recAdmin, reqAdmin)
+		if recAdmin.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for admin, got %d", recAdmin.Code)
+		}
+
+		var list []entities.Course
+		if err := json.Unmarshal(recAdmin.Body.Bytes(), &list); err != nil {
+			t.Fatalf("failed to decode admin courses: %v", err)
+		}
+		if len(list) == 0 {
+			t.Fatalf("expected courses in admin list, got empty")
 		}
 	})
 }
