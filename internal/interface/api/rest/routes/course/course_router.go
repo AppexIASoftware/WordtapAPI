@@ -94,6 +94,7 @@ type UpdateCourseRequest struct {
 	Level         *string `json:"level"`
 	AccessTier    *string `json:"access_tier"`
 	PriceCents    *int    `json:"price_cents"`
+	Status        *string `json:"status"`
 	CoverImageURL *string `json:"cover_image_url"`
 	ChangeSummary *string `json:"change_summary"`
 }
@@ -158,6 +159,12 @@ func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 		tierPtr = &t
 	}
 
+	var statusPtr *entities.ContentStatus
+	if req.Status != nil && *req.Status != "" {
+		st := entities.ContentStatus(*req.Status)
+		statusPtr = &st
+	}
+
 	ctx := c.Request().Context()
 	updated, err := r.updateCourseHandler.Handle(ctx, courseCmd.UpdateCourseCommand{
 		CourseID:      courseID,
@@ -167,6 +174,7 @@ func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 		CoverImageURL: req.CoverImageURL,
 		AccessTier:    tierPtr,
 		PriceCents:    req.PriceCents,
+		Status:        statusPtr,
 		ChangeSummary: req.ChangeSummary,
 		RequesterID:   userID,
 		RequesterRole: entities.UserRole(roleStr),

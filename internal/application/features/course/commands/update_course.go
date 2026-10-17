@@ -21,6 +21,7 @@ type UpdateCourseCommand struct {
 	CoverImageURL *string
 	AccessTier    *entities.AccessTier
 	PriceCents    *int
+	Status        *entities.ContentStatus
 	ChangeSummary *string
 	RequesterID   string
 	RequesterRole entities.UserRole
@@ -93,6 +94,10 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 	if cmd.PriceCents != nil && *cmd.PriceCents != course.PriceCents {
 		changed = append(changed, fmt.Sprintf("Precio: %d -> %d", course.PriceCents, *cmd.PriceCents))
 		course.PriceCents = *cmd.PriceCents
+	}
+
+	if cmd.Status != nil && (cmd.RequesterRole == entities.RoleAdmin || cmd.RequesterRole == entities.RoleModerator) {
+		course.Status = *cmd.Status
 	}
 
 	now := time.Now()
