@@ -191,7 +191,7 @@ func setupTestServer() (*echo.Echo, *security.JWTService, *mockCourseRepository,
 	v1 := e.Group("/api/v1")
 	router.RegisterRoutes(v1, authRequired, catalogRoles, staffRoles, instructorOrAdmin, adminOrMod)
 	reviewRouter := course.NewCourseReviewRouter(submitCmd, withdrawCmd, reviewCmd, pendingQuery, historyQuery)
-	reviewRouter.RegisterRoutes(v1, authRequired, restMiddleware.RequireRole(entities.RoleInstructor), adminOrMod)
+	reviewRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrMod)
 
 	return e, jwtSvc, repo, reviewRepo
 }
