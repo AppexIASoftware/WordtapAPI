@@ -74,6 +74,7 @@ type CreateVaultItemRequest struct {
 }
 
 type UpdateVaultItemRequest struct {
+	BankType    *string `json:"bank_type"`
 	PromptText  *string `json:"prompt_text"`
 	TargetText  *string `json:"target_text"`
 	IPA         *string `json:"ipa"`
@@ -179,6 +180,7 @@ func (r *VaultRouter) UpdateOfficialItem(c *echo.Context) error {
 
 	item, err := r.updateItemHandler.Handle(c.Request().Context(), commands.UpdateVaultItemCommand{
 		ID:          id,
+		BankType:    req.BankType,
 		PromptText:  req.PromptText,
 		TargetText:  req.TargetText,
 		IPA:         req.IPA,
@@ -300,6 +302,7 @@ func (r *VaultRouter) UpdateTeacherPrivateItem(c *echo.Context) error {
 
 	item, err := r.updateItemHandler.Handle(c.Request().Context(), commands.UpdateVaultItemCommand{
 		ID:          id,
+		BankType:    req.BankType,
 		PromptText:  req.PromptText,
 		TargetText:  req.TargetText,
 		IPA:         req.IPA,

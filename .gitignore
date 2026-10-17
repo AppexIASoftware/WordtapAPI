@@ -9,5 +9,6 @@ tmp/
 *.dylib
 .codegraph/
 odd/
+.atl/
 
 

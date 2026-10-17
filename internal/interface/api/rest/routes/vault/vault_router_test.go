@@ -226,7 +226,9 @@ func TestVaultRouter_OfficialAndPrivateFlow(t *testing.T) {
 	// 6. Update private item
 	t.Run("PUT /teacher/vault/items/:id (Teacher updates own item)", func(t *testing.T) {
 		newPrompt := "¿Cómo estás hoy?"
+		newType := "collocation"
 		updateBody := vault.UpdateVaultItemRequest{
+			BankType:   &newType,
 			PromptText: &newPrompt,
 		}
 		raw, _ := json.Marshal(updateBody)
@@ -244,6 +246,9 @@ func TestVaultRouter_OfficialAndPrivateFlow(t *testing.T) {
 		_ = json.Unmarshal(rec.Body.Bytes(), &item)
 		if item.PromptText != newPrompt {
 			t.Errorf("expected prompt to be updated to %s, got %s", newPrompt, item.PromptText)
+		}
+		if item.BankType != newType {
+			t.Errorf("expected bank_type to be updated to %s, got %s", newType, item.BankType)
 		}
 	})
 

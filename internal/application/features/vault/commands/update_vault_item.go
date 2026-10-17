@@ -12,6 +12,7 @@ import (
 
 type UpdateVaultItemCommand struct {
 	ID          string
+	BankType    *string
 	PromptText  *string
 	TargetText  *string
 	IPA         *string
@@ -50,6 +51,12 @@ func (h *UpdateVaultItemHandler) Handle(ctx context.Context, cmd UpdateVaultItem
 		}
 	}
 
+	if cmd.BankType != nil {
+		trimmed := strings.TrimSpace(*cmd.BankType)
+		if trimmed != "" {
+			item.BankType = trimmed
+		}
+	}
 	if cmd.PromptText != nil {
 		trimmed := strings.TrimSpace(*cmd.PromptText)
 		if trimmed != "" {
