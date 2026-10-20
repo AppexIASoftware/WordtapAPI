@@ -35,6 +35,10 @@ func (m *mockQueryGameRepo) FindByTeacher(ctx context.Context, teacherID string)
 	return res, nil
 }
 
+func (m *mockQueryGameRepo) FindAll(ctx context.Context) ([]entities.TeacherGame, error) {
+	return m.games, nil
+}
+
 func (m *mockQueryGameRepo) Update(ctx context.Context, g *entities.TeacherGame) error {
 	return nil
 }

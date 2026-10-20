@@ -46,6 +46,10 @@ func (m *mockTeacherGameRepo) FindByTeacher(ctx context.Context, teacherID strin
 	return res, nil
 }
 
+func (m *mockTeacherGameRepo) FindAll(ctx context.Context) ([]entities.TeacherGame, error) {
+	return m.games, nil
+}
+
 func (m *mockTeacherGameRepo) Update(ctx context.Context, g *entities.TeacherGame) error {
 	for i, existing := range m.games {
 		if existing.ID == g.ID {

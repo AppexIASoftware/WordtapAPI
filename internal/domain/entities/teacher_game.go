@@ -23,6 +23,7 @@ type TeacherGame struct {
 	SourceType       string    `gorm:"type:varchar(40);default:'course_lesson';not null" json:"source_type"` // course_lesson, vault, custom_list
 	SourceID         *string   `gorm:"type:varchar(36)" json:"source_id,omitempty"`
 	CustomWordsJSON  *string   `gorm:"type:json" json:"custom_words_json,omitempty"` // pares de vocabulario [{term, translation, audio_url}]
+	IsGlobal         bool      `gorm:"default:false;not null;index" json:"is_global"`
 	IsActive         bool      `gorm:"default:true;not null" json:"is_active"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`

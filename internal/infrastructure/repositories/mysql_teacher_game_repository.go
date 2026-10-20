@@ -57,6 +57,20 @@ func (r *MySQLTeacherGameRepository) FindByTeacher(ctx context.Context, teacherI
 	return games, nil
 }
 
+// FindAll returns every teacher game regardless of author (for admin management).
+func (r *MySQLTeacherGameRepository) FindAll(ctx context.Context) ([]entities.TeacherGame, error) {
+	games := make([]entities.TeacherGame, 0)
+	err := r.db.WithContext(ctx).
+		Preload("Teacher").
+		Preload("Course").
+		Order("created_at DESC").
+		Find(&games).Error
+	if err != nil {
+		return nil, err
+	}
+	return games, nil
+}
+
 // Update persiste cambios sobre un juego personalizado.
 func (r *MySQLTeacherGameRepository) Update(ctx context.Context, game *entities.TeacherGame) error {
 	return r.db.WithContext(ctx).Save(game).Error
