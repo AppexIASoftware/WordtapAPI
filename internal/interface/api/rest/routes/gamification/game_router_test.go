@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v5"
 
 	gameCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/gamification/commands"
 	gameQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/gamification/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
+	restMiddleware "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/middleware"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/gamification"
 )
 
@@ -50,6 +53,10 @@ func (m *mockGameRouterRepo) FindByTeacher(ctx context.Context, teacherID string
 	return res, nil
 }
 
+func (m *mockGameRouterRepo) FindAll(ctx context.Context) ([]entities.TeacherGame, error) {
+	return m.games, nil
+}
+
 func (m *mockGameRouterRepo) Update(ctx context.Context, g *entities.TeacherGame) error {
 	for i, existing := range m.games {
 		if existing.ID == g.ID {
@@ -79,8 +86,13 @@ func setupGameRouter() (*echo.Echo, *mockGameRouterRepo) {
 	deleteHandler := gameCmd.NewDeleteTeacherGameHandler(repo)
 	listHandler := gameQuery.NewListTeacherGamesHandler(repo)
 	getHandler := gameQuery.NewGetTeacherGameDetailHandler(repo)
+	listAdminHandler := gameQuery.NewListAdminGamesHandler(repo)
 
-	r := gamification.NewGameRouter(createHandler, updateHandler, deleteHandler, listHandler, getHandler)
+	createGlobalHandler := gameCmd.NewCreateGlobalGameHandler(repo)
+	updateGlobalHandler := gameCmd.NewUpdateGlobalGameHandler(repo)
+	deleteGlobalHandler := gameCmd.NewDeleteGlobalGameHandler(repo)
+
+	r := gamification.NewGameRouter(createHandler, updateHandler, deleteHandler, listHandler, getHandler, listAdminHandler, createGlobalHandler, updateGlobalHandler, deleteGlobalHandler)
 
 	v1 := e.Group("/api/v1")
 	passMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -89,7 +101,7 @@ func setupGameRouter() (*echo.Echo, *mockGameRouterRepo) {
 			return next(c)
 		}
 	}
-	r.RegisterRoutes(v1, passMiddleware, passMiddleware)
+	r.RegisterRoutes(v1, passMiddleware, passMiddleware, passMiddleware)
 
 	return e, repo
 }
@@ -166,6 +178,90 @@ func TestGameRouter_Endpoints(t *testing.T) {
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("código esperado %d, obtenido %d", http.StatusOK, rec.Code)
+		}
+	})
+}
+
+func setupAdminGameRouter() (*echo.Echo, *security.JWTService, *mockGameRouterRepo) {
+	e := echo.New()
+	jwtSvc := security.NewJWTService("test-secret-key-32-bytes-minimum!", 15*time.Minute, time.Hour)
+
+	repo := newMockGameRouterRepo()
+	repo.games = append(repo.games, entities.TeacherGame{
+		ID:        "game-admin-1",
+		TeacherID: "teacher-uuid-1",
+		Title:     "Juego Global",
+	})
+
+	createHandler := gameCmd.NewCreateTeacherGameHandler(repo)
+	updateHandler := gameCmd.NewUpdateTeacherGameHandler(repo)
+	deleteHandler := gameCmd.NewDeleteTeacherGameHandler(repo)
+	listHandler := gameQuery.NewListTeacherGamesHandler(repo)
+	getHandler := gameQuery.NewGetTeacherGameDetailHandler(repo)
+	listAdminHandler := gameQuery.NewListAdminGamesHandler(repo)
+
+	createGlobalHandler := gameCmd.NewCreateGlobalGameHandler(repo)
+	updateGlobalHandler := gameCmd.NewUpdateGlobalGameHandler(repo)
+	deleteGlobalHandler := gameCmd.NewDeleteGlobalGameHandler(repo)
+
+	r := gamification.NewGameRouter(createHandler, updateHandler, deleteHandler, listHandler, getHandler, listAdminHandler, createGlobalHandler, updateGlobalHandler, deleteGlobalHandler)
+
+	authRequired := restMiddleware.RequireAuth(jwtSvc)
+	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
+	adminOrModerator := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
+
+	v1 := e.Group("/api/v1")
+	r.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)
+
+	return e, jwtSvc, repo
+}
+
+func TestGameRouterRBAC_AdminGamesList(t *testing.T) {
+	e, jwtSvc, _ := setupAdminGameRouter()
+
+	teacherToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+		ID:    "teacher-uuid-1",
+		Email: "teacher@wordtap.app",
+		Role:  entities.RoleInstructor,
+	})
+
+	t.Run("teacher is rejected from the global games list (403)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/games", nil)
+		req.Header.Set("Authorization", "Bearer "+teacherToken)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected %d for teacher, got %d", http.StatusForbidden, rec.Code)
+		}
+	})
+
+	t.Run("admin receives every game in the global list (200)", func(t *testing.T) {
+		adminToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+			ID:    "admin-root",
+			Email: "admin@wordtap.app",
+			Role:  entities.RoleAdmin,
+		})
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/games", nil)
+		req.Header.Set("Authorization", "Bearer "+adminToken)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected %d for admin, got %d. Body: %s", http.StatusOK, rec.Code, rec.Body.String())
+		}
+
+		var payload struct {
+			Success bool             `json:"success"`
+			Data    []map[string]any `json:"data"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("failed to decode global games list: %v", err)
+		}
+		if !payload.Success || len(payload.Data) == 0 {
+			t.Fatalf("expected games in the global list, got %d", len(payload.Data))
 		}
 	})
 }

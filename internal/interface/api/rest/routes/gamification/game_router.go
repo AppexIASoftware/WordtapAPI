@@ -12,11 +12,15 @@ import (
 )
 
 type GameRouter struct {
-	createHandler *commands.CreateTeacherGameHandler
-	updateHandler *commands.UpdateTeacherGameHandler
-	deleteHandler *commands.DeleteTeacherGameHandler
-	listHandler   *queries.ListTeacherGamesHandler
-	getHandler    *queries.GetTeacherGameDetailHandler
+	createHandler           *commands.CreateTeacherGameHandler
+	updateHandler           *commands.UpdateTeacherGameHandler
+	deleteHandler           *commands.DeleteTeacherGameHandler
+	listHandler             *queries.ListTeacherGamesHandler
+	getHandler              *queries.GetTeacherGameDetailHandler
+	listAdminGamesHandler   *queries.ListAdminGamesHandler
+	createGlobalGameHandler *commands.CreateGlobalGameHandler
+	updateGlobalGameHandler *commands.UpdateGlobalGameHandler
+	deleteGlobalGameHandler *commands.DeleteGlobalGameHandler
 }
 
 func NewGameRouter(
@@ -25,13 +29,21 @@ func NewGameRouter(
 	deleteHandler *commands.DeleteTeacherGameHandler,
 	listHandler *queries.ListTeacherGamesHandler,
 	getHandler *queries.GetTeacherGameDetailHandler,
+	listAdminGamesHandler *queries.ListAdminGamesHandler,
+	createGlobalGameHandler *commands.CreateGlobalGameHandler,
+	updateGlobalGameHandler *commands.UpdateGlobalGameHandler,
+	deleteGlobalGameHandler *commands.DeleteGlobalGameHandler,
 ) *GameRouter {
 	return &GameRouter{
-		createHandler: createHandler,
-		updateHandler: updateHandler,
-		deleteHandler: deleteHandler,
-		listHandler:   listHandler,
-		getHandler:    getHandler,
+		createHandler:           createHandler,
+		updateHandler:           updateHandler,
+		deleteHandler:           deleteHandler,
+		listHandler:             listHandler,
+		getHandler:              getHandler,
+		listAdminGamesHandler:   listAdminGamesHandler,
+		createGlobalGameHandler: createGlobalGameHandler,
+		updateGlobalGameHandler: updateGlobalGameHandler,
+		deleteGlobalGameHandler: deleteGlobalGameHandler,
 	}
 }
 
@@ -39,7 +51,14 @@ func (r *GameRouter) RegisterRoutes(
 	v1 *echo.Group,
 	authRequired echo.MiddlewareFunc,
 	instructorOrAdmin echo.MiddlewareFunc,
+	adminOrModerator echo.MiddlewareFunc,
 ) {
+	// Admin global games management (platform-wide activities only)
+	v1.GET("/admin/games", r.ListAdminGames, authRequired, adminOrModerator)
+	v1.POST("/admin/games", r.CreateAdminGame, authRequired, adminOrModerator)
+	v1.PUT("/admin/games/:id", r.UpdateAdminGame, authRequired, adminOrModerator)
+	v1.DELETE("/admin/games/:id", r.DeleteAdminGame, authRequired, adminOrModerator)
+
 	group := v1.Group("/teacher/games")
 	group.Use(authRequired, instructorOrAdmin)
 
@@ -128,6 +147,24 @@ func (r *GameRouter) ListGames(c *echo.Context) error {
 	})
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar las actividades.", err)
+	}
+
+	payload := make([]map[string]any, 0, len(games))
+	for _, g := range games {
+		payload = append(payload, formatTeacherGameDTO(&g))
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"success": true,
+		"data":    payload,
+	})
+}
+
+// ListAdminGames handles GET /api/v1/admin/games (all teacher games across all authors)
+func (r *GameRouter) ListAdminGames(c *echo.Context) error {
+	games, err := r.listAdminGamesHandler.Handle(c.Request().Context(), queries.ListAdminGamesQuery{})
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar las actividades globales.", err)
 	}
 
 	payload := make([]map[string]any, 0, len(games))
@@ -240,9 +277,18 @@ func formatTeacherGameDTO(g *entities.TeacherGame) map[string]any {
 		courseTitle = g.Course.Title
 	}
 
+	teacherName := ""
+	teacherEmail := ""
+	if g.Teacher != nil {
+		teacherName = g.Teacher.Name
+		teacherEmail = g.Teacher.Email
+	}
+
 	return map[string]any{
 		"id":                 g.ID,
 		"teacher_id":         g.TeacherID,
+		"teacher_name":       teacherName,
+		"teacher_email":      teacherEmail,
 		"course_id":          g.CourseID,
 		"course_title":       courseTitle,
 		"base_archetype":     g.BaseArchetype,
@@ -256,6 +302,7 @@ func formatTeacherGameDTO(g *entities.TeacherGame) map[string]any {
 		"source_type":        g.SourceType,
 		"source_id":          g.SourceID,
 		"custom_words_json":  g.CustomWordsJSON,
+		"is_global":          g.IsGlobal,
 		"is_active":          g.IsActive,
 		"created_at":         g.CreatedAt.Format("02/01/2006"),
 	}

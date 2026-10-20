@@ -110,6 +110,10 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	deleteTeacherGameHandler := gameCmd.NewDeleteTeacherGameHandler(teacherGameRepo)
 	listTeacherGamesHandler := gameQuery.NewListTeacherGamesHandler(teacherGameRepo)
 	getTeacherGameDetailHandler := gameQuery.NewGetTeacherGameDetailHandler(teacherGameRepo)
+	listAdminGamesHandler := gameQuery.NewListAdminGamesHandler(teacherGameRepo)
+	createGlobalGameHandler := gameCmd.NewCreateGlobalGameHandler(teacherGameRepo)
+	updateGlobalGameHandler := gameCmd.NewUpdateGlobalGameHandler(teacherGameRepo)
+	deleteGlobalGameHandler := gameCmd.NewDeleteGlobalGameHandler(teacherGameRepo)
 	createCourseHandler := courseCmd.NewCreateCourseHandler(courseRepo)
 	updateCourseHandler := courseCmd.NewUpdateCourseHandler(courseRepo, courseReviewRepo)
 	deleteCourseHandler := courseCmd.NewDeleteCourseHandler(courseRepo)
@@ -204,6 +208,10 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		deleteTeacherGameHandler,
 		listTeacherGamesHandler,
 		getTeacherGameDetailHandler,
+		listAdminGamesHandler,
+		createGlobalGameHandler,
+		updateGlobalGameHandler,
+		deleteGlobalGameHandler,
 	)
 	swaggerRouter := docs.NewSwaggerRouter()
 
@@ -240,7 +248,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	settingRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
 	vaultRouter.RegisterRoutes(v1, authRequired, staffRoles, adminOrModerator, instructorOrAdmin)
 	classroomRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
-	gameRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
+	gameRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)
 
 	return &Server{App: e}, nil
 }
