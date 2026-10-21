@@ -39,9 +39,10 @@ func NewUpdateGlobalGameHandler(gameRepo repositories.TeacherGameRepository) *Up
 
 // Handle applies a partial update over a platform-global activity. Authorization
 // is the admin/moderator role gate at the route, so ownership is never compared
-// here; instead, this handler refuses any activity that is not global, which
-// stops an administrator from editing a teacher's own activity through the
-// admin endpoints.
+// here; instead, this handler refuses any activity whose owner_type is not the
+// platform, which stops an administrator from editing a teacher's own activity
+// through the admin endpoints. owner_type is the only ownership authority;
+// is_global is legacy data and is never used for authorization.
 func (h *UpdateGlobalGameHandler) Handle(ctx context.Context, cmd UpdateGlobalGameCommand) (*entities.TeacherGame, error) {
 	if cmd.AuthorID == "" {
 		return nil, errors.New("el identificador del administrador es obligatorio")
@@ -57,7 +58,7 @@ func (h *UpdateGlobalGameHandler) Handle(ctx context.Context, cmd UpdateGlobalGa
 	if game == nil {
 		return nil, apperrors.New("No se encontró la actividad.")
 	}
-	if !game.IsGlobal {
+	if game.OwnerType != entities.OwnerTypePlatform {
 		return nil, apperrors.New("Solo se pueden gestionar actividades de la plataforma.")
 	}
 

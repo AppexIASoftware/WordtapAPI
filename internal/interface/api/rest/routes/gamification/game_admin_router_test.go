@@ -80,6 +80,7 @@ func TestAdminGameCRUD_GlobalGames(t *testing.T) {
 			ID:        "game-global-update",
 			TeacherID: "admin-root",
 			Title:     "Global Original",
+			OwnerType: entities.OwnerTypePlatform,
 			IsGlobal:  true,
 		})
 
@@ -113,6 +114,7 @@ func TestAdminGameCRUD_GlobalGames(t *testing.T) {
 			Title:           "Global JSON",
 			AllowedMistakes: 3,
 			CustomWordsJSON: &words,
+			OwnerType:       entities.OwnerTypePlatform,
 			IsGlobal:        true,
 		})
 
@@ -137,6 +139,7 @@ func TestAdminGameCRUD_GlobalGames(t *testing.T) {
 			TeacherID:       "admin-root",
 			Title:           "Global Mistakes",
 			AllowedMistakes: 2,
+			OwnerType:       entities.OwnerTypePlatform,
 			IsGlobal:        true,
 		})
 
@@ -199,6 +202,7 @@ func TestAdminGameCRUD_GlobalGames(t *testing.T) {
 			ID:        "game-global-delete",
 			TeacherID: "admin-root",
 			Title:     "Global Para Borrar",
+			OwnerType: entities.OwnerTypePlatform,
 			IsGlobal:  true,
 		})
 
@@ -213,6 +217,49 @@ func TestAdminGameCRUD_GlobalGames(t *testing.T) {
 		stored, _ := repo.FindByID(context.Background(), "game-global-delete")
 		if stored != nil {
 			t.Fatalf("expected the global activity to be deleted, got %+v", stored)
+		}
+	})
+
+	t.Run("DELETE /api/v1/admin/games/:id archives a global activity in use", func(t *testing.T) {
+		_ = repo.Create(context.Background(), &entities.TeacherGame{
+			ID:        "game-global-archived",
+			TeacherID: "admin-root",
+			Title:     "Global En Uso",
+			OwnerType: entities.OwnerTypePlatform,
+			IsGlobal:  true,
+			IsActive:  true,
+		})
+		repo.usage["game-global-archived"] = 3
+
+		req := bearerRequest(http.MethodDelete, "/api/v1/admin/games/game-global-archived", nil, adminToken)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected %d, got %d. Body: %s", http.StatusOK, rec.Code, rec.Body.String())
+		}
+
+		var payloadRes struct {
+			Success bool           `json:"success"`
+			Message string         `json:"message"`
+			Data    map[string]any `json:"data"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payloadRes); err != nil {
+			t.Fatalf("failed to decode archive envelope: %v", err)
+		}
+		if payloadRes.Data["archived"] != true {
+			t.Errorf("expected archived true, got %v", payloadRes.Data["archived"])
+		}
+		if payloadRes.Data["usage_count"] != float64(3) {
+			t.Errorf("expected usage_count 3, got %v", payloadRes.Data["usage_count"])
+		}
+
+		stored, _ := repo.FindByID(context.Background(), "game-global-archived")
+		if stored == nil {
+			t.Fatal("an activity in use must be kept")
+		}
+		if stored.IsActive {
+			t.Error("an activity in use must be archived as inactive")
 		}
 	})
 

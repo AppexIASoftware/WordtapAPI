@@ -21,11 +21,13 @@ import (
 
 type mockGameRouterRepo struct {
 	games []entities.TeacherGame
+	usage map[string]int
 }
 
 func newMockGameRouterRepo() *mockGameRouterRepo {
 	return &mockGameRouterRepo{
 		games: make([]entities.TeacherGame, 0),
+		usage: make(map[string]int),
 	}
 }
 
@@ -57,6 +59,16 @@ func (m *mockGameRouterRepo) FindAll(ctx context.Context) ([]entities.TeacherGam
 	return m.games, nil
 }
 
+func (m *mockGameRouterRepo) FindGlobal(ctx context.Context) ([]entities.TeacherGame, error) {
+	var res []entities.TeacherGame
+	for _, g := range m.games {
+		if g.OwnerType == entities.OwnerTypePlatform {
+			res = append(res, g)
+		}
+	}
+	return res, nil
+}
+
 func (m *mockGameRouterRepo) Update(ctx context.Context, g *entities.TeacherGame) error {
 	for i, existing := range m.games {
 		if existing.ID == g.ID {
@@ -77,6 +89,10 @@ func (m *mockGameRouterRepo) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+func (m *mockGameRouterRepo) CountLessonUsage(ctx context.Context, gameID string) (int, error) {
+	return m.usage[gameID], nil
+}
+
 func setupGameRouter() (*echo.Echo, *mockGameRouterRepo) {
 	e := echo.New()
 	repo := newMockGameRouterRepo()
@@ -87,12 +103,13 @@ func setupGameRouter() (*echo.Echo, *mockGameRouterRepo) {
 	listHandler := gameQuery.NewListTeacherGamesHandler(repo)
 	getHandler := gameQuery.NewGetTeacherGameDetailHandler(repo)
 	listAdminHandler := gameQuery.NewListAdminGamesHandler(repo)
+	listGlobalHandler := gameQuery.NewListGlobalGamesHandler(repo)
 
 	createGlobalHandler := gameCmd.NewCreateGlobalGameHandler(repo)
 	updateGlobalHandler := gameCmd.NewUpdateGlobalGameHandler(repo)
 	deleteGlobalHandler := gameCmd.NewDeleteGlobalGameHandler(repo)
 
-	r := gamification.NewGameRouter(createHandler, updateHandler, deleteHandler, listHandler, getHandler, listAdminHandler, createGlobalHandler, updateGlobalHandler, deleteGlobalHandler)
+	r := gamification.NewGameRouter(createHandler, updateHandler, deleteHandler, listHandler, getHandler, listAdminHandler, listGlobalHandler, createGlobalHandler, updateGlobalHandler, deleteGlobalHandler)
 
 	v1 := e.Group("/api/v1")
 	passMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -137,6 +154,36 @@ func TestGameRouter_Endpoints(t *testing.T) {
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("código esperado %d, obtenido %d", http.StatusOK, rec.Code)
+		}
+	})
+
+	t.Run("GET /api/v1/teacher/games/global lists platform games", func(t *testing.T) {
+		_ = repo.Create(context.Background(), &entities.TeacherGame{
+			ID:        "game-global-1",
+			TeacherID: "admin-root",
+			Title:     "Juego Global",
+			IsGlobal:  true,
+			OwnerType: entities.OwnerTypePlatform,
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/teacher/games/global", nil)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected %d, got %d. Body: %s", http.StatusOK, rec.Code, rec.Body.String())
+		}
+
+		var payload struct {
+			Success bool             `json:"success"`
+			Data    []map[string]any `json:"data"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("failed to decode global games: %v", err)
+		}
+		if !payload.Success || len(payload.Data) != 1 {
+			t.Fatalf("expected one global game, got %d", len(payload.Data))
 		}
 	})
 
@@ -199,12 +246,13 @@ func setupAdminGameRouter() (*echo.Echo, *security.JWTService, *mockGameRouterRe
 	listHandler := gameQuery.NewListTeacherGamesHandler(repo)
 	getHandler := gameQuery.NewGetTeacherGameDetailHandler(repo)
 	listAdminHandler := gameQuery.NewListAdminGamesHandler(repo)
+	listGlobalHandler := gameQuery.NewListGlobalGamesHandler(repo)
 
 	createGlobalHandler := gameCmd.NewCreateGlobalGameHandler(repo)
 	updateGlobalHandler := gameCmd.NewUpdateGlobalGameHandler(repo)
 	deleteGlobalHandler := gameCmd.NewDeleteGlobalGameHandler(repo)
 
-	r := gamification.NewGameRouter(createHandler, updateHandler, deleteHandler, listHandler, getHandler, listAdminHandler, createGlobalHandler, updateGlobalHandler, deleteGlobalHandler)
+	r := gamification.NewGameRouter(createHandler, updateHandler, deleteHandler, listHandler, getHandler, listAdminHandler, listGlobalHandler, createGlobalHandler, updateGlobalHandler, deleteGlobalHandler)
 
 	authRequired := restMiddleware.RequireAuth(jwtSvc)
 	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)

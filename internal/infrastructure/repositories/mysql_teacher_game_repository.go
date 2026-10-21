@@ -54,6 +54,27 @@ func (r *MySQLTeacherGameRepository) FindByTeacher(ctx context.Context, teacherI
 	if err != nil {
 		return nil, err
 	}
+	if err := r.fillUsage(ctx, games); err != nil {
+		return nil, err
+	}
+	return games, nil
+}
+
+// FindGlobal lista las actividades de plataforma disponibles para cualquier curso.
+// owner_type es la única autoridad de propiedad; is_global queda como legado.
+func (r *MySQLTeacherGameRepository) FindGlobal(ctx context.Context) ([]entities.TeacherGame, error) {
+	games := make([]entities.TeacherGame, 0)
+	err := r.db.WithContext(ctx).
+		Where("owner_type = ? AND is_active = ?", entities.OwnerTypePlatform, true).
+		Preload("Teacher").
+		Order("created_at DESC").
+		Find(&games).Error
+	if err != nil {
+		return nil, err
+	}
+	if err := r.fillUsage(ctx, games); err != nil {
+		return nil, err
+	}
 	return games, nil
 }
 
@@ -68,15 +89,59 @@ func (r *MySQLTeacherGameRepository) FindAll(ctx context.Context) ([]entities.Te
 	if err != nil {
 		return nil, err
 	}
+	if err := r.fillUsage(ctx, games); err != nil {
+		return nil, err
+	}
 	return games, nil
 }
 
-// Update persiste cambios sobre un juego personalizado.
+// fillUsage completa UsageCount con el conteo agrupado de vínculos en lecciones.
+func (r *MySQLTeacherGameRepository) fillUsage(ctx context.Context, games []entities.TeacherGame) error {
+	ids := make([]string, 0, len(games))
+	for _, game := range games {
+		ids = append(ids, game.ID)
+	}
+
+	usage, err := countLessonGamesByGameIDs(ctx, r.db, ids)
+	if err != nil {
+		return err
+	}
+
+	for i := range games {
+		games[i].UsageCount = usage[games[i].ID]
+	}
+	return nil
+}
+
+// Update persiste únicamente las columnas mutables del juego. La lista explícita
+// evita reescribir asociaciones y campos que ningún handler modifica.
 func (r *MySQLTeacherGameRepository) Update(ctx context.Context, game *entities.TeacherGame) error {
-	return r.db.WithContext(ctx).Save(game).Error
+	return r.db.WithContext(ctx).
+		Model(&entities.TeacherGame{}).
+		Where("id = ?", game.ID).
+		Updates(map[string]any{
+			"course_id":          game.CourseID,
+			"title":              game.Title,
+			"description":        game.Description,
+			"level":              game.Level,
+			"time_limit_seconds": game.TimeLimitSeconds,
+			"allowed_mistakes":   game.AllowedMistakes,
+			"reward_xp":          game.RewardXP,
+			"item_count":         game.ItemCount,
+			"source_type":        game.SourceType,
+			"source_id":          game.SourceID,
+			"custom_words_json":  game.CustomWordsJSON,
+			"is_active":          game.IsActive,
+			"updated_at":         game.UpdatedAt,
+		}).Error
 }
 
 // Delete elimina físicamente un juego personalizado del docente.
 func (r *MySQLTeacherGameRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Delete(&entities.TeacherGame{}, "id = ?", id).Error
+}
+
+// CountLessonUsage cuenta cuántas lecciones usan una actividad.
+func (r *MySQLTeacherGameRepository) CountLessonUsage(ctx context.Context, gameID string) (int, error) {
+	return countLessonGamesByGameID(ctx, r.db, gameID)
 }

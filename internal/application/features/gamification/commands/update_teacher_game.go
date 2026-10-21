@@ -51,6 +51,9 @@ func (h *UpdateTeacherGameHandler) Handle(ctx context.Context, cmd UpdateTeacher
 	if game == nil {
 		return nil, apperrors.New("No se encontró la actividad.")
 	}
+	if game.OwnerType == entities.OwnerTypePlatform {
+		return nil, apperrors.New("Solo puedes editar tus propias actividades.")
+	}
 	if game.TeacherID != cmd.TeacherID {
 		return nil, apperrors.New("No tienes permisos para editar esta actividad.")
 	}

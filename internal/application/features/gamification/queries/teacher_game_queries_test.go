@@ -39,12 +39,26 @@ func (m *mockQueryGameRepo) FindAll(ctx context.Context) ([]entities.TeacherGame
 	return m.games, nil
 }
 
+func (m *mockQueryGameRepo) FindGlobal(ctx context.Context) ([]entities.TeacherGame, error) {
+	var res []entities.TeacherGame
+	for _, g := range m.games {
+		if g.OwnerType == entities.OwnerTypePlatform {
+			res = append(res, g)
+		}
+	}
+	return res, nil
+}
+
 func (m *mockQueryGameRepo) Update(ctx context.Context, g *entities.TeacherGame) error {
 	return nil
 }
 
 func (m *mockQueryGameRepo) Delete(ctx context.Context, id string) error {
 	return nil
+}
+
+func (m *mockQueryGameRepo) CountLessonUsage(ctx context.Context, gameID string) (int, error) {
+	return 0, nil
 }
 
 func TestTeacherGameQueries(t *testing.T) {

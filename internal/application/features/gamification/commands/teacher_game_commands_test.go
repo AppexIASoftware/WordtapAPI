@@ -10,6 +10,7 @@ import (
 
 type mockTeacherGameRepo struct {
 	games   []entities.TeacherGame
+	usage   map[string]int
 	created *entities.TeacherGame
 	updated bool
 	deleted bool
@@ -18,6 +19,7 @@ type mockTeacherGameRepo struct {
 func newMockTeacherGameRepo() *mockTeacherGameRepo {
 	return &mockTeacherGameRepo{
 		games: make([]entities.TeacherGame, 0),
+		usage: make(map[string]int),
 	}
 }
 
@@ -50,6 +52,16 @@ func (m *mockTeacherGameRepo) FindAll(ctx context.Context) ([]entities.TeacherGa
 	return m.games, nil
 }
 
+func (m *mockTeacherGameRepo) FindGlobal(ctx context.Context) ([]entities.TeacherGame, error) {
+	var res []entities.TeacherGame
+	for _, g := range m.games {
+		if g.OwnerType == entities.OwnerTypePlatform {
+			res = append(res, g)
+		}
+	}
+	return res, nil
+}
+
 func (m *mockTeacherGameRepo) Update(ctx context.Context, g *entities.TeacherGame) error {
 	for i, existing := range m.games {
 		if existing.ID == g.ID {
@@ -70,6 +82,10 @@ func (m *mockTeacherGameRepo) Delete(ctx context.Context, id string) error {
 		}
 	}
 	return nil
+}
+
+func (m *mockTeacherGameRepo) CountLessonUsage(ctx context.Context, gameID string) (int, error) {
+	return m.usage[gameID], nil
 }
 
 func TestTeacherGameCommands(t *testing.T) {
@@ -97,6 +113,30 @@ func TestTeacherGameCommands(t *testing.T) {
 		}
 		if res.BaseArchetype != "match" {
 			t.Errorf("arquetipo esperado 'match', obtenido '%s'", res.BaseArchetype)
+		}
+		if res.OwnerType != entities.OwnerTypeTeacher {
+			t.Errorf("propiedad esperada 'teacher', obtenida '%s'", res.OwnerType)
+		}
+		if res.IsGlobal {
+			t.Error("una actividad de docente no puede ser global")
+		}
+	})
+
+	t.Run("CreateGlobalGameHandler asigna propiedad de plataforma", func(t *testing.T) {
+		handler := commands.NewCreateGlobalGameHandler(repo)
+		res, err := handler.Handle(ctx, commands.CreateGlobalGameCommand{
+			AuthorID:      "admin-1",
+			Title:         "Actividad Global",
+			BaseArchetype: "memory",
+		})
+		if err != nil {
+			t.Fatalf("error creando actividad global: %v", err)
+		}
+		if res.OwnerType != entities.OwnerTypePlatform {
+			t.Errorf("propiedad esperada 'platform', obtenida '%s'", res.OwnerType)
+		}
+		if !res.IsGlobal {
+			t.Error("una actividad de plataforma debe ser global")
 		}
 	})
 
@@ -146,6 +186,97 @@ func TestTeacherGameCommands(t *testing.T) {
 		}
 		if !repo.deleted {
 			t.Errorf("se esperaba que el juego fuera eliminado")
+		}
+	})
+
+	t.Run("docente no puede editar una actividad global", func(t *testing.T) {
+		repo.games = append(repo.games, entities.TeacherGame{
+			ID:        "game-global",
+			TeacherID: "admin-1",
+			Title:     "Actividad Global",
+			OwnerType: entities.OwnerTypePlatform,
+			IsGlobal:  true,
+		})
+
+		handler := commands.NewUpdateTeacherGameHandler(repo)
+		_, err := handler.Handle(ctx, commands.UpdateTeacherGameCommand{
+			GameID:    "game-global",
+			TeacherID: "teacher-1",
+			Title:     "Intento de edición",
+		})
+		if err == nil {
+			t.Fatal("se esperaba error al editar una actividad global")
+		}
+	})
+
+	t.Run("docente no puede eliminar una actividad global", func(t *testing.T) {
+		repo.games = append(repo.games, entities.TeacherGame{
+			ID:        "game-global-2",
+			TeacherID: "admin-1",
+			Title:     "Actividad Global",
+			OwnerType: entities.OwnerTypePlatform,
+			IsGlobal:  true,
+		})
+
+		handler := commands.NewDeleteTeacherGameHandler(repo)
+		err := handler.Handle(ctx, commands.DeleteTeacherGameCommand{
+			GameID:    "game-global-2",
+			TeacherID: "teacher-1",
+		})
+		if err == nil {
+			t.Fatal("se esperaba error al eliminar una actividad global")
+		}
+	})
+
+	t.Run("DeleteTeacherGameHandler archiva una actividad en uso", func(t *testing.T) {
+		repo.games = append(repo.games, entities.TeacherGame{
+			ID:        "game-30",
+			TeacherID: "teacher-1",
+			Title:     "Actividad En Uso",
+			IsActive:  true,
+		})
+		repo.usage["game-30"] = 2
+
+		handler := commands.NewDeleteTeacherGameHandler(repo)
+		if err := handler.Handle(ctx, commands.DeleteTeacherGameCommand{
+			GameID:    "game-30",
+			TeacherID: "teacher-1",
+		}); err != nil {
+			t.Fatalf("error archivando juego: %v", err)
+		}
+
+		stored, _ := repo.FindByID(ctx, "game-30")
+		if stored == nil {
+			t.Fatal("una actividad en uso debe conservarse archivada")
+		}
+		if stored.IsActive {
+			t.Error("una actividad en uso debe quedar inactiva")
+		}
+	})
+
+	t.Run("DeleteGlobalGameHandler archiva una actividad global en uso", func(t *testing.T) {
+		repo.games = append(repo.games, entities.TeacherGame{
+			ID:        "game-global-3",
+			TeacherID: "admin-1",
+			Title:     "Global En Uso",
+			OwnerType: entities.OwnerTypePlatform,
+			IsGlobal:  true,
+			IsActive:  true,
+		})
+		repo.usage["game-global-3"] = 1
+
+		handler := commands.NewDeleteGlobalGameHandler(repo)
+		res, err := handler.Handle(ctx, commands.DeleteGlobalGameCommand{GameID: "game-global-3"})
+		if err != nil {
+			t.Fatalf("error archivando actividad global: %v", err)
+		}
+		if !res.Archived || res.UsageCount != 1 {
+			t.Errorf("se esperaba archived=true y usage_count=1, obtenido %+v", res)
+		}
+
+		stored, _ := repo.FindByID(ctx, "game-global-3")
+		if stored == nil || stored.IsActive {
+			t.Errorf("la actividad global debe quedar archivada, obtenido %+v", stored)
 		}
 	})
 }

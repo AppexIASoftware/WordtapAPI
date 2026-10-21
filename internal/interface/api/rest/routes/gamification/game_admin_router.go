@@ -125,23 +125,33 @@ func (r *GameRouter) UpdateAdminGame(c *echo.Context) error {
 	})
 }
 
-// DeleteAdminGame handles DELETE /api/v1/admin/games/:id and removes a
-// platform-global activity.
+// DeleteAdminGame handles DELETE /api/v1/admin/games/:id. Activities linked to
+// lessons are archived instead of deleted, and the response reports which
+// happened together with the usage count.
 func (r *GameRouter) DeleteAdminGame(c *echo.Context) error {
 	id := c.Param("id")
 	if id == "" {
 		return response.Fail(c, http.StatusBadRequest, "Falta el identificador de la actividad.")
 	}
 
-	err := r.deleteGlobalGameHandler.Handle(c.Request().Context(), commands.DeleteGlobalGameCommand{
+	result, err := r.deleteGlobalGameHandler.Handle(c.Request().Context(), commands.DeleteGlobalGameCommand{
 		GameID: id,
 	})
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "No se pudo eliminar la actividad.", err)
 	}
 
+	message := "Actividad eliminada correctamente."
+	if result.Archived {
+		message = "Actividad archivada correctamente porque está en uso en lecciones."
+	}
+
 	return c.JSON(http.StatusOK, map[string]any{
 		"success": true,
-		"message": "Actividad eliminada correctamente.",
+		"message": message,
+		"data": map[string]any{
+			"archived":    result.Archived,
+			"usage_count": result.UsageCount,
+		},
 	})
 }

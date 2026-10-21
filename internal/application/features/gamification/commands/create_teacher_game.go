@@ -111,6 +111,8 @@ func (h *CreateTeacherGameHandler) Handle(ctx context.Context, cmd CreateTeacher
 		SourceType:       sourceType,
 		SourceID:         cmd.SourceID,
 		CustomWordsJSON:  customWordsJSON,
+		OwnerType:        entities.OwnerTypeTeacher,
+		IsGlobal:         false,
 		IsActive:         true,
 	}
 

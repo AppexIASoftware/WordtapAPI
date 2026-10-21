@@ -108,6 +108,7 @@ func (h *CreateGlobalGameHandler) Handle(ctx context.Context, cmd CreateGlobalGa
 		SourceType:       sourceType,
 		SourceID:         cmd.SourceID,
 		CustomWordsJSON:  customWordsJSON,
+		OwnerType:        entities.OwnerTypePlatform,
 		IsGlobal:         true,
 		IsActive:         true,
 	}

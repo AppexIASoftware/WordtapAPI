@@ -18,6 +18,7 @@ type GameRouter struct {
 	listHandler             *queries.ListTeacherGamesHandler
 	getHandler              *queries.GetTeacherGameDetailHandler
 	listAdminGamesHandler   *queries.ListAdminGamesHandler
+	listGlobalGamesHandler  *queries.ListGlobalGamesHandler
 	createGlobalGameHandler *commands.CreateGlobalGameHandler
 	updateGlobalGameHandler *commands.UpdateGlobalGameHandler
 	deleteGlobalGameHandler *commands.DeleteGlobalGameHandler
@@ -30,6 +31,7 @@ func NewGameRouter(
 	listHandler *queries.ListTeacherGamesHandler,
 	getHandler *queries.GetTeacherGameDetailHandler,
 	listAdminGamesHandler *queries.ListAdminGamesHandler,
+	listGlobalGamesHandler *queries.ListGlobalGamesHandler,
 	createGlobalGameHandler *commands.CreateGlobalGameHandler,
 	updateGlobalGameHandler *commands.UpdateGlobalGameHandler,
 	deleteGlobalGameHandler *commands.DeleteGlobalGameHandler,
@@ -41,6 +43,7 @@ func NewGameRouter(
 		listHandler:             listHandler,
 		getHandler:              getHandler,
 		listAdminGamesHandler:   listAdminGamesHandler,
+		listGlobalGamesHandler:  listGlobalGamesHandler,
 		createGlobalGameHandler: createGlobalGameHandler,
 		updateGlobalGameHandler: updateGlobalGameHandler,
 		deleteGlobalGameHandler: deleteGlobalGameHandler,
@@ -64,6 +67,7 @@ func (r *GameRouter) RegisterRoutes(
 
 	group.POST("", r.CreateGame)
 	group.GET("", r.ListGames)
+	group.GET("/global", r.ListGlobalGames)
 	group.GET("/:id", r.GetGameDetail)
 	group.PUT("/:id", r.UpdateGame)
 	group.DELETE("/:id", r.DeleteGame)
@@ -178,6 +182,25 @@ func (r *GameRouter) ListAdminGames(c *echo.Context) error {
 	})
 }
 
+// ListGlobalGames handles GET /api/v1/teacher/games/global. Every instructor
+// can read the platform catalog, but only administrators can modify it.
+func (r *GameRouter) ListGlobalGames(c *echo.Context) error {
+	games, err := r.listGlobalGamesHandler.Handle(c.Request().Context(), queries.ListGlobalGamesQuery{})
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar los juegos globales.", err)
+	}
+
+	payload := make([]map[string]any, 0, len(games))
+	for _, g := range games {
+		payload = append(payload, formatTeacherGameDTO(&g))
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"success": true,
+		"data":    payload,
+	})
+}
+
 func (r *GameRouter) GetGameDetail(c *echo.Context) error {
 	userID, ok := c.Get("user_id").(string)
 	if !ok || userID == "" {
@@ -267,7 +290,7 @@ func (r *GameRouter) DeleteGame(c *echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]any{
 		"success": true,
-		"message": "Actividad eliminada correctamente.",
+		"message": "Actividad eliminada o archivada correctamente.",
 	})
 }
 
@@ -302,6 +325,7 @@ func formatTeacherGameDTO(g *entities.TeacherGame) map[string]any {
 		"source_type":        g.SourceType,
 		"source_id":          g.SourceID,
 		"custom_words_json":  g.CustomWordsJSON,
+		"owner_type":         g.OwnerType,
 		"is_global":          g.IsGlobal,
 		"is_active":          g.IsActive,
 		"created_at":         g.CreatedAt.Format("02/01/2006"),
