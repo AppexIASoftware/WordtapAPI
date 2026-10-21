@@ -306,6 +306,54 @@ func TestCourseRoutesRBAC(t *testing.T) {
 		}
 	})
 
+	t.Run("admin creates platform course and teacher cannot edit it", func(t *testing.T) {
+		adminToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+			ID:         "admin-root",
+			Email:      "admin@wordtap.app",
+			Role:       entities.RoleAdmin,
+			AccessTier: entities.AccessTierCourse,
+		})
+
+		body := `{"title":"Curso de Plataforma","level":"B1"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/courses", bytes.NewBufferString(body))
+		req.Header.Set("Authorization", "Bearer "+adminToken)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected status 201 Created, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		var platformCourse entities.Course
+		if err := json.Unmarshal(rec.Body.Bytes(), &platformCourse); err != nil {
+			t.Fatalf("failed to decode platform course: %v", err)
+		}
+		if platformCourse.OwnerType != entities.OwnerTypePlatform {
+			t.Errorf("expected platform ownership, got '%s'", platformCourse.OwnerType)
+		}
+
+		teacherReq := httptest.NewRequest(http.MethodPut, "/api/v1/courses/"+platformCourse.ID, bytes.NewBufferString(`{"title":"Intento de docente"}`))
+		teacherReq.Header.Set("Authorization", "Bearer "+teacherToken)
+		teacherReq.Header.Set("Content-Type", "application/json")
+		teacherRec := httptest.NewRecorder()
+		e.ServeHTTP(teacherRec, teacherReq)
+
+		if teacherRec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 when a teacher edits a platform course, got %d", teacherRec.Code)
+		}
+
+		adminReq := httptest.NewRequest(http.MethodPut, "/api/v1/courses/"+platformCourse.ID, bytes.NewBufferString(`{"title":"Curso de Plataforma Actualizado"}`))
+		adminReq.Header.Set("Authorization", "Bearer "+adminToken)
+		adminReq.Header.Set("Content-Type", "application/json")
+		adminRec := httptest.NewRecorder()
+		e.ServeHTTP(adminRec, adminReq)
+
+		if adminRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 when an admin edits a platform course, got %d. Body: %s", adminRec.Code, adminRec.Body.String())
+		}
+	})
+
 	t.Run("other teacher cannot submit course for review (400 Bad Request)", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/courses/"+createdID+"/submit-review", nil)
 		req.Header.Set("Authorization", "Bearer "+otherTeacherToken)

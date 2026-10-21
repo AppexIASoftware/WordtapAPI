@@ -11,10 +11,10 @@ import (
 type ContentStatus string
 
 const (
-	ContentStatusDraft      ContentStatus = "draft"
-	ContentStatusInReview   ContentStatus = "in_review"
-	ContentStatusPublished  ContentStatus = "published"
-	ContentStatusArchived   ContentStatus = "archived"
+	ContentStatusDraft     ContentStatus = "draft"
+	ContentStatusInReview  ContentStatus = "in_review"
+	ContentStatusPublished ContentStatus = "published"
+	ContentStatusArchived  ContentStatus = "archived"
 )
 
 // LessonContentType define el tipo de paso dentro de una lección (word, phrase, grammar, tip, exercise).
@@ -55,6 +55,7 @@ type Course struct {
 	PriceCents    int           `gorm:"default:1999;not null" json:"price_cents"`
 	Level         string        `gorm:"type:varchar(30);default:'beginner';not null" json:"level"`
 	Status        ContentStatus `gorm:"type:varchar(20);default:'draft';not null" json:"status"`
+	OwnerType     OwnerType     `gorm:"type:varchar(20);default:'teacher';not null;index" json:"owner_type"`
 	SortOrder     int           `gorm:"default:0;not null" json:"sort_order"`
 	CoverImageURL *string       `gorm:"type:text" json:"cover_image_url"`
 	SourceLang    string        `gorm:"type:varchar(10);default:'es';not null" json:"source_lang"`

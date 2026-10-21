@@ -52,6 +52,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&entities.GameAnswer{},
 		&entities.UserGameUnlock{},
 		&entities.TeacherGame{},
+		&entities.LessonGame{},
 
 		// Diccionario y Notificaciones
 		&entities.TranslationEntry{},
@@ -80,6 +81,37 @@ func AutoMigrate(db *gorm.DB) error {
 	)
 	if err != nil {
 		return fmt.Errorf("failed to auto migrate database tables: %w", err)
+	}
+
+	// 1.b. Relleno de propiedad para datos existentes
+	// Las actividades globales pertenecen a la plataforma; el resto conserva
+	// la propiedad del docente. Los cursos creados por administradores son
+	// contenido de plataforma. Las sentencias son idempotentes.
+	if err := db.Exec(
+		`UPDATE teacher_games SET owner_type = ? WHERE is_global = ? AND owner_type <> ?`,
+		entities.OwnerTypePlatform, true, entities.OwnerTypePlatform,
+	).Error; err != nil {
+		return fmt.Errorf("failed to backfill platform game ownership: %w", err)
+	}
+	if err := db.Exec(
+		`UPDATE courses c JOIN users u ON u.id = c.created_by
+		 SET c.owner_type = ?
+		 WHERE u.role = ? AND c.owner_type <> ?`,
+		entities.OwnerTypePlatform, entities.RoleAdmin, entities.OwnerTypePlatform,
+	).Error; err != nil {
+		return fmt.Errorf("failed to backfill platform course ownership: %w", err)
+	}
+	if err := db.Exec(
+		`UPDATE teacher_games SET owner_type = ? WHERE owner_type IS NULL OR owner_type = ''`,
+		entities.OwnerTypeTeacher,
+	).Error; err != nil {
+		return fmt.Errorf("failed to backfill teacher game ownership: %w", err)
+	}
+	if err := db.Exec(
+		`UPDATE courses SET owner_type = ? WHERE owner_type IS NULL OR owner_type = ''`,
+		entities.OwnerTypeTeacher,
+	).Error; err != nil {
+		return fmt.Errorf("failed to backfill course ownership: %w", err)
 	}
 
 	// 2. Vistas SQL de lectura optimizada

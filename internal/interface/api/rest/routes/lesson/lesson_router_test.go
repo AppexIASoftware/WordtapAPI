@@ -426,3 +426,137 @@ func TestLessonRoutesRBAC(t *testing.T) {
 		}
 	})
 }
+
+func TestLessonAdminSupervisionIsReadOnly(t *testing.T) {
+	e, jwtSvc, lessonRepo, courseRepo := setupLessonTestServer()
+
+	adminToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+		ID:    "admin-1",
+		Email: "admin@wordtap.app",
+		Role:  entities.RoleAdmin,
+	})
+	teacherToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+		ID:    "teacher-1",
+		Email: "teacher1@wordtap.app",
+		Role:  entities.RoleInstructor,
+	})
+
+	teacherID := "teacher-1"
+	adminID := "admin-1"
+
+	courseRepo.courses = append(courseRepo.courses, entities.Course{
+		ID:        "course-teacher",
+		Title:     "Curso del Docente",
+		Status:    entities.ContentStatusDraft,
+		OwnerType: entities.OwnerTypeTeacher,
+		CreatedBy: &teacherID,
+	})
+	lessonRepo.lessons = append(lessonRepo.lessons, entities.Lesson{
+		ID:       "lesson-teacher",
+		CourseID: "course-teacher",
+		Title:    "Lección del Docente",
+		Status:   entities.ContentStatusDraft,
+	})
+	lessonRepo.items = append(lessonRepo.items, entities.LessonItem{
+		ID:       "item-teacher",
+		LessonID: "lesson-teacher",
+		ItemType: entities.LessonContentTypeWord,
+	})
+
+	courseRepo.courses = append(courseRepo.courses, entities.Course{
+		ID:        "course-platform",
+		Title:     "Curso de Wordtap",
+		Status:    entities.ContentStatusDraft,
+		OwnerType: entities.OwnerTypePlatform,
+		CreatedBy: &adminID,
+	})
+	lessonRepo.lessons = append(lessonRepo.lessons, entities.Lesson{
+		ID:       "lesson-platform",
+		CourseID: "course-platform",
+		Title:    "Lección de Wordtap",
+		Status:   entities.ContentStatusDraft,
+	})
+
+	do := func(method, path, body, token string) *httptest.ResponseRecorder {
+		var requestBody *bytes.Buffer
+		if body == "" {
+			requestBody = bytes.NewBuffer(nil)
+		} else {
+			requestBody = bytes.NewBufferString(body)
+		}
+		req := httptest.NewRequest(method, path, requestBody)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	t.Run("admin cannot create a lesson in a teacher course", func(t *testing.T) {
+		rec := do(http.MethodPost, "/api/v1/courses/course-teacher/lessons", `{"title":"Lección Admin"}`, adminToken)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("admin cannot update a teacher lesson", func(t *testing.T) {
+		rec := do(http.MethodPut, "/api/v1/lessons/lesson-teacher", `{"title":"Editada por admin"}`, adminToken)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("admin cannot save or delete teacher lesson cards", func(t *testing.T) {
+		saveRec := do(http.MethodPost, "/api/v1/lessons/lesson-teacher/items", `{"id":"item-admin","item_type":"word","content_text":"x","sort_order":1}`, adminToken)
+		if saveRec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 saving card, got %d. Body: %s", saveRec.Code, saveRec.Body.String())
+		}
+
+		deleteRec := do(http.MethodDelete, "/api/v1/lessons/lesson-teacher/items/item-teacher", "", adminToken)
+		if deleteRec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 deleting card, got %d. Body: %s", deleteRec.Code, deleteRec.Body.String())
+		}
+	})
+
+	t.Run("admin cannot delete a teacher lesson", func(t *testing.T) {
+		rec := do(http.MethodDelete, "/api/v1/lessons/lesson-teacher", "", adminToken)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("admin can manage lessons of a platform course", func(t *testing.T) {
+		createRec := do(http.MethodPost, "/api/v1/courses/course-platform/lessons", `{"title":"Nueva Lección de Wordtap"}`, adminToken)
+		if createRec.Code != http.StatusCreated {
+			t.Fatalf("expected 201 creating platform lesson, got %d. Body: %s", createRec.Code, createRec.Body.String())
+		}
+
+		updateRec := do(http.MethodPut, "/api/v1/lessons/lesson-platform", `{"title":"Lección de Wordtap Actualizada"}`, adminToken)
+		if updateRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 updating platform lesson, got %d. Body: %s", updateRec.Code, updateRec.Body.String())
+		}
+
+		saveRec := do(http.MethodPost, "/api/v1/lessons/lesson-platform/items", `{"id":"item-platform","item_type":"word","content_text":"x","sort_order":1}`, adminToken)
+		if saveRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 saving platform card, got %d. Body: %s", saveRec.Code, saveRec.Body.String())
+		}
+
+		deleteItemRec := do(http.MethodDelete, "/api/v1/lessons/lesson-platform/items/item-platform", "", adminToken)
+		if deleteItemRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 deleting platform card, got %d. Body: %s", deleteItemRec.Code, deleteItemRec.Body.String())
+		}
+
+		deleteLessonRec := do(http.MethodDelete, "/api/v1/lessons/lesson-platform", "", adminToken)
+		if deleteLessonRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 deleting platform lesson, got %d. Body: %s", deleteLessonRec.Code, deleteLessonRec.Body.String())
+		}
+	})
+
+	// The teacher still owns their own course.
+	t.Run("teacher can still update their own lesson", func(t *testing.T) {
+		rec := do(http.MethodPut, "/api/v1/lessons/lesson-teacher", `{"title":"Lección del Docente Actualizada"}`, teacherToken)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+	})
+}

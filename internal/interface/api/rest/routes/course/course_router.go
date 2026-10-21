@@ -112,6 +112,12 @@ func (r *CourseRouter) CreateCourse(c *echo.Context) error {
 		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
+	roleStr, _ := c.Get("user_role").(string)
+	ownerType := entities.OwnerTypeTeacher
+	if entities.UserRole(roleStr) == entities.RoleAdmin {
+		ownerType = entities.OwnerTypePlatform
+	}
+
 	ctx := c.Request().Context()
 	priceCentsVal := 0
 	if req.PriceCents != nil {
@@ -127,6 +133,7 @@ func (r *CourseRouter) CreateCourse(c *echo.Context) error {
 		TargetLang:    req.TargetLang,
 		CoverImageURL: req.CoverImageURL,
 		AuthorID:      userID,
+		OwnerType:     ownerType,
 	})
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "No se pudo crear el curso.", err)

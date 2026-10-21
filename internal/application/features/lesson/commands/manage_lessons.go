@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	courseAccess "github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
@@ -72,10 +73,8 @@ func (h *CreateLessonHandler) Handle(ctx context.Context, cmd CreateLessonComman
 		return nil, fmt.Errorf("course not found: %w", err)
 	}
 
-	if cmd.RequesterRole != entities.RoleAdmin {
-		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return nil, apperrors.New("No tienes permisos para crear lecciones en este curso.")
-		}
+	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
+		return nil, apperrors.New("No tienes permisos para crear lecciones en este curso.")
 	}
 
 	lesson := &entities.Lesson{
@@ -137,10 +136,8 @@ func (h *UpdateLessonHandler) Handle(ctx context.Context, cmd UpdateLessonComman
 		return nil, fmt.Errorf("associated course not found: %w", err)
 	}
 
-	if cmd.RequesterRole != entities.RoleAdmin {
-		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return nil, apperrors.New("No tienes permisos para actualizar esta lección.")
-		}
+	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
+		return nil, apperrors.New("No tienes permisos para actualizar esta lección.")
 	}
 
 	if cmd.Title != nil {
@@ -201,10 +198,8 @@ func (h *DeleteLessonHandler) Handle(ctx context.Context, cmd DeleteLessonComman
 		return fmt.Errorf("associated course not found: %w", err)
 	}
 
-	if cmd.RequesterRole != entities.RoleAdmin {
-		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return apperrors.New("No tienes permisos para eliminar esta lección.")
-		}
+	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
+		return apperrors.New("No tienes permisos para eliminar esta lección.")
 	}
 
 	return h.lessonRepo.Delete(ctx, cmd.LessonID)
@@ -250,10 +245,8 @@ func (h *SaveLessonItemHandler) Handle(ctx context.Context, cmd SaveLessonItemCo
 		return nil, fmt.Errorf("associated course not found: %w", err)
 	}
 
-	if cmd.RequesterRole != entities.RoleAdmin {
-		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return nil, apperrors.New("No tienes permisos para modificar las tarjetas de esta lección.")
-		}
+	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
+		return nil, apperrors.New("No tienes permisos para modificar las tarjetas de esta lección.")
 	}
 
 	itemID := cmd.ItemID
@@ -318,10 +311,8 @@ func (h *DeleteLessonItemHandler) Handle(ctx context.Context, cmd DeleteLessonIt
 		return fmt.Errorf("associated course not found: %w", err)
 	}
 
-	if cmd.RequesterRole != entities.RoleAdmin {
-		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return apperrors.New("No tienes permisos para eliminar tarjetas de esta lección.")
-		}
+	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
+		return apperrors.New("No tienes permisos para eliminar tarjetas de esta lección.")
 	}
 
 	return h.lessonRepo.DeleteItem(ctx, cmd.ItemID)

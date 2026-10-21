@@ -29,6 +29,7 @@ type CreateCourseCommand struct {
 	TargetLang    string              `json:"target_lang"`
 	CoverImageURL *string             `json:"cover_image_url"`
 	AuthorID      string              `json:"-"`
+	OwnerType     entities.OwnerType  `json:"-"`
 }
 
 type CreateCourseHandler struct {
@@ -75,6 +76,11 @@ func (h *CreateCourseHandler) Handle(ctx context.Context, cmd CreateCourseComman
 		priceCents = 1999
 	}
 
+	ownerType := cmd.OwnerType
+	if !ownerType.IsValid() {
+		ownerType = entities.OwnerTypeTeacher
+	}
+
 	course := &entities.Course{
 		ID:            uuid.NewString(),
 		Title:         title,
@@ -84,6 +90,7 @@ func (h *CreateCourseHandler) Handle(ctx context.Context, cmd CreateCourseComman
 		PriceCents:    priceCents,
 		Level:         level,
 		Status:        entities.ContentStatusDraft,
+		OwnerType:     ownerType,
 		SortOrder:     0,
 		CoverImageURL: cmd.CoverImageURL,
 		SourceLang:    sourceLang,

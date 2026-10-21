@@ -74,8 +74,28 @@ func TestCreateCourseHandler(t *testing.T) {
 		if course.CreatedBy == nil || *course.CreatedBy != "usr-teacher-1" {
 			t.Errorf("expected author 'usr-teacher-1', got %v", course.CreatedBy)
 		}
+		if course.OwnerType != entities.OwnerTypeTeacher {
+			t.Errorf("expected teacher ownership, got '%s'", course.OwnerType)
+		}
 		if course.Slug == "" {
 			t.Error("expected non-empty slug")
+		}
+	})
+
+	t.Run("admin course keeps platform ownership", func(t *testing.T) {
+		cmd := commands.CreateCourseCommand{
+			Title:     "Curso de Plataforma",
+			Level:     "B1",
+			AuthorID:  "usr-admin-1",
+			OwnerType: entities.OwnerTypePlatform,
+		}
+
+		course, err := handler.Handle(context.Background(), cmd)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if course.OwnerType != entities.OwnerTypePlatform {
+			t.Errorf("expected platform ownership, got '%s'", course.OwnerType)
 		}
 	})
 

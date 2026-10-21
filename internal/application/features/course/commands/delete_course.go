@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	courseAccess "github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
@@ -34,10 +35,13 @@ func (h *DeleteCourseHandler) Handle(ctx context.Context, cmd DeleteCourseComman
 		return fmt.Errorf("course not found: %w", err)
 	}
 
-	if cmd.RequesterRole != entities.RoleAdmin && cmd.RequesterRole != entities.RoleModerator {
-		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return apperrors.New("No tienes permisos para eliminar este curso.")
+	// Deleting follows the same ownership rule as editing: admins delete only
+	// platform courses and instructors only their own teacher courses.
+	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
+		if courseAccess.EffectiveOwnerType(course) == entities.OwnerTypePlatform {
+			return apperrors.New("No puedes eliminar un curso de la plataforma.")
 		}
+		return apperrors.New("No puedes eliminar un curso creado por un docente.")
 	}
 
 	return h.courseRepo.Delete(ctx, cmd.CourseID)

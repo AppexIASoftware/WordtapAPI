@@ -39,6 +39,7 @@ type PublicCourseDTO struct {
 	PriceCents    int                    `json:"price_cents"`
 	Level         string                 `json:"level"`
 	Status        entities.ContentStatus `json:"status"`
+	OwnerType     entities.OwnerType     `json:"owner_type"`
 	SortOrder     int                    `json:"sort_order"`
 	CoverImageURL *string                `json:"cover_image_url,omitempty"`
 	SourceLang    string                 `json:"source_lang"`
@@ -90,6 +91,7 @@ func ToPublicCourseDTO(c *entities.Course) PublicCourseDTO {
 		PriceCents:    c.PriceCents,
 		Level:         c.Level,
 		Status:        c.Status,
+		OwnerType:     c.OwnerType,
 		SortOrder:     c.SortOrder,
 		CoverImageURL: c.CoverImageURL,
 		SourceLang:    c.SourceLang,

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	courseAccess "github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
@@ -50,10 +51,18 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 		return nil, fmt.Errorf("course not found: %w", err)
 	}
 
-	// Ownership check: only author, admin or moderator can edit
-	if cmd.RequesterRole != entities.RoleAdmin && cmd.RequesterRole != entities.RoleModerator {
-		if course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
-			return nil, apperrors.New("No puedes editar un curso creado por otro docente.")
+	// Content edits follow ownership: admins own platform courses, instructors
+	// own their teacher courses. Staff may still change only the review status
+	// of a teacher course (approve/publish), never its content.
+	isStaff := cmd.RequesterRole == entities.RoleAdmin || cmd.RequesterRole == entities.RoleModerator
+	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
+		hasContentChanges := cmd.Title != nil || cmd.Description != nil || cmd.Level != nil ||
+			cmd.CoverImageURL != nil || cmd.AccessTier != nil || cmd.PriceCents != nil
+		if !isStaff || hasContentChanges {
+			if courseAccess.EffectiveOwnerType(course) == entities.OwnerTypePlatform {
+				return nil, apperrors.New("No puedes editar un curso de la plataforma.")
+			}
+			return nil, apperrors.New("No puedes editar el contenido de un curso de un docente.")
 		}
 	}
 
