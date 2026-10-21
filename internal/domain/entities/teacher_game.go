@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// TeacherGame define una actividad lúdica personalizada creada por un docente a partir de un arquetipo base.
+// TeacherGame defines a game activity created from a base archetype.
 type TeacherGame struct {
 	ID               string    `gorm:"type:varchar(36);primaryKey" json:"id"`
 	TeacherID        string    `gorm:"type:varchar(36);not null;index" json:"teacher_id"`
@@ -17,16 +17,20 @@ type TeacherGame struct {
 	Description      *string   `gorm:"type:text" json:"description,omitempty"`
 	Level            string    `gorm:"type:varchar(50);default:'B1 Intermediate';not null" json:"level"`
 	TimeLimitSeconds int       `gorm:"default:45;not null" json:"time_limit_seconds"`
-	AllowedMistakes  int       `gorm:"default:3;not null" json:"allowed_mistakes"` // 0 = muerte súbita, 1-5 vidas
+	AllowedMistakes  int       `gorm:"default:3;not null" json:"allowed_mistakes"` // 0 = sudden death, 1-5 lives
 	RewardXP         int       `gorm:"default:20;not null" json:"reward_xp"`
 	ItemCount        int       `gorm:"default:6;not null" json:"item_count"`
 	SourceType       string    `gorm:"type:varchar(40);default:'course_lesson';not null" json:"source_type"` // course_lesson, vault, custom_list
 	SourceID         *string   `gorm:"type:varchar(36)" json:"source_id,omitempty"`
-	CustomWordsJSON  *string   `gorm:"type:json" json:"custom_words_json,omitempty"` // pares de vocabulario [{term, translation, audio_url}]
+	CustomWordsJSON  *string   `gorm:"type:json" json:"custom_words_json,omitempty"` // vocabulary pairs [{term, translation, audio_url}]
+	OwnerType        OwnerType `gorm:"type:varchar(20);default:'teacher';not null;index" json:"owner_type"`
 	IsGlobal         bool      `gorm:"default:false;not null;index" json:"is_global"`
 	IsActive         bool      `gorm:"default:true;not null" json:"is_active"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
+
+	// UsageCount is ephemeral and counts active lesson links.
+	UsageCount int `gorm:"-" json:"usage_count"`
 
 	Teacher *User   `gorm:"foreignKey:TeacherID" json:"teacher,omitempty"`
 	Course  *Course `gorm:"foreignKey:CourseID" json:"course,omitempty"`
