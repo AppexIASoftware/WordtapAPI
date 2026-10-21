@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	ErrInvalidToken = errors.New("invalid or expired token")
+	ErrInvalidToken  = errors.New("invalid or expired token")
 	ErrInvalidClaims = errors.New("invalid token claims")
 )
 
@@ -88,12 +88,18 @@ func (s *JWTService) GenerateRefreshToken() (token string, hash string, expiresA
 
 // ValidateAccessToken verifica la firma y vigencia del JWT, retornando los claims del usuario.
 func (s *JWTService) ValidateAccessToken(tokenString string) (*UserClaims, error) {
-	token, err := jwt.ParseWithClaims(tokenString, &UserClaims{}, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-		}
-		return s.secretKey, nil
-	})
+	token, err := jwt.ParseWithClaims(
+		tokenString,
+		&UserClaims{},
+		func(t *jwt.Token) (any, error) {
+			if t.Method != jwt.SigningMethodHS256 {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return s.secretKey, nil
+		},
+		jwt.WithIssuer(s.issuer),
+		jwt.WithExpirationRequired(),
+	)
 
 	if err != nil {
 		return nil, ErrInvalidToken

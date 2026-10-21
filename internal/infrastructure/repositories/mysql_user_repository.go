@@ -128,6 +128,37 @@ func (r *MySQLUserRepository) FindSessionByTokenHash(ctx context.Context, tokenH
 	return &session, nil
 }
 
+// RotateSession revokes the presented session and persists its replacement in a
+// single transaction. It reports false when the token was already revoked or
+// expired, so concurrent refreshes cannot mint two valid sessions.
+func (r *MySQLUserRepository) RotateSession(
+	ctx context.Context,
+	oldTokenHash string,
+	newSession *entities.UserSession,
+) (bool, error) {
+	rotated := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
+		result := tx.Model(&entities.UserSession{}).
+			Where("session_token_hash = ? AND revoked_at IS NULL AND expires_at > ?", oldTokenHash, now).
+			Update("revoked_at", &now)
+
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return nil
+		}
+		if err := tx.Create(newSession).Error; err != nil {
+			return err
+		}
+
+		rotated = true
+		return nil
+	})
+	return rotated, err
+}
+
 func (r *MySQLUserRepository) RevokeSession(ctx context.Context, tokenHash string) error {
 	now := time.Now()
 	return r.db.WithContext(ctx).

@@ -14,6 +14,12 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
 )
 
+var ErrGoogleEmailNotVerified = errors.New("google email is not verified")
+
+// ErrAccountLinkRequired blocks linking a Google account to an email that was
+// never verified by its original authentication method.
+var ErrAccountLinkRequired = errors.New("explicit account linking required")
+
 type LoginWithGoogleCommand struct {
 	IDToken   string
 	IPAddress string
@@ -61,10 +67,29 @@ func NewLoginWithGoogleHandler(
 	}
 }
 
+// ToAuthUserDTO maps a user entity to the public auth response shape.
+func ToAuthUserDTO(user *entities.User) AuthUserDTO {
+	return AuthUserDTO{
+		ID:                user.ID,
+		Email:             user.Email,
+		Name:              user.Name,
+		AvatarURL:         user.AvatarURL,
+		Role:              user.Role,
+		AccessTier:        user.AccessTier,
+		PreferredLanguage: user.PreferredLanguage,
+		LearningLevel:     user.LearningLevel,
+		Timezone:          user.Timezone,
+	}
+}
+
 func (h *LoginWithGoogleHandler) Handle(ctx context.Context, cmd LoginWithGoogleCommand) (*AuthResultDTO, error) {
 	claims, err := h.googleVerifier.VerifyIDToken(ctx, cmd.IDToken)
 	if err != nil {
 		return nil, fmt.Errorf("google verification failed: %w", err)
+	}
+
+	if !claims.EmailVerified {
+		return nil, ErrGoogleEmailNotVerified
 	}
 
 	var user *entities.User
@@ -86,6 +111,10 @@ func (h *LoginWithGoogleHandler) Handle(ctx context.Context, cmd LoginWithGoogle
 		existingUser, errEmail := h.userRepo.FindByEmail(ctx, claims.Email)
 		if errEmail == nil && existingUser != nil {
 			user = existingUser
+			// Un correo sin verificar no se vincula implícitamente a Google.
+			if existingUser.EmailVerifiedAt == nil {
+				return nil, ErrAccountLinkRequired
+			}
 			// Vincular cuenta Google al usuario existente
 			authAccount := &entities.UserAuthAccount{
 				UserID:            user.ID,
@@ -200,16 +229,6 @@ func (h *LoginWithGoogleHandler) Handle(ctx context.Context, cmd LoginWithGoogle
 		RefreshToken: refreshToken,
 		ExpiresIn:    expiresIn,
 		TokenType:    "Bearer",
-		User: AuthUserDTO{
-			ID:                user.ID,
-			Email:             user.Email,
-			Name:              user.Name,
-			AvatarURL:         user.AvatarURL,
-			Role:              user.Role,
-			AccessTier:        user.AccessTier,
-			PreferredLanguage: user.PreferredLanguage,
-			LearningLevel:     user.LearningLevel,
-			Timezone:          user.Timezone,
-		},
+		User:         ToAuthUserDTO(user),
 	}, nil
 }

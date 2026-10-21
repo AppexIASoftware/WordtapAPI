@@ -39,8 +39,11 @@ func (m *mockUserRepo) CreateSession(ctx context.Context, s *entities.UserSessio
 func (m *mockUserRepo) FindSessionByTokenHash(ctx context.Context, t string) (*entities.UserSession, error) {
 	return nil, gorm.ErrRecordNotFound
 }
-func (m *mockUserRepo) RevokeSession(ctx context.Context, t string) error { return nil }
+func (m *mockUserRepo) RevokeSession(ctx context.Context, t string) error     { return nil }
 func (m *mockUserRepo) RevokeAllSessions(ctx context.Context, u string) error { return nil }
+func (m *mockUserRepo) RotateSession(ctx context.Context, oldTokenHash string, newSession *entities.UserSession) (bool, error) {
+	return false, nil
+}
 
 type mockAppRepo struct {
 	apps []entities.TeacherApplication

@@ -29,6 +29,7 @@ type AuthRouter struct {
 	userRepo               repositories.UserRepository
 	teacherAppRepo         repositories.TeacherApplicationRepository
 	jwtService             *security.JWTService
+	devLoginEnabled        bool
 	userCache              sync.Map
 }
 
@@ -37,12 +38,14 @@ func NewAuthRouter(
 	userRepo repositories.UserRepository,
 	teacherAppRepo repositories.TeacherApplicationRepository,
 	jwtService *security.JWTService,
+	devLoginEnabled bool,
 ) *AuthRouter {
 	return &AuthRouter{
 		loginWithGoogleHandler: loginWithGoogleHandler,
 		userRepo:               userRepo,
 		teacherAppRepo:         teacherAppRepo,
 		jwtService:             jwtService,
+		devLoginEnabled:        devLoginEnabled,
 	}
 }
 
@@ -50,7 +53,11 @@ func NewAuthRouter(
 func (r *AuthRouter) RegisterRoutes(v1 *echo.Group, authRequired echo.MiddlewareFunc) {
 	authGroup := v1.Group("/auth")
 	authGroup.POST("/google", r.LoginWithGoogle)
-	authGroup.POST("/dev-login", r.DevLogin)
+	authGroup.POST("/refresh", r.Refresh)
+	authGroup.POST("/logout", r.Logout)
+	if r.devLoginEnabled {
+		authGroup.POST("/dev-login", r.DevLogin)
+	}
 
 	usersGroup := v1.Group("/users")
 	usersGroup.Use(authRequired)
@@ -94,6 +101,12 @@ func (r *AuthRouter) LoginWithGoogle(c *echo.Context) error {
 		UserAgent: ua,
 	})
 	if err != nil {
+		if errors.Is(err, commands.ErrGoogleEmailNotVerified) {
+			return response.Fail(c, http.StatusForbidden, "Tu correo de Google no está verificado.")
+		}
+		if errors.Is(err, commands.ErrAccountLinkRequired) {
+			return response.Fail(c, http.StatusConflict, "Ya existe una cuenta con ese correo. Iniciá sesión con tu método original o contactá a soporte para vincularla.")
+		}
 		if strings.HasPrefix(err.Error(), "account_suspended:") {
 			reason := strings.TrimSpace(strings.TrimPrefix(err.Error(), "account_suspended:"))
 			return c.JSON(http.StatusForbidden, map[string]any{
@@ -178,6 +191,10 @@ type DevLoginRequest struct {
 
 // DevLogin maneja POST /api/v1/auth/dev-login para emitir credenciales válidas en entornos de desarrollo/sandbox.
 func (r *AuthRouter) DevLogin(c *echo.Context) error {
+	if !r.devLoginEnabled {
+		return response.Fail(c, http.StatusNotFound, "Recurso no encontrado.")
+	}
+
 	var req DevLoginRequest
 	_ = c.Bind(&req)
 
@@ -266,23 +283,15 @@ func (r *AuthRouter) DevLogin(c *echo.Context) error {
 		SessionTokenHash: refreshHash,
 		ExpiresAt:        expiresAt,
 	}
-	_ = r.userRepo.CreateSession(ctx, session)
+	if err := r.userRepo.CreateSession(ctx, session); err != nil {
+		return response.Error(c, http.StatusInternalServerError, "No se pudo iniciar la sesión.", err)
+	}
 
 	return c.JSON(http.StatusOK, commands.AuthResultDTO{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    expiresIn,
 		TokenType:    "Bearer",
-		User: commands.AuthUserDTO{
-			ID:                user.ID,
-			Email:             user.Email,
-			Name:              user.Name,
-			AvatarURL:         user.AvatarURL,
-			Role:              user.Role,
-			AccessTier:        user.AccessTier,
-			PreferredLanguage: user.PreferredLanguage,
-			LearningLevel:     user.LearningLevel,
-			Timezone:          user.Timezone,
-		},
+		User:         commands.ToAuthUserDTO(user),
 	})
 }

@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
+
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
 )
@@ -48,6 +50,49 @@ func TestJWTService_GenerateAndValidate(t *testing.T) {
 	_, err = jwtSvc.ValidateAccessToken("invalid.jwt.token")
 	if err == nil {
 		t.Error("expected error validating invalid token, got nil")
+	}
+}
+
+func TestJWTService_RejectsForeignIssuer(t *testing.T) {
+	jwtSvc := security.NewJWTService("test-secret-key-32-bytes-minimum-size!!", time.Minute, time.Hour)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, security.UserClaims{
+		Email: "student@wordtap.app",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   "test-user-uuid",
+			Issuer:    "another-service",
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+		},
+	})
+	signed, err := token.SignedString([]byte("test-secret-key-32-bytes-minimum-size!!"))
+	if err != nil {
+		t.Fatalf("unexpected error signing token: %v", err)
+	}
+
+	if _, err := jwtSvc.ValidateAccessToken(signed); err == nil {
+		t.Fatal("expected a token issued by another service to be rejected")
+	}
+}
+
+func TestJWTService_RejectsTokenWithoutExpiration(t *testing.T) {
+	jwtSvc := security.NewJWTService("test-secret-key-32-bytes-minimum-size!!", time.Minute, time.Hour)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, security.UserClaims{
+		Email: "student@wordtap.app",
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:  "test-user-uuid",
+			Issuer:   "wordtap-api",
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+		},
+	})
+	signed, err := token.SignedString([]byte("test-secret-key-32-bytes-minimum-size!!"))
+	if err != nil {
+		t.Fatalf("unexpected error signing token: %v", err)
+	}
+
+	if _, err := jwtSvc.ValidateAccessToken(signed); err == nil {
+		t.Fatal("expected a token without expiration to be rejected")
 	}
 }
 

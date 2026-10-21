@@ -15,6 +15,7 @@ type UserRepository interface {
 	CreateAuthAccount(ctx context.Context, authAccount *entities.UserAuthAccount) error
 	CreateSession(ctx context.Context, session *entities.UserSession) error
 	FindSessionByTokenHash(ctx context.Context, tokenHash string) (*entities.UserSession, error)
+	RotateSession(ctx context.Context, oldTokenHash string, newSession *entities.UserSession) (bool, error)
 	RevokeSession(ctx context.Context, tokenHash string) error
 	RevokeAllSessions(ctx context.Context, userID string) error
 	UpdateUser(ctx context.Context, user *entities.User) error
