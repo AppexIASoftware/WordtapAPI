@@ -11,10 +11,10 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 	"gorm.io/gorm"
 
-	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
-	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
 	classroomCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/commands"
 	classroomQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/queries"
+	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
+	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
 	gameCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/gamification/commands"
 	gameQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/gamification/queries"
 	lessonCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/commands"
@@ -57,11 +57,17 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	if jwtSecret == "" {
 		return nil, fmt.Errorf("missing required environment variable: JWT_SECRET")
 	}
+	if len(jwtSecret) < 32 {
+		return nil, fmt.Errorf("JWT_SECRET must be at least 32 bytes long")
+	}
 
 	googleClientID := strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_ID"))
 	if googleClientID == "" {
 		return nil, fmt.Errorf("missing required environment variable: GOOGLE_CLIENT_ID")
 	}
+
+	appEnv := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+	devLoginEnabled := appEnv == "development" || appEnv == "dev" || appEnv == "local"
 
 	e := echo.New()
 
@@ -94,6 +100,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	contentBankRepo := infraRepo.NewMySQLContentBankRepository(db)
 	classroomRepo := infraRepo.NewMySQLClassroomRepository(db)
 	teacherGameRepo := infraRepo.NewMySQLTeacherGameRepository(db)
+	lessonGameRepo := infraRepo.NewMySQLLessonGameRepository(db)
 
 	// Casos de uso
 	loginWithGoogleHandler := commands.NewLoginWithGoogleHandler(userRepo, googleVerifier, jwtService, teacherAppRepo)
@@ -111,6 +118,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	listTeacherGamesHandler := gameQuery.NewListTeacherGamesHandler(teacherGameRepo)
 	getTeacherGameDetailHandler := gameQuery.NewGetTeacherGameDetailHandler(teacherGameRepo)
 	listAdminGamesHandler := gameQuery.NewListAdminGamesHandler(teacherGameRepo)
+	listGlobalGamesHandler := gameQuery.NewListGlobalGamesHandler(teacherGameRepo)
 	createGlobalGameHandler := gameCmd.NewCreateGlobalGameHandler(teacherGameRepo)
 	updateGlobalGameHandler := gameCmd.NewUpdateGlobalGameHandler(teacherGameRepo)
 	deleteGlobalGameHandler := gameCmd.NewDeleteGlobalGameHandler(teacherGameRepo)
@@ -146,6 +154,10 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	deleteLessonHandler := lessonCmd.NewDeleteLessonHandler(lessonRepo, courseRepo)
 	saveLessonItemHandler := lessonCmd.NewSaveLessonItemHandler(lessonRepo, courseRepo)
 	deleteLessonItemHandler := lessonCmd.NewDeleteLessonItemHandler(lessonRepo, courseRepo)
+	linkLessonGameHandler := lessonCmd.NewLinkLessonGameHandler(lessonRepo, courseRepo, teacherGameRepo, lessonGameRepo)
+	updateLessonGameHandler := lessonCmd.NewUpdateLessonGameHandler(lessonRepo, courseRepo, lessonGameRepo)
+	unlinkLessonGameHandler := lessonCmd.NewUnlinkLessonGameHandler(lessonRepo, courseRepo, lessonGameRepo)
+	listLessonGamesHandler := lessonQuery.NewListLessonGamesHandler(lessonRepo, courseRepo, lessonGameRepo)
 
 	// Vault Command & Query handlers
 	listVaultTypesHandler := vaultQuery.NewListVaultTypesHandler(contentBankRepo)
@@ -165,7 +177,13 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		saveLessonItemHandler,
 		deleteLessonItemHandler,
 	)
-	authRouter := auth.NewAuthRouter(loginWithGoogleHandler, userRepo, teacherAppRepo, jwtService)
+	lessonGameRouter := lesson.NewLessonGameRouter(
+		listLessonGamesHandler,
+		linkLessonGameHandler,
+		updateLessonGameHandler,
+		unlinkLessonGameHandler,
+	)
+	authRouter := auth.NewAuthRouter(loginWithGoogleHandler, userRepo, teacherAppRepo, jwtService, devLoginEnabled)
 	courseRouter := course.NewCourseRouter(
 		createCourseHandler,
 		updateCourseHandler,
@@ -209,6 +227,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		listTeacherGamesHandler,
 		getTeacherGameDetailHandler,
 		listAdminGamesHandler,
+		listGlobalGamesHandler,
 		createGlobalGameHandler,
 		updateGlobalGameHandler,
 		deleteGlobalGameHandler,
@@ -241,6 +260,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	swaggerRouter.RegisterRoutes(e)
 	authRouter.RegisterRoutes(v1, authRequired)
 	lessonRouter.RegisterRoutes(v1, authRequired, staffRoles, instructorOrAdmin)
+	lessonGameRouter.RegisterRoutes(v1, authRequired, staffRoles, instructorOrAdmin)
 	courseRouter.RegisterRoutes(v1, authRequired, catalogRoles, staffRoles, instructorOrAdmin, adminOrModerator)
 	courseReviewRouter := course.NewCourseReviewRouter(submitCourseReviewHandler, withdrawCourseReviewHandler, reviewCourseHandler, listCourseReviewsHandler, listTeacherCourseReviewsHandler)
 	courseReviewRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)

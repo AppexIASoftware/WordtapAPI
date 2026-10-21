@@ -1,14 +1,11 @@
-// Package access holds the ownership rules shared by course and lesson
-// features. Keeping them in one place prevents the platform/teacher boundary
-// from drifting between endpoints.
+// Package access defines course and lesson authorization rules.
 package access
 
 import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 )
 
-// EffectiveOwnerType returns the ownership stored on the course, falling back
-// to teacher ownership for legacy rows that predate the owner_type column.
+// EffectiveOwnerType returns course owner type, defaulting to teacher.
 func EffectiveOwnerType(course *entities.Course) entities.OwnerType {
 	if course == nil {
 		return entities.OwnerTypeTeacher
@@ -19,9 +16,7 @@ func EffectiveOwnerType(course *entities.Course) entities.OwnerType {
 	return entities.OwnerTypeTeacher
 }
 
-// CanViewCourse reports whether the requester may inspect a course and its
-// content. Administrators and moderators supervise any course; an instructor
-// may only inspect their own teacher-owned course.
+// CanViewCourse checks read permissions for a course.
 func CanViewCourse(course *entities.Course, requesterID string, role entities.UserRole) bool {
 	if course == nil {
 		return false
@@ -37,9 +32,7 @@ func CanViewCourse(course *entities.Course, requesterID string, role entities.Us
 	}
 }
 
-// CanEditCourseContent reports whether the requester may change a course,
-// its lessons, cards, or pricing. Administrators own platform courses and
-// instructors own their teacher courses. Moderators supervise but do not edit.
+// CanEditCourseContent checks write permissions for a course.
 func CanEditCourseContent(course *entities.Course, requesterID string, role entities.UserRole) bool {
 	if course == nil {
 		return false
@@ -55,9 +48,7 @@ func CanEditCourseContent(course *entities.Course, requesterID string, role enti
 	}
 }
 
-// CanLinkGameToCourse applies the stricter linking rule: an administrator only
-// links games to platform-owned courses, while an instructor only links games
-// to their own teacher-owned courses.
+// CanLinkGameToCourse checks permission to link a game to a course.
 func CanLinkGameToCourse(course *entities.Course, requesterID string, role entities.UserRole) bool {
 	if course == nil {
 		return false

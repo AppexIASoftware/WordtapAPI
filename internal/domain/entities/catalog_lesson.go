@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ContentStatus define los estados de publicación (draft, in_review, published, archived).
+// ContentStatus defines publication statuses.
 type ContentStatus string
 
 const (
@@ -17,7 +17,7 @@ const (
 	ContentStatusArchived  ContentStatus = "archived"
 )
 
-// LessonContentType define el tipo de paso dentro de una lección (word, phrase, grammar, tip, exercise).
+// LessonContentType defines lesson step content types.
 type LessonContentType string
 
 const (
@@ -28,7 +28,7 @@ const (
 	LessonContentTypeExercise LessonContentType = "exercise"
 )
 
-// ContentCategory agrupa lecciones y vocabulario por temáticas (ej: viajes, trabajo).
+// ContentCategory groups lessons and vocabulary by topic.
 type ContentCategory struct {
 	ID          string    `gorm:"type:varchar(36);primaryKey" json:"id"`
 	Name        string    `gorm:"type:varchar(100);uniqueIndex;not null" json:"name"`
@@ -45,7 +45,7 @@ func (c *ContentCategory) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// Course representa un plan formativo completo (gratuito o premium).
+// Course represents a learning plan.
 type Course struct {
 	ID            string        `gorm:"type:varchar(36);primaryKey" json:"id"`
 	Title         string        `gorm:"type:varchar(180);not null" json:"title"`
@@ -81,7 +81,7 @@ func (c *Course) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// Lesson representa una lección de aprendizaje individual dentro de un curso.
+// Lesson represents an individual lesson in a course.
 type Lesson struct {
 	ID               string        `gorm:"type:varchar(36);primaryKey" json:"id"`
 	CourseID         string        `gorm:"type:varchar(36);not null;index:idx_lessons_course_order,priority:1" json:"course_id"`
@@ -108,7 +108,7 @@ func (l *Lesson) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// VocabularyItem almacena palabras en inglés con su traducción, pronunciación y ejemplo.
+// VocabularyItem stores vocabulary words with translations.
 type VocabularyItem struct {
 	ID              string        `gorm:"type:varchar(36);primaryKey" json:"id"`
 	CategoryID      *string       `gorm:"type:varchar(36);index" json:"category_id"`
@@ -132,7 +132,7 @@ func (v *VocabularyItem) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// Phrase representa expresiones y frases conversacionales completas.
+// Phrase represents conversational expressions.
 type Phrase struct {
 	ID          string        `gorm:"type:varchar(36);primaryKey" json:"id"`
 	CategoryID  *string       `gorm:"type:varchar(36);index" json:"category_id"`
@@ -153,7 +153,7 @@ func (p *Phrase) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// LessonItem estructura la secuencia de pasos o tarjetas dentro de una lección.
+// LessonItem represents a card or step within a lesson.
 type LessonItem struct {
 	ID                string            `gorm:"type:varchar(36);primaryKey" json:"id"`
 	LessonID          string            `gorm:"type:varchar(36);not null;index:idx_items_lesson_order,priority:1" json:"lesson_id"`
@@ -178,7 +178,7 @@ func (li *LessonItem) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// ContentAsset almacena recursos multimedia (audios, imágenes, documentos) de lecciones.
+// ContentAsset stores multimedia resources for lessons.
 type ContentAsset struct {
 	ID           string    `gorm:"type:varchar(36);primaryKey" json:"id"`
 	LessonID     *string   `gorm:"type:varchar(36);index" json:"lesson_id"`
@@ -199,7 +199,7 @@ func (ca *ContentAsset) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// CourseReviewStatus define los estados del flujo de revisión y aprobación de cursos.
+// CourseReviewStatus defines course review states.
 type CourseReviewStatus string
 
 const (
@@ -210,7 +210,7 @@ const (
 	CourseReviewStatusWithdrawn        CourseReviewStatus = "withdrawn"
 )
 
-// CourseReviewRequest modela una solicitud de revisión/PR enviada por un docente para publicación.
+// CourseReviewRequest represents a publication review request.
 type CourseReviewRequest struct {
 	ID              string             `gorm:"type:varchar(36);primaryKey" json:"id"`
 	CourseID        string             `gorm:"type:varchar(36);not null;index" json:"course_id"`

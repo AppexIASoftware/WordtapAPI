@@ -9,6 +9,22 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest"
 )
 
+func TestNewServer_RejectsShortJWTSecret(t *testing.T) {
+	os.Setenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")
+	os.Setenv("JWT_SECRET", "too-short-secret")
+	os.Setenv("GOOGLE_CLIENT_ID", "test-client-id.apps.googleusercontent.com")
+	defer func() {
+		os.Unsetenv("CORS_ALLOWED_ORIGINS")
+		os.Unsetenv("JWT_SECRET")
+		os.Unsetenv("GOOGLE_CLIENT_ID")
+	}()
+
+	_, err := rest.NewServer(nil)
+	if err == nil {
+		t.Fatal("expected error when JWT_SECRET is shorter than 32 bytes, got nil")
+	}
+}
+
 func TestNewServer_MissingEnvVariables(t *testing.T) {
 	// Limpiar variables de entorno
 	os.Unsetenv("CORS_ALLOWED_ORIGINS")
