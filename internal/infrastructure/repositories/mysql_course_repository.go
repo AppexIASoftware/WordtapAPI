@@ -44,11 +44,11 @@ func (r *MySQLCourseRepository) FindByAuthor(ctx context.Context, authorID strin
 	return courses, nil
 }
 
-// FindPublished returns all published courses available for the public catalog.
+// FindPublished returns all published platform courses available for the public catalog.
 func (r *MySQLCourseRepository) FindPublished(ctx context.Context) ([]entities.Course, error) {
 	courses := make([]entities.Course, 0)
 	err := r.db.WithContext(ctx).
-		Where("status = ?", entities.ContentStatusPublished).
+		Where("status = ? AND owner_type = ?", entities.ContentStatusPublished, entities.OwnerTypePlatform).
 		Preload("Author").
 		Preload("Lessons", func(db *gorm.DB) *gorm.DB {
 			return db.Where("status = ?", entities.ContentStatusPublished).Order("lessons.sort_order ASC, lessons.created_at ASC")

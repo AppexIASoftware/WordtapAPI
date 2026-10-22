@@ -121,7 +121,11 @@ func (m *mockCourseRepository) FindByAuthor(ctx context.Context, authorID string
 func (m *mockCourseRepository) FindPublished(ctx context.Context) ([]entities.Course, error) {
 	var published []entities.Course
 	for _, c := range m.courses {
-		if c.Status == entities.ContentStatusPublished {
+		owner := c.OwnerType
+		if owner == "" {
+			owner = entities.OwnerTypePlatform
+		}
+		if c.Status == entities.ContentStatusPublished && owner == entities.OwnerTypePlatform {
 			published = append(published, c)
 		}
 	}
@@ -505,6 +509,29 @@ func TestCourseRoutesRBAC(t *testing.T) {
 		if len(rawList) > 0 {
 			if _, exists := rawList[0]["created_by"]; exists {
 				t.Errorf("expected 'created_by' to be omitted from catalog response")
+			}
+		}
+
+		// 5. Teacher courses (owner_type = 'teacher') are excluded from public catalog even when published
+		repo.courses = append(repo.courses, entities.Course{
+			ID:        "teacher-published-private-1",
+			Title:     "Private Teacher Course",
+			Status:    entities.ContentStatusPublished,
+			OwnerType: entities.OwnerTypeTeacher,
+		})
+
+		reqCatalog := httptest.NewRequest(http.MethodGet, "/api/v1/courses", nil)
+		reqCatalog.Header.Set("Authorization", "Bearer "+studentToken)
+		recCatalog := httptest.NewRecorder()
+		e.ServeHTTP(recCatalog, reqCatalog)
+		if recCatalog.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d", recCatalog.Code)
+		}
+		var catalogList []course.PublicCourseDTO
+		_ = json.Unmarshal(recCatalog.Body.Bytes(), &catalogList)
+		for _, c := range catalogList {
+			if c.ID == "teacher-published-private-1" {
+				t.Fatalf("expected private teacher course to be excluded from public catalog, but it was found")
 			}
 		}
 	})
