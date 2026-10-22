@@ -242,6 +242,35 @@ func TestListLessonGamesHandler(t *testing.T) {
 			t.Errorf("expected 0 words, got %d", len(dtos[0].Words))
 		}
 	})
+
+	t.Run("extracts words from ContentText JSON cards created by studio", func(t *testing.T) {
+		fixture := lessontest.NewFixture()
+		jsonCard := `{"en":"learn","es":"aprender","example":"I learn English"}`
+		lesson := fixture.Lessons.Lessons["lesson-teacher"]
+		lesson.Items = append(lesson.Items, entities.LessonItem{
+			ID:          "card-json-1",
+			LessonID:    "lesson-teacher",
+			ContentText: &jsonCard,
+		})
+		fixture.Lessons.Lessons["lesson-teacher"] = lesson
+
+		linkGames(t, fixture, "lesson-teacher", "game-teacher", "teacher-1", entities.RoleInstructor)
+
+		dtos, err := fixture.ListHandler().Handle(ctx, lessonQuery.ListLessonGamesQuery{
+			LessonID:      "lesson-teacher",
+			RequesterID:   "student-1",
+			RequesterRole: entities.RoleStudent,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(dtos[0].Words) != 1 {
+			t.Fatalf("expected 1 word, got %d", len(dtos[0].Words))
+		}
+		if dtos[0].Words[0].Term != "learn" || dtos[0].Words[0].Translation != "aprender" {
+			t.Errorf("unexpected word from json: %+v", dtos[0].Words[0])
+		}
+	})
 }
 
 func deactivateGame(fixture *lessontest.Fixture, gameID string) {

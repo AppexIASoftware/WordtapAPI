@@ -96,6 +96,28 @@ func extractGameWords(lesson *entities.Lesson, game *entities.TeacherGame) []Les
 				term = strings.TrimSpace(item.ContentBankItem.TargetText)
 				translation = strings.TrimSpace(item.ContentBankItem.PromptText)
 				id = item.ContentBankItem.ID
+			} else if item.ContentText != nil && strings.TrimSpace(*item.ContentText) != "" {
+				var cardPayload struct {
+					EN          string `json:"en"`
+					ES          string `json:"es"`
+					Title       string `json:"title"`
+					Term        string `json:"term"`
+					Translation string `json:"translation"`
+				}
+				if err := json.Unmarshal([]byte(*item.ContentText), &cardPayload); err == nil {
+					if cardPayload.EN != "" {
+						term = strings.TrimSpace(cardPayload.EN)
+					} else if cardPayload.Term != "" {
+						term = strings.TrimSpace(cardPayload.Term)
+					} else if cardPayload.Title != "" {
+						term = strings.TrimSpace(cardPayload.Title)
+					}
+					if cardPayload.ES != "" {
+						translation = strings.TrimSpace(cardPayload.ES)
+					} else if cardPayload.Translation != "" {
+						translation = strings.TrimSpace(cardPayload.Translation)
+					}
+				}
 			}
 			if id == "" {
 				id = item.ID
