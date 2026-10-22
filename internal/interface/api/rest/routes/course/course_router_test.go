@@ -353,6 +353,24 @@ func TestCourseRoutesRBAC(t *testing.T) {
 		if adminRec.Code != http.StatusOK {
 			t.Fatalf("expected 200 when an admin edits a platform course, got %d. Body: %s", adminRec.Code, adminRec.Body.String())
 		}
+
+		teacherTierReq := httptest.NewRequest(http.MethodPut, "/api/v1/courses/"+createdID, bytes.NewBufferString(`{"access_tier":"subscription"}`))
+		teacherTierReq.Header.Set("Authorization", "Bearer "+teacherToken)
+		teacherTierReq.Header.Set("Content-Type", "application/json")
+		teacherTierRec := httptest.NewRecorder()
+		e.ServeHTTP(teacherTierRec, teacherTierReq)
+		if teacherTierRec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 when teacher attempts to set subscription tier, got %d", teacherTierRec.Code)
+		}
+
+		adminTierReq := httptest.NewRequest(http.MethodPut, "/api/v1/courses/"+platformCourse.ID, bytes.NewBufferString(`{"access_tier":"subscription","price_cents":0}`))
+		adminTierReq.Header.Set("Authorization", "Bearer "+adminToken)
+		adminTierReq.Header.Set("Content-Type", "application/json")
+		adminTierRec := httptest.NewRecorder()
+		e.ServeHTTP(adminTierRec, adminTierReq)
+		if adminTierRec.Code != http.StatusOK {
+			t.Fatalf("expected 200 when admin sets platform course to subscription, got %d. Body: %s", adminTierRec.Code, adminTierRec.Body.String())
+		}
 	})
 
 	t.Run("other teacher cannot submit course for review (400 Bad Request)", func(t *testing.T) {

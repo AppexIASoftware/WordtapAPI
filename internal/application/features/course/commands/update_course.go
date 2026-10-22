@@ -96,6 +96,9 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 	}
 
 	if cmd.AccessTier != nil && *cmd.AccessTier != "" && *cmd.AccessTier != course.AccessTier {
+		if *cmd.AccessTier == entities.AccessTierSubscription && cmd.RequesterRole != entities.RoleAdmin {
+			return nil, apperrors.New("Solo los administradores pueden asignar un curso a la Suscripción Pro.")
+		}
 		changed = append(changed, fmt.Sprintf("Tier: '%s' -> '%s'", course.AccessTier, *cmd.AccessTier))
 		course.AccessTier = *cmd.AccessTier
 	}
