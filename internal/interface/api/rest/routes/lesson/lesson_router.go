@@ -47,16 +47,16 @@ func NewLessonRouter(
 func (r *LessonRouter) RegisterRoutes(
 	v1 *echo.Group,
 	authRequired echo.MiddlewareFunc,
-	staffRoles echo.MiddlewareFunc,
+	studentOrStaff echo.MiddlewareFunc,
 	instructorOrAdmin echo.MiddlewareFunc,
 ) {
-	// Course lessons (staff only: instructor, admin, moderator)
-	v1.GET("/courses/:course_id/lessons", r.ListCourseLessons, authRequired, staffRoles)
+	// Course lessons (students and staff: instructor, admin, moderator)
+	v1.GET("/courses/:course_id/lessons", r.ListCourseLessons, authRequired, studentOrStaff)
 	v1.POST("/courses/:course_id/lessons", r.CreateLesson, authRequired, instructorOrAdmin)
 
 	// Single lesson management
 	lessonsGroup := v1.Group("/lessons")
-	lessonsGroup.GET("/:id", r.GetLessonDetail, authRequired, staffRoles)
+	lessonsGroup.GET("/:id", r.GetLessonDetail, authRequired, studentOrStaff)
 	lessonsGroup.PUT("/:id", r.UpdateLesson, authRequired, instructorOrAdmin)
 	lessonsGroup.DELETE("/:id", r.DeleteLesson, authRequired, instructorOrAdmin)
 	lessonsGroup.POST("/:id/items", r.SaveLessonItem, authRequired, instructorOrAdmin)

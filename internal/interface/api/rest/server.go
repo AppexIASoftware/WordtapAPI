@@ -236,8 +236,9 @@ func NewServer(db *gorm.DB) (*Server, error) {
 
 	// Middlewares específicos
 	authRequired := restMiddleware.RequireAuth(jwtService)
-	catalogRoles := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
+	catalogRoles := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)
 	staffRoles := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator)
+	studentOrStaff := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)
 	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
 	adminOrModerator := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
 
@@ -259,9 +260,9 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	healthRouter.RegisterRoutes(e, v1)
 	swaggerRouter.RegisterRoutes(e)
 	authRouter.RegisterRoutes(v1, authRequired)
-	lessonRouter.RegisterRoutes(v1, authRequired, staffRoles, instructorOrAdmin)
+	lessonRouter.RegisterRoutes(v1, authRequired, studentOrStaff, instructorOrAdmin)
 	lessonGameRouter.RegisterRoutes(v1, authRequired, staffRoles, instructorOrAdmin)
-	courseRouter.RegisterRoutes(v1, authRequired, catalogRoles, staffRoles, instructorOrAdmin, adminOrModerator)
+	courseRouter.RegisterRoutes(v1, authRequired, catalogRoles, studentOrStaff, staffRoles, instructorOrAdmin, adminOrModerator)
 	courseReviewRouter := course.NewCourseReviewRouter(submitCourseReviewHandler, withdrawCourseReviewHandler, reviewCourseHandler, listCourseReviewsHandler, listTeacherCourseReviewsHandler)
 	courseReviewRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)
 	teacherAppRouter.RegisterRoutes(v1, authRequired, adminOrModerator)

@@ -94,13 +94,13 @@ func TestCourseDetailRoutes(t *testing.T) {
 			t.Fatalf("expected 401 Unauthorized for anonymous, got %d", recAnon.Code)
 		}
 
-		// Student -> 403
+		// Student -> 200 OK (acceso a cursos publicados)
 		reqStudent := httptest.NewRequest(http.MethodGet, "/api/v1/courses", nil)
 		reqStudent.Header.Set("Authorization", "Bearer "+studentToken)
 		recStudent := httptest.NewRecorder()
 		e.ServeHTTP(recStudent, reqStudent)
-		if recStudent.Code != http.StatusForbidden {
-			t.Fatalf("expected 403 Forbidden for student, got %d", recStudent.Code)
+		if recStudent.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for student, got %d", recStudent.Code)
 		}
 
 		// Moderator -> 200 OK
@@ -126,7 +126,7 @@ func TestCourseDetailRoutes(t *testing.T) {
 		}
 	})
 
-	t.Run("anonymous and student cannot get course detail (401 / 403)", func(t *testing.T) {
+	t.Run("anonymous rejected (401), student gets published course (200 OK) but draft is forbidden (403)", func(t *testing.T) {
 		reqAnon := httptest.NewRequest(http.MethodGet, "/api/v1/courses/"+pubCourseID, nil)
 		recAnon := httptest.NewRecorder()
 		e.ServeHTTP(recAnon, reqAnon)
@@ -134,12 +134,22 @@ func TestCourseDetailRoutes(t *testing.T) {
 			t.Fatalf("expected 401 Unauthorized for anonymous detail, got %d", recAnon.Code)
 		}
 
+		// Student on published course -> 200 OK
 		reqStudent := httptest.NewRequest(http.MethodGet, "/api/v1/courses/"+pubCourseID, nil)
 		reqStudent.Header.Set("Authorization", "Bearer "+studentToken)
 		recStudent := httptest.NewRecorder()
 		e.ServeHTTP(recStudent, reqStudent)
-		if recStudent.Code != http.StatusForbidden {
-			t.Fatalf("expected 403 Forbidden for student detail, got %d", recStudent.Code)
+		if recStudent.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for student on published course, got %d", recStudent.Code)
+		}
+
+		// Student on draft course -> 403 Forbidden
+		reqDraft := httptest.NewRequest(http.MethodGet, "/api/v1/courses/"+draftCourseID, nil)
+		reqDraft.Header.Set("Authorization", "Bearer "+studentToken)
+		recDraft := httptest.NewRecorder()
+		e.ServeHTTP(recDraft, reqDraft)
+		if recDraft.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 Forbidden for student on draft course, got %d", recDraft.Code)
 		}
 	})
 

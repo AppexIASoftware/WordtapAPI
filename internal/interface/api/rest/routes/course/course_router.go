@@ -50,15 +50,16 @@ func (r *CourseRouter) RegisterRoutes(
 	v1 *echo.Group,
 	authRequired echo.MiddlewareFunc,
 	catalogRoles echo.MiddlewareFunc,
+	studentOrStaff echo.MiddlewareFunc,
 	staffRoles echo.MiddlewareFunc,
 	instructorOrAdmin echo.MiddlewareFunc,
 	adminOrModerator echo.MiddlewareFunc,
 ) {
-	// Course catalog (staff only: admin, moderator. Teacher has no access to Wordtap catalog)
+	// Course catalog (students, admin, moderator. Teacher has no access to Wordtap catalog)
 	v1.GET("/courses", r.ListPublicCourses, authRequired, catalogRoles)
 
-	// Course details (accessible by author, admin, moderator)
-	v1.GET("/courses/:id", r.GetCourseDetail, authRequired, staffRoles)
+	// Course details (accessible by student, author, admin, moderator)
+	v1.GET("/courses/:id", r.GetCourseDetail, authRequired, studentOrStaff)
 
 	// Admin global courses list (all courses, any author, all statuses)
 	v1.GET("/admin/courses", r.ListAdminCourses, authRequired, adminOrModerator)

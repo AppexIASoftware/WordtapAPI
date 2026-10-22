@@ -183,13 +183,14 @@ func setupTestServer() (*echo.Echo, *security.JWTService, *mockCourseRepository,
 	router := course.NewCourseRouter(createCmd, updateCmd, deleteCmd, submitCmd, listQuery, listPublishedQuery, listAdminQuery, getQuery)
 
 	authRequired := restMiddleware.RequireAuth(jwtSvc)
-	catalogRoles := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
+	catalogRoles := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)
+	studentOrStaff := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)
 	staffRoles := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator)
 	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
 	adminOrMod := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
 
 	v1 := e.Group("/api/v1")
-	router.RegisterRoutes(v1, authRequired, catalogRoles, staffRoles, instructorOrAdmin, adminOrMod)
+	router.RegisterRoutes(v1, authRequired, catalogRoles, studentOrStaff, staffRoles, instructorOrAdmin, adminOrMod)
 	reviewRouter := course.NewCourseReviewRouter(submitCmd, withdrawCmd, reviewCmd, pendingQuery, historyQuery)
 	reviewRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrMod)
 
@@ -436,7 +437,7 @@ func TestCourseRoutesRBAC(t *testing.T) {
 			t.Fatalf("expected 403 Forbidden for teacher accessing public courses, got %d", recTeacher.Code)
 		}
 
-		// 3. Student -> 403 Forbidden (no acceso en Studio)
+		// 3. Student -> 200 OK (acceso habilitado al catálogo público)
 		studentToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
 			ID:    "student-1",
 			Email: "student@wordtap.app",
@@ -446,8 +447,8 @@ func TestCourseRoutesRBAC(t *testing.T) {
 		reqStudent.Header.Set("Authorization", "Bearer "+studentToken)
 		recStudent := httptest.NewRecorder()
 		e.ServeHTTP(recStudent, reqStudent)
-		if recStudent.Code != http.StatusForbidden {
-			t.Fatalf("expected 403 Forbidden for student, got %d", recStudent.Code)
+		if recStudent.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for student, got %d", recStudent.Code)
 		}
 
 		// 4. Staff moderator -> 200 OK

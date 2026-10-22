@@ -163,11 +163,11 @@ func setupLessonTestServer() (*echo.Echo, *security.JWTService, *mockLessonRepos
 	)
 
 	authRequired := restMiddleware.RequireAuth(jwtSvc)
-	staffRoles := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator)
+	studentOrStaff := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)
 	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
 
 	v1 := e.Group("/api/v1")
-	router.RegisterRoutes(v1, authRequired, staffRoles, instructorOrAdmin)
+	router.RegisterRoutes(v1, authRequired, studentOrStaff, instructorOrAdmin)
 
 	return e, jwtSvc, lessonRepo, courseRepo
 }
@@ -270,7 +270,7 @@ func TestLessonRoutesRBAC(t *testing.T) {
 		}
 	})
 
-	t.Run("anonymous and student cannot list course lessons (401 / 403)", func(t *testing.T) {
+	t.Run("anonymous gets 401, student cannot list draft course lessons (403)", func(t *testing.T) {
 		reqAnon := httptest.NewRequest(http.MethodGet, "/api/v1/courses/course-100/lessons", nil)
 		recAnon := httptest.NewRecorder()
 		e.ServeHTTP(recAnon, reqAnon)
@@ -283,11 +283,11 @@ func TestLessonRoutesRBAC(t *testing.T) {
 		recStudent := httptest.NewRecorder()
 		e.ServeHTTP(recStudent, reqStudent)
 		if recStudent.Code != http.StatusForbidden {
-			t.Fatalf("expected 403 Forbidden for student, got %d", recStudent.Code)
+			t.Fatalf("expected 403 Forbidden for student on draft course, got %d", recStudent.Code)
 		}
 	})
 
-	t.Run("staff can list published course lessons (200 OK)", func(t *testing.T) {
+	t.Run("student and staff can list published course lessons (200 OK)", func(t *testing.T) {
 		modToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
 			ID:    "mod-1",
 			Email: "moderator@wordtap.app",
@@ -307,6 +307,15 @@ func TestLessonRoutesRBAC(t *testing.T) {
 			Title:    "Lección Pública",
 			Status:   entities.ContentStatusPublished,
 		})
+
+		// Student -> 200 OK
+		reqStudent := httptest.NewRequest(http.MethodGet, "/api/v1/courses/"+pubCourseID+"/lessons", nil)
+		reqStudent.Header.Set("Authorization", "Bearer "+studentToken)
+		recStudent := httptest.NewRecorder()
+		e.ServeHTTP(recStudent, reqStudent)
+		if recStudent.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for student on published course lessons, got %d", recStudent.Code)
+		}
 
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/courses/"+pubCourseID+"/lessons", nil)
 		req.Header.Set("Authorization", "Bearer "+modToken)
