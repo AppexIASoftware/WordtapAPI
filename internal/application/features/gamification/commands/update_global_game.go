@@ -17,6 +17,7 @@ import (
 type UpdateGlobalGameCommand struct {
 	GameID           string  `json:"-"`
 	AuthorID         string  `json:"-"`
+	BaseArchetype    string  `json:"base_archetype"`
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
 	Level            string  `json:"level"`
@@ -62,13 +63,23 @@ func (h *UpdateGlobalGameHandler) Handle(ctx context.Context, cmd UpdateGlobalGa
 		return nil, apperrors.New("Solo se pueden gestionar actividades de la plataforma.")
 	}
 
+	archetype := strings.ToLower(strings.TrimSpace(cmd.BaseArchetype))
+	if archetype != "" {
+		game.BaseArchetype = archetype
+	}
+
 	title := strings.TrimSpace(cmd.Title)
 	if title != "" {
 		game.Title = title
 	}
 
 	if cmd.Description != nil {
-		game.Description = cmd.Description
+		trimmedDesc := strings.TrimSpace(*cmd.Description)
+		if trimmedDesc == "" {
+			game.Description = nil
+		} else {
+			game.Description = &trimmedDesc
+		}
 	}
 
 	level := strings.TrimSpace(cmd.Level)

@@ -20,3 +20,10 @@ type UserRepository interface {
 	RevokeAllSessions(ctx context.Context, userID string) error
 	UpdateUser(ctx context.Context, user *entities.User) error
 }
+
+// UserLearningStatsRepository define las operaciones de persistencia para telemetría de aprendizaje, vidas y rachas.
+type UserLearningStatsRepository interface {
+	GetLearningStats(ctx context.Context, userID string) (*entities.UserLearningStats, error)
+	DeductUserLife(ctx context.Context, userID string) (*entities.UserLearningStats, error)
+	RefillUserLives(ctx context.Context, userID string) (*entities.UserLearningStats, error)
+}

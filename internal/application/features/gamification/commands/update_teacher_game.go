@@ -16,6 +16,7 @@ type UpdateTeacherGameCommand struct {
 	GameID           string  `json:"-"`
 	TeacherID        string  `json:"-"`
 	CourseID         *string `json:"course_id"`
+	BaseArchetype    string  `json:"base_archetype"`
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
 	Level            string  `json:"level"`
@@ -58,6 +59,11 @@ func (h *UpdateTeacherGameHandler) Handle(ctx context.Context, cmd UpdateTeacher
 		return nil, apperrors.New("No tienes permisos para editar esta actividad.")
 	}
 
+	archetype := strings.ToLower(strings.TrimSpace(cmd.BaseArchetype))
+	if archetype != "" {
+		game.BaseArchetype = archetype
+	}
+
 	title := strings.TrimSpace(cmd.Title)
 	if title != "" {
 		game.Title = title
@@ -72,7 +78,12 @@ func (h *UpdateTeacherGameHandler) Handle(ctx context.Context, cmd UpdateTeacher
 		}
 	}
 	if cmd.Description != nil {
-		game.Description = cmd.Description
+		trimmedDesc := strings.TrimSpace(*cmd.Description)
+		if trimmedDesc == "" {
+			game.Description = nil
+		} else {
+			game.Description = &trimmedDesc
+		}
 	}
 
 	level := strings.TrimSpace(cmd.Level)

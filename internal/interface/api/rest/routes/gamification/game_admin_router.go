@@ -29,6 +29,7 @@ type CreateAdminGameRequest struct {
 // UpdateAdminGameRequest is the payload of the platform-global activity update
 // endpoint. There is no course_id: global activities are not linked to a course.
 type UpdateAdminGameRequest struct {
+	BaseArchetype    string  `json:"base_archetype"`
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
 	Level            string  `json:"level"`
@@ -102,6 +103,7 @@ func (r *GameRouter) UpdateAdminGame(c *echo.Context) error {
 	cmd := commands.UpdateGlobalGameCommand{
 		GameID:           id,
 		AuthorID:         userID,
+		BaseArchetype:    req.BaseArchetype,
 		Title:            req.Title,
 		Description:      req.Description,
 		Level:            req.Level,

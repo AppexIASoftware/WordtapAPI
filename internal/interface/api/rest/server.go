@@ -67,7 +67,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	}
 
 	appEnv := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
-	devLoginEnabled := appEnv == "development" || appEnv == "dev" || appEnv == "local"
+	devLoginEnabled := appEnv == "development" || appEnv == "dev" || appEnv == "local" || appEnv == ""
 
 	e := echo.New()
 
@@ -232,6 +232,8 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		updateGlobalGameHandler,
 		deleteGlobalGameHandler,
 	)
+	statsRepo := infraRepo.NewMySQLUserLearningStatsRepository(db)
+	livesRouter := gamification.NewLivesRouter(statsRepo)
 	swaggerRouter := docs.NewSwaggerRouter()
 
 	// Middlewares específicos
@@ -270,6 +272,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	vaultRouter.RegisterRoutes(v1, authRequired, staffRoles, adminOrModerator, instructorOrAdmin)
 	classroomRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
 	gameRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)
+	livesRouter.RegisterRoutes(v1, authRequired)
 
 	return &Server{App: e}, nil
 }

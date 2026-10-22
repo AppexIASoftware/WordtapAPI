@@ -90,6 +90,7 @@ type CreateGameRequest struct {
 
 type UpdateGameRequest struct {
 	CourseID         *string `json:"course_id"`
+	BaseArchetype    string  `json:"base_archetype"`
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
 	Level            string  `json:"level"`
@@ -246,6 +247,7 @@ func (r *GameRouter) UpdateGame(c *echo.Context) error {
 		GameID:           id,
 		TeacherID:        userID,
 		CourseID:         req.CourseID,
+		BaseArchetype:    req.BaseArchetype,
 		Title:            req.Title,
 		Description:      req.Description,
 		Level:            req.Level,

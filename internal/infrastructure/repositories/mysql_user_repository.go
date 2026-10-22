@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -15,6 +16,10 @@ type MySQLUserRepository struct {
 }
 
 func NewMySQLUserRepository(db *gorm.DB) domainRepo.UserRepository {
+	return &MySQLUserRepository{db: db}
+}
+
+func NewMySQLUserLearningStatsRepository(db *gorm.DB) domainRepo.UserLearningStatsRepository {
 	return &MySQLUserRepository{db: db}
 }
 
@@ -80,6 +85,8 @@ func (r *MySQLUserRepository) CreateWithInitialState(ctx context.Context, user *
 			TotalPoints:       0,
 			CurrentStreakDays: 0,
 			LongestStreakDays: 0,
+			LivesRemaining:    5,
+			MaxLives:          5,
 			AccuracyPercent:   0.0,
 		}
 		if err := tx.Create(&stats).Error; err != nil {
@@ -177,4 +184,60 @@ func (r *MySQLUserRepository) RevokeAllSessions(ctx context.Context, userID stri
 
 func (r *MySQLUserRepository) UpdateUser(ctx context.Context, user *entities.User) error {
 	return r.db.WithContext(ctx).Save(user).Error
+}
+
+func (r *MySQLUserRepository) GetLearningStats(ctx context.Context, userID string) (*entities.UserLearningStats, error) {
+	var stats entities.UserLearningStats
+	err := r.db.WithContext(ctx).Where("user_id = ?", userID).First(&stats).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			stats = entities.UserLearningStats{
+				UserID:         userID,
+				LivesRemaining: 5,
+				MaxLives:       5,
+			}
+			if createErr := r.db.WithContext(ctx).Create(&stats).Error; createErr != nil {
+				return nil, createErr
+			}
+			return &stats, nil
+		}
+		return nil, err
+	}
+	return &stats, nil
+}
+
+func (r *MySQLUserRepository) DeductUserLife(ctx context.Context, userID string) (*entities.UserLearningStats, error) {
+	stats, err := r.GetLearningStats(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	stats.DeductLife()
+	if err := r.db.WithContext(ctx).Model(&entities.UserLearningStats{}).
+		Where("user_id = ?", userID).
+		Updates(map[string]any{
+			"lives_remaining":   stats.LivesRemaining,
+			"last_life_lost_at": stats.LastLifeLostAt,
+			"updated_at":        time.Now(),
+		}).Error; err != nil {
+		return nil, err
+	}
+	return stats, nil
+}
+
+func (r *MySQLUserRepository) RefillUserLives(ctx context.Context, userID string) (*entities.UserLearningStats, error) {
+	stats, err := r.GetLearningStats(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	stats.RefillLives()
+	if err := r.db.WithContext(ctx).Model(&entities.UserLearningStats{}).
+		Where("user_id = ?", userID).
+		Updates(map[string]any{
+			"lives_remaining":   stats.LivesRemaining,
+			"last_life_lost_at": nil,
+			"updated_at":        time.Now(),
+		}).Error; err != nil {
+		return nil, err
+	}
+	return stats, nil
 }

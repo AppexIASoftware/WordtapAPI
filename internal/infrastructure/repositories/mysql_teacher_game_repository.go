@@ -120,6 +120,7 @@ func (r *MySQLTeacherGameRepository) Update(ctx context.Context, game *entities.
 		Model(&entities.TeacherGame{}).
 		Where("id = ?", game.ID).
 		Updates(map[string]any{
+			"base_archetype":     game.BaseArchetype,
 			"course_id":          game.CourseID,
 			"title":              game.Title,
 			"description":        game.Description,

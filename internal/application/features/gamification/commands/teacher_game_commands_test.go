@@ -154,6 +154,7 @@ func TestTeacherGameCommands(t *testing.T) {
 			GameID:           "game-10",
 			TeacherID:        "teacher-1",
 			Title:            "Juego Actualizado",
+			BaseArchetype:    "word_scramble",
 			TimeLimitSeconds: 60,
 		}
 
@@ -164,8 +165,46 @@ func TestTeacherGameCommands(t *testing.T) {
 		if res.Title != "Juego Actualizado" {
 			t.Errorf("título esperado 'Juego Actualizado', obtenido '%s'", res.Title)
 		}
+		if res.BaseArchetype != "word_scramble" {
+			t.Errorf("arquetipo esperado 'word_scramble', obtenido '%s'", res.BaseArchetype)
+		}
 		if res.TimeLimitSeconds != 60 {
 			t.Errorf("tiempo esperado 60, obtenido %d", res.TimeLimitSeconds)
+		}
+	})
+
+	t.Run("UpdateGlobalGameHandler exitoso", func(t *testing.T) {
+		repo.games = append(repo.games, entities.TeacherGame{
+			ID:               "game-global-1",
+			TeacherID:        "admin-1",
+			OwnerType:        entities.OwnerTypePlatform,
+			Title:            "Global Original",
+			BaseArchetype:    "speed_translation",
+			TimeLimitSeconds: 45,
+		})
+
+		handler := commands.NewUpdateGlobalGameHandler(repo)
+		newTime := 90
+		cmd := commands.UpdateGlobalGameCommand{
+			GameID:           "game-global-1",
+			AuthorID:         "admin-1",
+			Title:            "Global Actualizado",
+			BaseArchetype:    "match",
+			TimeLimitSeconds: &newTime,
+		}
+
+		res, err := handler.Handle(ctx, cmd)
+		if err != nil {
+			t.Fatalf("error actualizando juego global: %v", err)
+		}
+		if res.Title != "Global Actualizado" {
+			t.Errorf("título esperado 'Global Actualizado', obtenido '%s'", res.Title)
+		}
+		if res.BaseArchetype != "match" {
+			t.Errorf("arquetipo esperado 'match', obtenido '%s'", res.BaseArchetype)
+		}
+		if res.TimeLimitSeconds != 90 {
+			t.Errorf("tiempo esperado 90, obtenido %d", res.TimeLimitSeconds)
 		}
 	})
 

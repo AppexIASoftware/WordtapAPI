@@ -142,11 +142,32 @@ type UserLearningStats struct {
 	TotalPoints       int        `gorm:"default:0;not null" json:"total_points"`
 	CurrentStreakDays int        `gorm:"default:0;not null" json:"current_streak_days"`
 	LongestStreakDays int        `gorm:"default:0;not null" json:"longest_streak_days"`
+	LivesRemaining    int        `gorm:"default:5;not null" json:"lives_remaining"`
+	MaxLives          int        `gorm:"default:5;not null" json:"max_lives"`
+	LastLifeLostAt    *time.Time `json:"last_life_lost_at,omitempty"`
 	AccuracyPercent   float64    `gorm:"type:decimal(5,2);default:0.00;not null" json:"accuracy_percent"`
 	LastActivityDate  *time.Time `gorm:"type:date" json:"last_activity_date"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 
 	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
+}
+
+func (s *UserLearningStats) DeductLife() bool {
+	if s.LivesRemaining > 0 {
+		s.LivesRemaining--
+		now := time.Now()
+		s.LastLifeLostAt = &now
+		return true
+	}
+	return false
+}
+
+func (s *UserLearningStats) RefillLives() {
+	if s.MaxLives <= 0 {
+		s.MaxLives = 5
+	}
+	s.LivesRemaining = s.MaxLives
+	s.LastLifeLostAt = nil
 }
 
 // UserDailyActivity guarda el registro de estudio y preguntas respondidas por día.
