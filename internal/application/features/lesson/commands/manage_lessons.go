@@ -77,6 +77,11 @@ func (h *CreateLessonHandler) Handle(ctx context.Context, cmd CreateLessonComman
 		return nil, apperrors.New("No tienes permisos para crear lecciones en este curso.")
 	}
 
+	lessonStatus := entities.ContentStatusDraft
+	if course.Status == entities.ContentStatusPublished {
+		lessonStatus = entities.ContentStatusPublished
+	}
+
 	lesson := &entities.Lesson{
 		ID:               uuid.NewString(),
 		CourseID:         cmd.CourseID,
@@ -84,7 +89,7 @@ func (h *CreateLessonHandler) Handle(ctx context.Context, cmd CreateLessonComman
 		Slug:             slugifyLesson(title),
 		Description:      cmd.Description,
 		AccessTier:       course.AccessTier,
-		Status:           entities.ContentStatusDraft,
+		Status:           lessonStatus,
 		SortOrder:        cmd.SortOrder,
 		EstimatedMinutes: cmd.EstimatedMinutes,
 		CreatedAt:        time.Now(),

@@ -101,7 +101,15 @@ func (r *MySQLCourseRepository) FindByID(ctx context.Context, id string) (*entit
 
 // Update updates an existing course entity.
 func (r *MySQLCourseRepository) Update(ctx context.Context, course *entities.Course) error {
-	return r.db.WithContext(ctx).Save(course).Error
+	if err := r.db.WithContext(ctx).Save(course).Error; err != nil {
+		return err
+	}
+	if course.Status == entities.ContentStatusPublished {
+		_ = r.db.WithContext(ctx).Model(&entities.Lesson{}).
+			Where("course_id = ? AND status = ?", course.ID, entities.ContentStatusDraft).
+			Update("status", entities.ContentStatusPublished).Error
+	}
+	return nil
 }
 
 // Delete removes a course by its ID.

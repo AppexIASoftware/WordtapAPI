@@ -113,6 +113,14 @@ func AutoMigrate(db *gorm.DB) error {
 	).Error; err != nil {
 		return fmt.Errorf("failed to backfill course ownership: %w", err)
 	}
+	if err := db.Exec(
+		`UPDATE lessons l JOIN courses c ON l.course_id = c.id
+		 SET l.status = ?
+		 WHERE c.status = ? AND l.status <> ?`,
+		entities.ContentStatusPublished, entities.ContentStatusPublished, entities.ContentStatusPublished,
+	).Error; err != nil {
+		return fmt.Errorf("failed to sync published lesson status: %w", err)
+	}
 
 	// 2. Vistas SQL de lectura optimizada
 	views := []string{

@@ -2,6 +2,7 @@ package queries
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
@@ -79,7 +80,42 @@ func (h *GetLessonDetailHandler) Handle(ctx context.Context, query GetLessonDeta
 		}
 
 		if item.ContentText != nil {
-			itemDTO.Note = *item.ContentText
+			var cardPayload struct {
+				EN        string `json:"en"`
+				ES        string `json:"es"`
+				Title     string `json:"title"`
+				IPA       string `json:"ipa"`
+				Example   string `json:"example"`
+				Note      string `json:"note"`
+				NoteType  string `json:"noteType"`
+				BadgeType string `json:"badgeType"`
+			}
+			if err := json.Unmarshal([]byte(*item.ContentText), &cardPayload); err == nil && (cardPayload.EN != "" || cardPayload.ES != "" || cardPayload.Title != "") {
+				if cardPayload.EN != "" {
+					itemDTO.Title = cardPayload.EN
+				} else if cardPayload.Title != "" {
+					itemDTO.Title = cardPayload.Title
+				}
+				if cardPayload.ES != "" {
+					itemDTO.Translation = cardPayload.ES
+				}
+				if cardPayload.Example != "" {
+					itemDTO.ExampleOrPronounce = cardPayload.Example
+				} else if cardPayload.IPA != "" {
+					itemDTO.ExampleOrPronounce = cardPayload.IPA
+				}
+				if cardPayload.Note != "" {
+					itemDTO.Note = cardPayload.Note
+				}
+				if cardPayload.NoteType != "" {
+					itemDTO.NoteType = cardPayload.NoteType
+				}
+				if cardPayload.BadgeType != "" {
+					itemDTO.BadgeType = cardPayload.BadgeType
+				}
+			} else {
+				itemDTO.Note = *item.ContentText
+			}
 		}
 
 		if item.VocabularyItem != nil {
