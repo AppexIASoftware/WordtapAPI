@@ -75,6 +75,9 @@ func (h *CreateCourseHandler) Handle(ctx context.Context, cmd CreateCourseComman
 	if priceCents == 0 && accessTier == entities.AccessTierCourse {
 		priceCents = 1999
 	}
+	if accessTier == entities.AccessTierSubscription || accessTier == entities.AccessTierFree {
+		priceCents = 0
+	}
 
 	ownerType := cmd.OwnerType
 	if !ownerType.IsValid() {
