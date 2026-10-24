@@ -10,11 +10,13 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/gamification"
 )
 
 type mockStatsRepo struct {
-	stats *entities.UserLearningStats
+	stats              *entities.UserLearningStats
+	completedLessonIDs []string
 }
 
 func (m *mockStatsRepo) GetLearningStats(ctx context.Context, userID string) (*entities.UserLearningStats, error) {
@@ -38,6 +40,28 @@ func (m *mockStatsRepo) RefillUserLives(ctx context.Context, userID string) (*en
 	s, _ := m.GetLearningStats(ctx, userID)
 	s.RefillLives()
 	return s, nil
+}
+
+func (m *mockStatsRepo) RecordGameVictory(ctx context.Context, params domainRepo.RecordProgressParams) (*domainRepo.RecordProgressResult, error) {
+	s, _ := m.GetLearningStats(ctx, params.UserID)
+	s.RecordVictory(params.StarsEarned, params.WordsPracticed, entities.UserLearningStats{}.UpdatedAt)
+	if params.LessonID != "" {
+		m.completedLessonIDs = append(m.completedLessonIDs, params.LessonID)
+	}
+	return &domainRepo.RecordProgressResult{
+		LessonCompleted:   params.LessonID != "",
+		StarsEarned:       params.StarsEarned,
+		TotalStars:        s.TotalStars,
+		TotalPoints:       s.TotalPoints,
+		CurrentStreakDays: s.CurrentStreakDays,
+		WordsLearned:      s.WordsLearned,
+		LessonsCompleted:  s.LessonsCompleted,
+		GamesCompleted:    s.GamesCompleted,
+	}, nil
+}
+
+func (m *mockStatsRepo) GetCompletedLessonIDs(ctx context.Context, userID string) ([]string, error) {
+	return m.completedLessonIDs, nil
 }
 
 func TestLivesRouter(t *testing.T) {

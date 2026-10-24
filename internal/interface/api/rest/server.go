@@ -234,6 +234,9 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	)
 	statsRepo := infraRepo.NewMySQLUserLearningStatsRepository(db)
 	livesRouter := gamification.NewLivesRouter(statsRepo)
+	recordGameVictoryHandler := gameCmd.NewRecordGameVictoryHandler(statsRepo)
+	getUserProgressHandler := gameQuery.NewGetUserProgressHandler(statsRepo)
+	progressRouter := gamification.NewProgressRouter(recordGameVictoryHandler, getUserProgressHandler)
 	swaggerRouter := docs.NewSwaggerRouter()
 
 	// Middlewares específicos
@@ -273,6 +276,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	classroomRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
 	gameRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)
 	livesRouter.RegisterRoutes(v1, authRequired)
+	progressRouter.RegisterRoutes(v1, authRequired)
 
 	return &Server{App: e}, nil
 }

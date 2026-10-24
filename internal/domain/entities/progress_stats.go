@@ -170,6 +170,45 @@ func (s *UserLearningStats) RefillLives() {
 	s.LastLifeLostAt = nil
 }
 
+func (s *UserLearningStats) RecordVictory(starsEarned int, wordsPracticed int, now time.Time) {
+	if starsEarned < 0 {
+		starsEarned = 0
+	} else if starsEarned > 3 {
+		starsEarned = 3
+	}
+	s.TotalStars += starsEarned
+	points := starsEarned * 10
+	if points == 0 {
+		points = 5
+	}
+	s.TotalPoints += points
+	s.GamesCompleted++
+	if wordsPracticed > 0 {
+		s.WordsLearned += wordsPracticed
+	}
+
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	if s.LastActivityDate == nil {
+		s.CurrentStreakDays = 1
+		if s.LongestStreakDays < 1 {
+			s.LongestStreakDays = 1
+		}
+	} else {
+		lastDate := time.Date(s.LastActivityDate.Year(), s.LastActivityDate.Month(), s.LastActivityDate.Day(), 0, 0, 0, 0, time.UTC)
+		diffDays := int(today.Sub(lastDate).Hours() / 24)
+		if diffDays == 1 {
+			s.CurrentStreakDays++
+			if s.CurrentStreakDays > s.LongestStreakDays {
+				s.LongestStreakDays = s.CurrentStreakDays
+			}
+		} else if diffDays > 1 {
+			s.CurrentStreakDays = 1
+		}
+	}
+	s.LastActivityDate = &now
+	s.UpdatedAt = now
+}
+
 // UserDailyActivity guarda el registro de estudio y preguntas respondidas por día.
 type UserDailyActivity struct {
 	ID                string    `gorm:"type:varchar(36);primaryKey" json:"id"`
