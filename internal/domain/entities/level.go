@@ -55,6 +55,28 @@ func NormalizeLevel(raw string) (string, bool) {
 	return "", false
 }
 
+// LevelRank returns the canonical CEFR rank (1 = A1 ... 6 = C2) for a level string.
+func LevelRank(raw string) (int, bool) {
+	key, ok := NormalizeLevel(raw)
+	if !ok {
+		return 0, false
+	}
+	rank, known := levelRanks[key]
+	if !known {
+		return 0, false
+	}
+	return rank, true
+}
+
+// LevelLabel returns the CEFR label for a canonical rank.
+func LevelLabel(rank int) string {
+	labels := [...]string{"A1", "A2", "B1", "B2", "C1", "C2"}
+	if rank < 1 || rank > len(labels) {
+		return ""
+	}
+	return labels[rank-1]
+}
+
 // CompareLevels compares course and game levels.
 func CompareLevels(courseLevel, gameLevel string) LevelCompatibility {
 	courseKey, courseOK := NormalizeLevel(courseLevel)

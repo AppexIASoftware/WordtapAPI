@@ -51,7 +51,7 @@ func (r *MySQLLessonRepository) FindByCourseID(ctx context.Context, courseID str
 		Preload("Items.VocabularyItem").
 		Preload("Items.Phrase").
 		Preload("Items.ContentBankItem").
-		Order("sort_order ASC, created_at ASC").
+		Order(accessTierOrder("access_tier") + ", sort_order ASC, created_at ASC").
 		Find(&lessons).Error
 	if err != nil {
 		return nil, err

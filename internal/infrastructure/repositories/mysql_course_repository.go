@@ -53,9 +53,10 @@ func (r *MySQLCourseRepository) FindPublished(ctx context.Context) ([]entities.C
 		Preload("Author").
 		Preload("Category").
 		Preload("Lessons", func(db *gorm.DB) *gorm.DB {
-			return db.Where("status = ?", entities.ContentStatusPublished).Order("lessons.sort_order ASC, lessons.created_at ASC")
+			return db.Where("status = ?", entities.ContentStatusPublished).
+				Order(accessTierOrder("lessons.access_tier") + ", lessons.sort_order ASC, lessons.created_at ASC")
 		}).
-		Order("sort_order ASC, created_at DESC").
+		Order(accessTierOrder("access_tier") + ", sort_order ASC, created_at DESC").
 		Find(&courses).Error
 	if err != nil {
 		return nil, err
