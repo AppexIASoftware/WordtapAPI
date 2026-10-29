@@ -9,6 +9,7 @@ import (
 
 type ListVaultItemsQuery struct {
 	BankType    *string
+	CategoryID  *string
 	CEFRLevel   *string
 	Difficulty  *int
 	Search      *string
@@ -36,6 +37,7 @@ func NewListVaultItemsHandler(repo repositories.ContentBankRepository) *ListVaul
 func (h *ListVaultItemsHandler) Handle(ctx context.Context, q ListVaultItemsQuery) (*ListVaultItemsResult, error) {
 	filter := repositories.ContentBankFilter{
 		BankType:   q.BankType,
+		CategoryID: q.CategoryID,
 		CEFRLevel:  q.CEFRLevel,
 		Difficulty: q.Difficulty,
 		Search:     q.Search,

@@ -18,8 +18,9 @@ import (
 )
 
 type mockContentBankRepo struct {
-	types []entities.ContentBankType
-	items map[string]*entities.ContentBankItem
+	types      []entities.ContentBankType
+	categories []entities.ContentCategory
+	items      map[string]*entities.ContentBankItem
 }
 
 func newMockContentBankRepo() *mockContentBankRepo {
@@ -28,12 +29,25 @@ func newMockContentBankRepo() *mockContentBankRepo {
 			{Slug: "vocabulary", DisplayName: "Vocabulario", IsActive: true},
 			{Slug: "phrase", DisplayName: "Oraciones", IsActive: true},
 		},
+		categories: []entities.ContentCategory{
+			{Name: "Viajes & Turismo", Slug: "viajes-turismo", IsActive: true},
+			{Name: "Gastronomía & Restaurantes", Slug: "gastronomia-restaurantes", IsActive: true},
+		},
 		items: make(map[string]*entities.ContentBankItem),
 	}
 }
 
 func (m *mockContentBankRepo) ListTypes(ctx context.Context) ([]entities.ContentBankType, error) {
 	return m.types, nil
+}
+
+func (m *mockContentBankRepo) ListCategories(ctx context.Context) ([]entities.ContentCategory, error) {
+	return m.categories, nil
+}
+
+func (m *mockContentBankRepo) CreateCategory(ctx context.Context, category *entities.ContentCategory) error {
+	m.categories = append(m.categories, *category)
+	return nil
 }
 
 func (m *mockContentBankRepo) FindTypeBySlug(ctx context.Context, slug string) (*entities.ContentBankType, error) {
@@ -87,12 +101,14 @@ func (m *mockContentBankRepo) DeleteItem(ctx context.Context, id string) error {
 func TestVaultRouter_OfficialAndPrivateFlow(t *testing.T) {
 	repo := newMockContentBankRepo()
 	listTypes := vaultQuery.NewListVaultTypesHandler(repo)
+	listCategories := vaultQuery.NewListVaultCategoriesHandler(repo)
+	createCategory := vaultCmd.NewCreateVaultCategoryHandler(repo)
 	listItems := vaultQuery.NewListVaultItemsHandler(repo)
 	createItem := vaultCmd.NewCreateVaultItemHandler(repo)
 	updateItem := vaultCmd.NewUpdateVaultItemHandler(repo)
 	deleteItem := vaultCmd.NewDeleteVaultItemHandler(repo)
 
-	router := vault.NewVaultRouter(listTypes, listItems, createItem, updateItem, deleteItem)
+	router := vault.NewVaultRouter(listTypes, listCategories, createCategory, listItems, createItem, updateItem, deleteItem)
 
 	e := echo.New()
 	v1 := e.Group("/api/v1")
@@ -122,6 +138,16 @@ func TestVaultRouter_OfficialAndPrivateFlow(t *testing.T) {
 	// 1. List types
 	t.Run("GET /vault/types", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/vault/types", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", rec.Code)
+		}
+	})
+
+	// 1.1 List categories
+	t.Run("GET /vault/categories", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/vault/categories", nil)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {

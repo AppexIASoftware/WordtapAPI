@@ -15,6 +15,7 @@ import (
 
 type CreateVaultItemCommand struct {
 	BankType    string
+	CategoryID  *string
 	PromptText  string
 	TargetText  string
 	IPA         *string
@@ -79,6 +80,7 @@ func (h *CreateVaultItemHandler) Handle(ctx context.Context, cmd CreateVaultItem
 	item := &entities.ContentBankItem{
 		ID:          uuid.NewString(),
 		BankType:    bankType,
+		CategoryID:  cmd.CategoryID,
 		SourceLang:  "es",
 		TargetLang:  "en",
 		PromptText:  prompt,

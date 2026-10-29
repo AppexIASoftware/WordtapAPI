@@ -9,6 +9,7 @@ import (
 // ContentBankFilter encapsula los criterios de búsqueda sobre el banco de contenidos.
 type ContentBankFilter struct {
 	BankType   *string
+	CategoryID *string
 	CEFRLevel  *string
 	Difficulty *int
 	Search     *string
@@ -23,6 +24,8 @@ type ContentBankFilter struct {
 type ContentBankRepository interface {
 	ListTypes(ctx context.Context) ([]entities.ContentBankType, error)
 	FindTypeBySlug(ctx context.Context, slug string) (*entities.ContentBankType, error)
+	ListCategories(ctx context.Context) ([]entities.ContentCategory, error)
+	CreateCategory(ctx context.Context, category *entities.ContentCategory) error
 	ListItems(ctx context.Context, filter ContentBankFilter) ([]entities.ContentBankItem, int64, error)
 	FindItemByID(ctx context.Context, id string) (*entities.ContentBankItem, error)
 	CreateItem(ctx context.Context, item *entities.ContentBankItem) error

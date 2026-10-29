@@ -13,26 +13,32 @@ import (
 )
 
 type VaultRouter struct {
-	listTypesHandler  *queries.ListVaultTypesHandler
-	listItemsHandler  *queries.ListVaultItemsHandler
-	createItemHandler *commands.CreateVaultItemHandler
-	updateItemHandler *commands.UpdateVaultItemHandler
-	deleteItemHandler *commands.DeleteVaultItemHandler
+	listTypesHandler      *queries.ListVaultTypesHandler
+	listCategoriesHandler *queries.ListVaultCategoriesHandler
+	createCategoryHandler *commands.CreateVaultCategoryHandler
+	listItemsHandler      *queries.ListVaultItemsHandler
+	createItemHandler     *commands.CreateVaultItemHandler
+	updateItemHandler     *commands.UpdateVaultItemHandler
+	deleteItemHandler     *commands.DeleteVaultItemHandler
 }
 
 func NewVaultRouter(
 	listTypesHandler *queries.ListVaultTypesHandler,
+	listCategoriesHandler *queries.ListVaultCategoriesHandler,
+	createCategoryHandler *commands.CreateVaultCategoryHandler,
 	listItemsHandler *queries.ListVaultItemsHandler,
 	createItemHandler *commands.CreateVaultItemHandler,
 	updateItemHandler *commands.UpdateVaultItemHandler,
 	deleteItemHandler *commands.DeleteVaultItemHandler,
 ) *VaultRouter {
 	return &VaultRouter{
-		listTypesHandler:  listTypesHandler,
-		listItemsHandler:  listItemsHandler,
-		createItemHandler: createItemHandler,
-		updateItemHandler: updateItemHandler,
-		deleteItemHandler: deleteItemHandler,
+		listTypesHandler:      listTypesHandler,
+		listCategoriesHandler: listCategoriesHandler,
+		createCategoryHandler: createCategoryHandler,
+		listItemsHandler:      listItemsHandler,
+		createItemHandler:     createItemHandler,
+		updateItemHandler:     updateItemHandler,
+		deleteItemHandler:     deleteItemHandler,
 	}
 }
 
@@ -47,6 +53,8 @@ func (r *VaultRouter) RegisterRoutes(
 	vaultGroup := v1.Group("/vault")
 	vaultGroup.Use(authRequired)
 	vaultGroup.GET("/types", r.ListTypes, staffRoles)
+	vaultGroup.GET("/categories", r.ListCategories, staffRoles)
+	vaultGroup.POST("/categories", r.CreateCategory, adminOrModerator)
 	vaultGroup.GET("/items", r.ListOfficialItems, staffRoles)
 	vaultGroup.POST("/items", r.CreateOfficialItem, adminOrModerator)
 	vaultGroup.PUT("/items/:id", r.UpdateOfficialItem, adminOrModerator)
@@ -63,6 +71,7 @@ func (r *VaultRouter) RegisterRoutes(
 
 type CreateVaultItemRequest struct {
 	BankType    string  `json:"bank_type"`
+	CategoryID  *string `json:"category_id"`
 	PromptText  string  `json:"prompt_text"`
 	TargetText  string  `json:"target_text"`
 	IPA         *string `json:"ipa"`
@@ -75,6 +84,7 @@ type CreateVaultItemRequest struct {
 
 type UpdateVaultItemRequest struct {
 	BankType    *string `json:"bank_type"`
+	CategoryID  entities.OptionalString `json:"category_id"`
 	PromptText  *string `json:"prompt_text"`
 	TargetText  *string `json:"target_text"`
 	IPA         *string `json:"ipa"`
@@ -91,6 +101,36 @@ func (r *VaultRouter) ListTypes(c *echo.Context) error {
 		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar los tipos de contenido.", err)
 	}
 	return c.JSON(http.StatusOK, types)
+}
+
+func (r *VaultRouter) ListCategories(c *echo.Context) error {
+	categories, err := r.listCategoriesHandler.Handle(c.Request().Context())
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar las categorías de contenido.", err)
+	}
+	return c.JSON(http.StatusOK, categories)
+}
+
+type CreateVaultCategoryRequest struct {
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+}
+
+func (r *VaultRouter) CreateCategory(c *echo.Context) error {
+	var req CreateVaultCategoryRequest
+	if err := c.Bind(&req); err != nil {
+		return response.Error(c, http.StatusBadRequest, "Datos de categoría inválidos.", err)
+	}
+
+	category, err := r.createCategoryHandler.Handle(c.Request().Context(), commands.CreateVaultCategoryCommand{
+		Name:        req.Name,
+		Description: req.Description,
+	})
+	if err != nil {
+		return response.Error(c, http.StatusBadRequest, "No se pudo crear la categoría.", err)
+	}
+
+	return c.JSON(http.StatusCreated, category)
 }
 
 func (r *VaultRouter) ListOfficialItems(c *echo.Context) error {
@@ -112,6 +152,13 @@ func (r *VaultRouter) ListOfficialItems(c *echo.Context) error {
 		bankTypePtr = &bt
 	}
 
+	var categoryIDPtr *string
+	if cat := c.QueryParam("category_id"); cat != "" && cat != "all" {
+		categoryIDPtr = &cat
+	} else if catSlug := c.QueryParam("category"); catSlug != "" && catSlug != "all" {
+		categoryIDPtr = &catSlug
+	}
+
 	var cefrPtr *string
 	if cefr := c.QueryParam("cefr_level"); cefr != "" && cefr != "all" {
 		cefrPtr = &cefr
@@ -124,6 +171,7 @@ func (r *VaultRouter) ListOfficialItems(c *echo.Context) error {
 
 	res, err := r.listItemsHandler.Handle(c.Request().Context(), queries.ListVaultItemsQuery{
 		BankType:    bankTypePtr,
+		CategoryID:  categoryIDPtr,
 		CEFRLevel:   cefrPtr,
 		Difficulty:  diffPtr,
 		Search:      searchPtr,
@@ -150,6 +198,7 @@ func (r *VaultRouter) CreateOfficialItem(c *echo.Context) error {
 
 	item, err := r.createItemHandler.Handle(c.Request().Context(), commands.CreateVaultItemCommand{
 		BankType:    req.BankType,
+		CategoryID:  req.CategoryID,
 		PromptText:  req.PromptText,
 		TargetText:  req.TargetText,
 		IPA:         req.IPA,
@@ -181,6 +230,8 @@ func (r *VaultRouter) UpdateOfficialItem(c *echo.Context) error {
 	item, err := r.updateItemHandler.Handle(c.Request().Context(), commands.UpdateVaultItemCommand{
 		ID:          id,
 		BankType:    req.BankType,
+		CategoryID:  req.CategoryID.Value,
+		CategoryIDSet: req.CategoryID.Set,
 		PromptText:  req.PromptText,
 		TargetText:  req.TargetText,
 		IPA:         req.IPA,
@@ -233,6 +284,13 @@ func (r *VaultRouter) ListTeacherPrivateItems(c *echo.Context) error {
 		bankTypePtr = &bt
 	}
 
+	var categoryIDPtr *string
+	if cat := c.QueryParam("category_id"); cat != "" && cat != "all" {
+		categoryIDPtr = &cat
+	} else if catSlug := c.QueryParam("category"); catSlug != "" && catSlug != "all" {
+		categoryIDPtr = &catSlug
+	}
+
 	var cefrPtr *string
 	if cefr := c.QueryParam("cefr_level"); cefr != "" && cefr != "all" {
 		cefrPtr = &cefr
@@ -245,6 +303,7 @@ func (r *VaultRouter) ListTeacherPrivateItems(c *echo.Context) error {
 
 	res, err := r.listItemsHandler.Handle(c.Request().Context(), queries.ListVaultItemsQuery{
 		BankType:    bankTypePtr,
+		CategoryID:  categoryIDPtr,
 		CEFRLevel:   cefrPtr,
 		Difficulty:  diffPtr,
 		Search:      searchPtr,
@@ -272,6 +331,7 @@ func (r *VaultRouter) CreateTeacherPrivateItem(c *echo.Context) error {
 
 	item, err := r.createItemHandler.Handle(c.Request().Context(), commands.CreateVaultItemCommand{
 		BankType:    req.BankType,
+		CategoryID:  req.CategoryID,
 		PromptText:  req.PromptText,
 		TargetText:  req.TargetText,
 		IPA:         req.IPA,
@@ -303,6 +363,8 @@ func (r *VaultRouter) UpdateTeacherPrivateItem(c *echo.Context) error {
 	item, err := r.updateItemHandler.Handle(c.Request().Context(), commands.UpdateVaultItemCommand{
 		ID:          id,
 		BankType:    req.BankType,
+		CategoryID:  req.CategoryID.Value,
+		CategoryIDSet: req.CategoryID.Set,
 		PromptText:  req.PromptText,
 		TargetText:  req.TargetText,
 		IPA:         req.IPA,
