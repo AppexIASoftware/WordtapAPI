@@ -54,7 +54,7 @@ func (r *VaultRouter) RegisterRoutes(
 	vaultGroup.Use(authRequired)
 	vaultGroup.GET("/types", r.ListTypes, staffRoles)
 	vaultGroup.GET("/categories", r.ListCategories, staffRoles)
-	vaultGroup.POST("/categories", r.CreateCategory, adminOrModerator)
+	vaultGroup.POST("/categories", r.CreateCategory, staffRoles)
 	vaultGroup.GET("/items", r.ListOfficialItems, staffRoles)
 	vaultGroup.POST("/items", r.CreateOfficialItem, adminOrModerator)
 	vaultGroup.PUT("/items/:id", r.UpdateOfficialItem, adminOrModerator)

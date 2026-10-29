@@ -155,6 +155,31 @@ func TestVaultRouter_OfficialAndPrivateFlow(t *testing.T) {
 		}
 	})
 
+	// 1.2 Teacher creates category
+	t.Run("POST /vault/categories (Teacher)", func(t *testing.T) {
+		desc := "Vocabulario de finanzas"
+		body := vault.CreateVaultCategoryRequest{
+			Name:        "Finanzas & Negocios",
+			Description: &desc,
+		}
+		raw, _ := json.Marshal(body)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/vault/categories", bytes.NewReader(raw))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Test-User-ID", "teacher-1")
+		req.Header.Set("X-Test-Role", "instructor")
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+		}
+		var cat entities.ContentCategory
+		_ = json.Unmarshal(rec.Body.Bytes(), &cat)
+		if cat.Name != "Finanzas & Negocios" {
+			t.Errorf("expected category name 'Finanzas & Negocios', got '%s'", cat.Name)
+		}
+	})
+
 	// 2. Admin creates official vault item
 	var officialID string
 	t.Run("POST /vault/items (Admin)", func(t *testing.T) {
