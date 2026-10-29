@@ -19,6 +19,11 @@ func (r *reviewCourseRepo) CreateSubmission(_ context.Context, req *entities.Cou
 	r.course.Status = entities.ContentStatusInReview
 	return nil
 }
+func (r *reviewCourseRepo) UpdatePublishedAndSubmit(_ context.Context, course *entities.Course, req *entities.CourseReviewRequest) error {
+	*r.course = *course
+	r.request = req
+	return nil
+}
 func (r *reviewCourseRepo) ListPending(context.Context) ([]entities.CourseReviewRequest, error) {
 	return nil, nil
 }

@@ -6,6 +6,11 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 )
 
+// PublishedCourseEditRepository atomically saves an edited published course and its review request.
+type PublishedCourseEditRepository interface {
+	UpdatePublishedAndSubmit(context.Context, *entities.Course, *entities.CourseReviewRequest) error
+}
+
 // CourseReviewRepository owns atomic course-review lifecycle transitions.
 type CourseReviewRepository interface {
 	CreateSubmission(context.Context, *entities.CourseReviewRequest) error

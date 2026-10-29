@@ -30,6 +30,7 @@ func (r *MySQLCourseRepository) FindByAuthor(ctx context.Context, authorID strin
 	err := r.db.WithContext(ctx).
 		Where("created_by = ?", authorID).
 		Preload("Author").
+		Preload("Category").
 		Preload("Lessons", func(db *gorm.DB) *gorm.DB {
 			return db.Order("lessons.sort_order ASC, lessons.created_at ASC")
 		}).
@@ -50,6 +51,7 @@ func (r *MySQLCourseRepository) FindPublished(ctx context.Context) ([]entities.C
 	err := r.db.WithContext(ctx).
 		Where("status = ? AND owner_type = ?", entities.ContentStatusPublished, entities.OwnerTypePlatform).
 		Preload("Author").
+		Preload("Category").
 		Preload("Lessons", func(db *gorm.DB) *gorm.DB {
 			return db.Where("status = ?", entities.ContentStatusPublished).Order("lessons.sort_order ASC, lessons.created_at ASC")
 		}).
@@ -66,6 +68,7 @@ func (r *MySQLCourseRepository) FindAll(ctx context.Context) ([]entities.Course,
 	courses := make([]entities.Course, 0)
 	err := r.db.WithContext(ctx).
 		Preload("Author").
+		Preload("Category").
 		Preload("Lessons", func(db *gorm.DB) *gorm.DB {
 			return db.Order("lessons.sort_order ASC, lessons.created_at ASC")
 		}).
@@ -85,6 +88,7 @@ func (r *MySQLCourseRepository) FindByID(ctx context.Context, id string) (*entit
 	var course entities.Course
 	err := r.db.WithContext(ctx).
 		Preload("Author").
+		Preload("Category").
 		Preload("Lessons", func(db *gorm.DB) *gorm.DB {
 			return db.Order("lessons.sort_order ASC, lessons.created_at ASC")
 		}).

@@ -40,6 +40,17 @@ func (m *mockCourseReviewRepository) CreateSubmission(_ context.Context, req *en
 	}
 	return errors.New("course is unavailable for submission")
 }
+func (m *mockCourseReviewRepository) UpdatePublishedAndSubmit(ctx context.Context, course *entities.Course, req *entities.CourseReviewRequest) error {
+	for i := range m.courses.courses {
+		current := &m.courses.courses[i]
+		if current.ID == course.ID && current.CreatedBy != nil && *current.CreatedBy == req.InstructorID && current.Status == entities.ContentStatusPublished {
+			m.courses.courses[i] = *course
+			m.requests = append(m.requests, *req)
+			return nil
+		}
+	}
+	return errors.New("course is unavailable for submission")
+}
 func (m *mockCourseReviewRepository) ListPending(context.Context) ([]entities.CourseReviewRequest, error) {
 	var out []entities.CourseReviewRequest
 	for _, r := range m.requests {

@@ -19,6 +19,8 @@ type UpdateCourseCommand struct {
 	Title         *string
 	Description   *string
 	Level         *string
+	CategoryID    *string
+	CategoryIDSet bool
 	CoverImageURL *string
 	AccessTier    *entities.AccessTier
 	PriceCents    *int
@@ -57,13 +59,19 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 	isStaff := cmd.RequesterRole == entities.RoleAdmin || cmd.RequesterRole == entities.RoleModerator
 	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
 		hasContentChanges := cmd.Title != nil || cmd.Description != nil || cmd.Level != nil ||
-			cmd.CoverImageURL != nil || cmd.AccessTier != nil || cmd.PriceCents != nil
+			cmd.CoverImageURL != nil || cmd.AccessTier != nil || cmd.PriceCents != nil || cmd.CategoryIDSet || cmd.CategoryID != nil
 		if !isStaff || hasContentChanges {
 			if courseAccess.EffectiveOwnerType(course) == entities.OwnerTypePlatform {
 				return nil, apperrors.New("No puedes editar un curso de la plataforma.")
 			}
 			return nil, apperrors.New("No puedes editar el contenido de un curso de un docente.")
 		}
+	}
+
+	// A pending review may only be changed through its decision or withdrawal.
+	// The repository must also enforce this transactionally against races.
+	if course.Status == entities.ContentStatusInReview {
+		return nil, apperrors.New("No puedes editar un curso mientras está en revisión.")
 	}
 
 	var changed []string
@@ -95,6 +103,21 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 		course.CoverImageURL = cmd.CoverImageURL
 	}
 
+	if cmd.CategoryIDSet || cmd.CategoryID != nil {
+		var newCatID *string
+		if cmd.CategoryID != nil {
+			cleanCatID := strings.TrimSpace(*cmd.CategoryID)
+			if cleanCatID != "" && cleanCatID != "all" {
+				newCatID = &cleanCatID
+			}
+		}
+		if (course.CategoryID == nil) != (newCatID == nil) || (course.CategoryID != nil && newCatID != nil && *course.CategoryID != *newCatID) {
+			course.CategoryID = newCatID
+			course.Category = nil
+			changed = append(changed, "Categoría temática actualizada")
+		}
+	}
+
 	if cmd.AccessTier != nil && *cmd.AccessTier != "" && *cmd.AccessTier != course.AccessTier {
 		if *cmd.AccessTier == entities.AccessTierSubscription && cmd.RequesterRole != entities.RoleAdmin {
 			return nil, apperrors.New("Solo los administradores pueden asignar un curso a la Suscripción Pro.")
@@ -123,11 +146,11 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 
 	course.UpdatedAt = now
 
-	if err := h.courseRepo.Update(ctx, course); err != nil {
-		return nil, fmt.Errorf("failed to update course: %w", err)
-	}
-
-	if wasPublished && isTeacher && h.reviewRepo != nil && len(changed) > 0 {
+	if wasPublished && isTeacher && len(changed) > 0 {
+		atomicRepo, ok := h.reviewRepo.(repositories.PublishedCourseEditRepository)
+		if !ok {
+			return nil, errors.New("course review submission is unavailable; no changes were saved")
+		}
 		summaryText := strings.Join(changed, "; ")
 		if cmd.ChangeSummary != nil && strings.TrimSpace(*cmd.ChangeSummary) != "" {
 			summaryText = fmt.Sprintf("%s (%s)", *cmd.ChangeSummary, summaryText)
@@ -144,8 +167,20 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 			DiffSummary:   string(diffJSON),
 			SubmittedAt:   now,
 		}
-		_ = h.reviewRepo.CreateSubmission(ctx, reviewReq)
+		if err := atomicRepo.UpdatePublishedAndSubmit(ctx, course, reviewReq); err != nil {
+			return nil, fmt.Errorf("failed to save course and submit for review: %w", err)
+		}
+	} else if err := h.courseRepo.Update(ctx, course); err != nil {
+		return nil, fmt.Errorf("failed to update course: %w", err)
 	}
 
+	if course.CategoryID != nil && course.Category == nil {
+		refreshed, err := h.courseRepo.FindByID(ctx, course.ID)
+		// The update is already committed; a failed enrichment must not turn it
+		// into an apparent failed write that clients might retry.
+		if err == nil && refreshed != nil {
+			course = refreshed
+		}
+	}
 	return course, nil
 }

@@ -82,6 +82,7 @@ type CreateCourseRequest struct {
 	Title         string  `json:"title"`
 	Description   *string `json:"description"`
 	Level         string  `json:"level"`
+	CategoryID    *string `json:"category_id"`
 	AccessTier    string  `json:"access_tier"`
 	PriceCents    *int    `json:"price_cents"`
 	SourceLang    string  `json:"source_lang"`
@@ -93,6 +94,7 @@ type UpdateCourseRequest struct {
 	Title         *string `json:"title"`
 	Description   *string `json:"description"`
 	Level         *string `json:"level"`
+	CategoryID    entities.OptionalString `json:"category_id"`
 	AccessTier    *string `json:"access_tier"`
 	PriceCents    *int    `json:"price_cents"`
 	Status        *string `json:"status"`
@@ -128,6 +130,7 @@ func (r *CourseRouter) CreateCourse(c *echo.Context) error {
 		Title:         req.Title,
 		Description:   req.Description,
 		Level:         req.Level,
+		CategoryID:    req.CategoryID,
 		AccessTier:    entities.AccessTier(req.AccessTier),
 		PriceCents:    priceCentsVal,
 		SourceLang:    req.SourceLang,
@@ -179,6 +182,8 @@ func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 		Title:         req.Title,
 		Description:   req.Description,
 		Level:         req.Level,
+		CategoryID:    req.CategoryID.Value,
+		CategoryIDSet: req.CategoryID.Set,
 		CoverImageURL: req.CoverImageURL,
 		AccessTier:    tierPtr,
 		PriceCents:    req.PriceCents,

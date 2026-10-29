@@ -23,6 +23,7 @@ type CreateCourseCommand struct {
 	Title         string              `json:"title"`
 	Description   *string             `json:"description"`
 	Level         string              `json:"level"`
+	CategoryID    *string             `json:"category_id"`
 	AccessTier    entities.AccessTier `json:"access_tier"`
 	PriceCents    int                 `json:"price_cents"`
 	SourceLang    string              `json:"source_lang"`
@@ -96,6 +97,7 @@ func (h *CreateCourseHandler) Handle(ctx context.Context, cmd CreateCourseComman
 		OwnerType:     ownerType,
 		SortOrder:     0,
 		CoverImageURL: cmd.CoverImageURL,
+		CategoryID:    cmd.CategoryID,
 		SourceLang:    sourceLang,
 		TargetLang:    targetLang,
 		CreatedBy:     &cmd.AuthorID,

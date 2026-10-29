@@ -58,14 +58,16 @@ type Course struct {
 	OwnerType     OwnerType     `gorm:"type:varchar(20);default:'teacher';not null;index" json:"owner_type"`
 	SortOrder     int           `gorm:"default:0;not null" json:"sort_order"`
 	CoverImageURL *string       `gorm:"type:text" json:"cover_image_url"`
+	CategoryID    *string       `gorm:"type:varchar(36);index" json:"category_id"`
 	SourceLang    string        `gorm:"type:varchar(10);default:'es';not null" json:"source_lang"`
 	TargetLang    string        `gorm:"type:varchar(10);default:'en';not null" json:"target_lang"`
 	CreatedBy     *string       `gorm:"type:varchar(36);index" json:"created_by"`
 	CreatedAt     time.Time     `json:"created_at"`
 	UpdatedAt     time.Time     `json:"updated_at"`
 
-	Author  *User    `gorm:"foreignKey:CreatedBy;constraint:OnDelete:SET NULL" json:"author,omitempty"`
-	Lessons []Lesson `gorm:"foreignKey:CourseID;constraint:OnDelete:CASCADE" json:"lessons,omitempty"`
+	Author   *User            `gorm:"foreignKey:CreatedBy;constraint:OnDelete:SET NULL" json:"author,omitempty"`
+	Category *ContentCategory `gorm:"foreignKey:CategoryID;constraint:OnDelete:SET NULL" json:"category,omitempty"`
+	Lessons  []Lesson         `gorm:"foreignKey:CourseID;constraint:OnDelete:CASCADE" json:"lessons,omitempty"`
 }
 
 func (c *Course) BeforeCreate(tx *gorm.DB) error {

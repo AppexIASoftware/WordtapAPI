@@ -31,6 +31,21 @@ func (r *MySQLCourseReviewRepository) CreateSubmission(ctx context.Context, requ
 	})
 }
 
+func (r *MySQLCourseReviewRepository) UpdatePublishedAndSubmit(ctx context.Context, course *entities.Course, request *entities.CourseReviewRequest) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&entities.Course{}).
+			Where("id = ? AND created_by = ? AND status = ?", request.CourseID, request.InstructorID, entities.ContentStatusPublished).
+			Select("title", "description", "level", "category_id", "cover_image_url", "access_tier", "price_cents", "status", "updated_at").Omit(clause.Associations).Updates(course)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return errors.New("course is unavailable for submission")
+		}
+		return tx.Create(request).Error
+	})
+}
+
 func (r *MySQLCourseReviewRepository) ListPending(ctx context.Context) ([]entities.CourseReviewRequest, error) {
 	items := make([]entities.CourseReviewRequest, 0)
 	err := r.db.WithContext(ctx).Preload("Course").Preload("Course.Author").Preload("Instructor").Where("status = ?", entities.CourseReviewStatusPending).Order("submitted_at ASC").Find(&items).Error

@@ -63,8 +63,5 @@ func (h *SubmitCourseReviewHandler) Handle(ctx context.Context, cmd SubmitCourse
 
 	course.Status = entities.ContentStatusInReview
 	course.UpdatedAt = request.SubmittedAt
-	if err := h.courseRepo.Update(ctx, course); err != nil {
-		return nil, fmt.Errorf("failed to update course status to in_review: %w", err)
-	}
 	return course, nil
 }
