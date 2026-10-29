@@ -57,6 +57,9 @@ func (r *GameRouter) RegisterRoutes(
 	instructorOrAdmin echo.MiddlewareFunc,
 	adminOrModerator echo.MiddlewareFunc,
 ) {
+	// Public global games catalog for authenticated users (students, teachers, admins)
+	v1.GET("/games/global", r.ListGlobalGames, authRequired)
+
 	// Admin global games management (platform-wide activities only)
 	v1.GET("/admin/games", r.ListAdminGames, authRequired, adminOrModerator)
 	v1.POST("/admin/games", r.CreateAdminGame, authRequired, adminOrModerator)
@@ -75,35 +78,43 @@ func (r *GameRouter) RegisterRoutes(
 }
 
 type CreateGameRequest struct {
-	CourseID         *string `json:"course_id"`
-	CategoryID       *string `json:"category_id"`
-	BaseArchetype    string  `json:"base_archetype"`
-	Title            string  `json:"title"`
-	Description      *string `json:"description"`
-	Level            string  `json:"level"`
-	TimeLimitSeconds int     `json:"time_limit_seconds"`
-	AllowedMistakes  int     `json:"allowed_mistakes"`
-	RewardXP         int     `json:"reward_xp"`
-	ItemCount        int     `json:"item_count"`
-	SourceType       string  `json:"source_type"`
-	SourceID         *string `json:"source_id"`
-	CustomWordsJSON  *string `json:"custom_words_json"`
+	CourseID              *string  `json:"course_id"`
+	CategoryID            *string  `json:"category_id"`
+	BaseArchetype         string   `json:"base_archetype"`
+	Title                 string   `json:"title"`
+	Description           *string  `json:"description"`
+	Level                 string   `json:"level"`
+	AccessTier            *string  `json:"access_tier"`
+	TimeLimitSeconds      int      `json:"time_limit_seconds"`
+	AllowedMistakes       int      `json:"allowed_mistakes"`
+	RewardXP              int      `json:"reward_xp"`
+	ItemCount             int      `json:"item_count"`
+	SourceType            string   `json:"source_type"`
+	SourceID              *string  `json:"source_id"`
+	CustomWordsJSON       *string  `json:"custom_words_json"`
+	IsPublishedStandalone *bool    `json:"is_published_standalone"`
+	AudienceScope         *string  `json:"audience_scope"`
+	AssignedCourseIDs     []string `json:"assigned_course_ids"`
 }
 
 type UpdateGameRequest struct {
-	CourseID         *string `json:"course_id"`
-	CategoryID       *string `json:"category_id"`
-	BaseArchetype    string  `json:"base_archetype"`
-	Title            string  `json:"title"`
-	Description      *string `json:"description"`
-	Level            string  `json:"level"`
-	TimeLimitSeconds int     `json:"time_limit_seconds"`
-	AllowedMistakes  int     `json:"allowed_mistakes"`
-	RewardXP         int     `json:"reward_xp"`
-	ItemCount        int     `json:"item_count"`
-	SourceType       string  `json:"source_type"`
-	SourceID         *string `json:"source_id"`
-	CustomWordsJSON  *string `json:"custom_words_json"`
+	CourseID              *string   `json:"course_id"`
+	CategoryID            *string   `json:"category_id"`
+	BaseArchetype         string    `json:"base_archetype"`
+	Title                 string    `json:"title"`
+	Description           *string   `json:"description"`
+	Level                 string    `json:"level"`
+	AccessTier            *string   `json:"access_tier"`
+	TimeLimitSeconds      int       `json:"time_limit_seconds"`
+	AllowedMistakes       int       `json:"allowed_mistakes"`
+	RewardXP              int       `json:"reward_xp"`
+	ItemCount             int       `json:"item_count"`
+	SourceType            string    `json:"source_type"`
+	SourceID              *string   `json:"source_id"`
+	CustomWordsJSON       *string   `json:"custom_words_json"`
+	IsPublishedStandalone *bool     `json:"is_published_standalone"`
+	AudienceScope         *string   `json:"audience_scope"`
+	AssignedCourseIDs     *[]string `json:"assigned_course_ids"`
 }
 
 func (r *GameRouter) CreateGame(c *echo.Context) error {
@@ -120,21 +131,39 @@ func (r *GameRouter) CreateGame(c *echo.Context) error {
 		return response.Fail(c, http.StatusBadRequest, "Crea la actividad desde la lección correspondiente.")
 	}
 
+	var accessTier entities.AccessTier
+	if req.AccessTier != nil {
+		accessTier = entities.AccessTier(*req.AccessTier)
+	}
+
+	isPublishedStandalone := false
+	if req.IsPublishedStandalone != nil {
+		isPublishedStandalone = *req.IsPublishedStandalone
+	}
+	audienceScope := "all_students"
+	if req.AudienceScope != nil && strings.TrimSpace(*req.AudienceScope) != "" {
+		audienceScope = strings.TrimSpace(*req.AudienceScope)
+	}
+
 	cmd := commands.CreateTeacherGameCommand{
-		TeacherID:        userID,
-		CourseID:         req.CourseID,
-		CategoryID:       req.CategoryID,
-		BaseArchetype:    req.BaseArchetype,
-		Title:            req.Title,
-		Description:      req.Description,
-		Level:            req.Level,
-		TimeLimitSeconds: req.TimeLimitSeconds,
-		AllowedMistakes:  req.AllowedMistakes,
-		RewardXP:         req.RewardXP,
-		ItemCount:        req.ItemCount,
-		SourceType:       req.SourceType,
-		SourceID:         req.SourceID,
-		CustomWordsJSON:  req.CustomWordsJSON,
+		TeacherID:             userID,
+		CourseID:              req.CourseID,
+		CategoryID:            req.CategoryID,
+		BaseArchetype:         req.BaseArchetype,
+		Title:                 req.Title,
+		Description:           req.Description,
+		Level:                 req.Level,
+		AccessTier:            accessTier,
+		TimeLimitSeconds:      req.TimeLimitSeconds,
+		AllowedMistakes:        req.AllowedMistakes,
+		RewardXP:              req.RewardXP,
+		ItemCount:             req.ItemCount,
+		SourceType:            req.SourceType,
+		SourceID:              req.SourceID,
+		CustomWordsJSON:       req.CustomWordsJSON,
+		IsPublishedStandalone: isPublishedStandalone,
+		AudienceScope:         audienceScope,
+		AssignedCourseIDs:     req.AssignedCourseIDs,
 	}
 
 	game, err := r.createHandler.Handle(c.Request().Context(), cmd)
@@ -250,6 +279,12 @@ func (r *GameRouter) UpdateGame(c *echo.Context) error {
 		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
+	var accessTier *entities.AccessTier
+	if req.AccessTier != nil {
+		tier := entities.AccessTier(*req.AccessTier)
+		accessTier = &tier
+	}
+
 	cmd := commands.UpdateTeacherGameCommand{
 		GameID:           id,
 		TeacherID:        userID,
@@ -259,13 +294,17 @@ func (r *GameRouter) UpdateGame(c *echo.Context) error {
 		Title:            req.Title,
 		Description:      req.Description,
 		Level:            req.Level,
+		AccessTier:       accessTier,
 		TimeLimitSeconds: req.TimeLimitSeconds,
 		AllowedMistakes:  req.AllowedMistakes,
 		RewardXP:         req.RewardXP,
-		ItemCount:        req.ItemCount,
-		SourceType:       req.SourceType,
-		SourceID:         req.SourceID,
-		CustomWordsJSON:  req.CustomWordsJSON,
+		ItemCount:             req.ItemCount,
+		SourceType:            req.SourceType,
+		SourceID:              req.SourceID,
+		CustomWordsJSON:       req.CustomWordsJSON,
+		IsPublishedStandalone: req.IsPublishedStandalone,
+		AudienceScope:         req.AudienceScope,
+		AssignedCourseIDs:     req.AssignedCourseIDs,
 	}
 
 	game, err := r.updateHandler.Handle(c.Request().Context(), cmd)
@@ -302,50 +341,4 @@ func (r *GameRouter) DeleteGame(c *echo.Context) error {
 		"success": true,
 		"message": "Actividad eliminada o archivada correctamente.",
 	})
-}
-
-func formatTeacherGameDTO(g *entities.TeacherGame) map[string]any {
-	courseTitle := ""
-	if g.Course != nil {
-		courseTitle = g.Course.Title
-	}
-
-	teacherName := ""
-	teacherEmail := ""
-	if g.Teacher != nil {
-		teacherName = g.Teacher.Name
-		teacherEmail = g.Teacher.Email
-	}
-
-	categoryName := ""
-	if g.Category != nil {
-		categoryName = g.Category.Name
-	}
-
-	return map[string]any{
-		"id":                 g.ID,
-		"teacher_id":         g.TeacherID,
-		"teacher_name":       teacherName,
-		"teacher_email":      teacherEmail,
-		"course_id":          g.CourseID,
-		"course_title":       courseTitle,
-		"category_id":        g.CategoryID,
-		"category_name":      categoryName,
-		"base_archetype":     g.BaseArchetype,
-		"title":              g.Title,
-		"description":        g.Description,
-		"level":              g.Level,
-		"time_limit_seconds": g.TimeLimitSeconds,
-		"allowed_mistakes":   g.AllowedMistakes,
-		"reward_xp":          g.RewardXP,
-		"item_count":         g.ItemCount,
-		"source_type":        g.SourceType,
-		"source_id":          g.SourceID,
-		"custom_words_json":  g.CustomWordsJSON,
-		"owner_type":         g.OwnerType,
-		"is_global":          g.IsGlobal,
-		"usage_count":        g.UsageCount,
-		"is_active":          g.IsActive,
-		"created_at":         g.CreatedAt.Format("02/01/2006"),
-	}
 }

@@ -67,12 +67,31 @@ func (r *MySQLTeacherGameRepository) FindGlobal(ctx context.Context) ([]entities
 		Where("NOT (source_type = ? AND source_id IS NOT NULL AND source_id <> '')", "course_lesson").
 		Preload("Teacher").
 		Preload("Category").
-		Order("created_at DESC").
+		Order(accessTierOrder("access_tier") + ", created_at DESC").
 		Find(&games).Error
 	if err != nil {
 		return nil, err
 	}
 	if err := r.fillUsage(ctx, games); err != nil {
+		return nil, err
+	}
+	return games, nil
+}
+
+// FindStandaloneByTeachers recupera los juegos publicados fuera de lecciones creados por los docentes indicados.
+func (r *MySQLTeacherGameRepository) FindStandaloneByTeachers(ctx context.Context, teacherIDs []string) ([]entities.TeacherGame, error) {
+	if len(teacherIDs) == 0 {
+		return []entities.TeacherGame{}, nil
+	}
+	games := make([]entities.TeacherGame, 0)
+	err := r.db.WithContext(ctx).
+		Where("teacher_id IN ? AND is_active = ? AND is_published_standalone = ?", teacherIDs, true, true).
+		Preload("Teacher").
+		Preload("Course").
+		Preload("Category").
+		Order("created_at DESC").
+		Find(&games).Error
+	if err != nil {
 		return nil, err
 	}
 	return games, nil
@@ -121,20 +140,25 @@ func (r *MySQLTeacherGameRepository) Update(ctx context.Context, game *entities.
 		Model(&entities.TeacherGame{}).
 		Where("id = ?", game.ID).
 		Updates(map[string]any{
-			"base_archetype":     game.BaseArchetype,
-			"course_id":          game.CourseID,
-			"title":              game.Title,
-			"description":        game.Description,
-			"level":              game.Level,
-			"time_limit_seconds": game.TimeLimitSeconds,
-			"allowed_mistakes":   game.AllowedMistakes,
-			"reward_xp":          game.RewardXP,
-			"item_count":         game.ItemCount,
-			"source_type":        game.SourceType,
-			"source_id":          game.SourceID,
-			"custom_words_json":  game.CustomWordsJSON,
-			"is_active":          game.IsActive,
-			"updated_at":         game.UpdatedAt,
+			"base_archetype":          game.BaseArchetype,
+			"course_id":               game.CourseID,
+			"category_id":             game.CategoryID,
+			"title":                   game.Title,
+			"description":             game.Description,
+			"level":                   game.Level,
+			"access_tier":             game.AccessTier,
+			"time_limit_seconds":      game.TimeLimitSeconds,
+			"allowed_mistakes":        game.AllowedMistakes,
+			"reward_xp":               game.RewardXP,
+			"item_count":              game.ItemCount,
+			"source_type":             game.SourceType,
+			"source_id":               game.SourceID,
+			"custom_words_json":       game.CustomWordsJSON,
+			"is_published_standalone": game.IsPublishedStandalone,
+			"audience_scope":          game.AudienceScope,
+			"assigned_course_ids":     game.AssignedCourseIDs,
+			"is_active":               game.IsActive,
+			"updated_at":              game.UpdatedAt,
 		}).Error
 }
 

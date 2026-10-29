@@ -6,6 +6,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/gamification/commands"
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
@@ -18,6 +19,7 @@ type CreateAdminGameRequest struct {
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
 	Level            string  `json:"level"`
+	AccessTier       *string `json:"access_tier"`
 	TimeLimitSeconds int     `json:"time_limit_seconds"`
 	AllowedMistakes  int     `json:"allowed_mistakes"`
 	RewardXP         int     `json:"reward_xp"`
@@ -35,6 +37,7 @@ type UpdateAdminGameRequest struct {
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
 	Level            string  `json:"level"`
+	AccessTier       *string `json:"access_tier"`
 	TimeLimitSeconds *int    `json:"time_limit_seconds"`
 	AllowedMistakes  *int    `json:"allowed_mistakes"`
 	RewardXP         *int    `json:"reward_xp"`
@@ -59,6 +62,11 @@ func (r *GameRouter) CreateAdminGame(c *echo.Context) error {
 		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
+	var accessTier entities.AccessTier
+	if req.AccessTier != nil {
+		accessTier = entities.AccessTier(*req.AccessTier)
+	}
+
 	cmd := commands.CreateGlobalGameCommand{
 		AuthorID:         userID,
 		CategoryID:       req.CategoryID,
@@ -66,6 +74,7 @@ func (r *GameRouter) CreateAdminGame(c *echo.Context) error {
 		Title:            req.Title,
 		Description:      req.Description,
 		Level:            req.Level,
+		AccessTier:       accessTier,
 		TimeLimitSeconds: req.TimeLimitSeconds,
 		AllowedMistakes:  req.AllowedMistakes,
 		RewardXP:         req.RewardXP,
@@ -104,6 +113,12 @@ func (r *GameRouter) UpdateAdminGame(c *echo.Context) error {
 		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
+	var accessTier *entities.AccessTier
+	if req.AccessTier != nil {
+		tier := entities.AccessTier(*req.AccessTier)
+		accessTier = &tier
+	}
+
 	cmd := commands.UpdateGlobalGameCommand{
 		GameID:           id,
 		AuthorID:         userID,
@@ -112,6 +127,7 @@ func (r *GameRouter) UpdateAdminGame(c *echo.Context) error {
 		Title:            req.Title,
 		Description:      req.Description,
 		Level:            req.Level,
+		AccessTier:       accessTier,
 		TimeLimitSeconds: req.TimeLimitSeconds,
 		AllowedMistakes:  req.AllowedMistakes,
 		RewardXP:         req.RewardXP,

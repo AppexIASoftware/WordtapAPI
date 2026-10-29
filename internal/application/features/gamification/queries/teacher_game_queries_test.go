@@ -49,6 +49,20 @@ func (m *mockQueryGameRepo) FindGlobal(ctx context.Context) ([]entities.TeacherG
 	return res, nil
 }
 
+func (m *mockQueryGameRepo) FindStandaloneByTeachers(ctx context.Context, teacherIDs []string) ([]entities.TeacherGame, error) {
+	teacherSet := make(map[string]bool)
+	for _, id := range teacherIDs {
+		teacherSet[id] = true
+	}
+	var res []entities.TeacherGame
+	for _, g := range m.games {
+		if teacherSet[g.TeacherID] && g.IsActive && g.IsPublishedStandalone {
+			res = append(res, g)
+		}
+	}
+	return res, nil
+}
+
 func (m *mockQueryGameRepo) Update(ctx context.Context, g *entities.TeacherGame) error {
 	return nil
 }

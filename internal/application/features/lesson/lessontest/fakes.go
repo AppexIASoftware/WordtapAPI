@@ -70,6 +70,9 @@ func (f *FakeGameRepo) FindByTeacher(context.Context, string) ([]entities.Teache
 func (f *FakeGameRepo) FindGlobal(context.Context) ([]entities.TeacherGame, error) {
 	return nil, nil
 }
+func (f *FakeGameRepo) FindStandaloneByTeachers(context.Context, []string) ([]entities.TeacherGame, error) {
+	return nil, nil
+}
 func (f *FakeGameRepo) FindAll(context.Context) ([]entities.TeacherGame, error) {
 	return nil, nil
 }

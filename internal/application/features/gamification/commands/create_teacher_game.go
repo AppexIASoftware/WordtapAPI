@@ -12,34 +12,46 @@ import (
 )
 
 type CreateTeacherGameCommand struct {
-	TeacherID        string             `json:"-"`
-	OwnerType        entities.OwnerType `json:"-"`
-	CourseID         *string            `json:"course_id"`
-	CategoryID       *string            `json:"category_id"`
-	BaseArchetype    string             `json:"base_archetype"`
-	Title            string             `json:"title"`
-	Description      *string            `json:"description"`
-	Level            string             `json:"level"`
-	TimeLimitSeconds int                `json:"time_limit_seconds"`
-	AllowedMistakes  int                `json:"allowed_mistakes"`
-	RewardXP         int                `json:"reward_xp"`
-	ItemCount        int                `json:"item_count"`
-	SourceType       string             `json:"source_type"`
-	SourceID         *string            `json:"source_id"`
-	CustomWordsJSON  *string            `json:"custom_words_json"`
+	TeacherID             string              `json:"-"`
+	OwnerType             entities.OwnerType  `json:"-"`
+	CourseID              *string             `json:"course_id"`
+	CategoryID            *string             `json:"category_id"`
+	BaseArchetype         string              `json:"base_archetype"`
+	Title                 string              `json:"title"`
+	Description           *string             `json:"description"`
+	Level                 string              `json:"level"`
+	AccessTier            entities.AccessTier `json:"access_tier"`
+	TimeLimitSeconds      int                 `json:"time_limit_seconds"`
+	AllowedMistakes       int                 `json:"allowed_mistakes"`
+	RewardXP              int                 `json:"reward_xp"`
+	ItemCount             int                 `json:"item_count"`
+	SourceType            string              `json:"source_type"`
+	SourceID              *string             `json:"source_id"`
+	CustomWordsJSON       *string             `json:"custom_words_json"`
+	IsPublishedStandalone bool                `json:"is_published_standalone"`
+	AudienceScope         string              `json:"audience_scope"`
+	AssignedCourseIDs     []string            `json:"assigned_course_ids"`
 }
 
 type CreateTeacherGameHandler struct {
-	gameRepo repositories.TeacherGameRepository
+	gameRepo   repositories.TeacherGameRepository
+	courseRepo audienceCourseRepository
 }
 
-func NewCreateTeacherGameHandler(gameRepo repositories.TeacherGameRepository) *CreateTeacherGameHandler {
-	return &CreateTeacherGameHandler{gameRepo: gameRepo}
+func NewCreateTeacherGameHandler(gameRepo repositories.TeacherGameRepository, courseRepos ...audienceCourseRepository) *CreateTeacherGameHandler {
+	h := &CreateTeacherGameHandler{gameRepo: gameRepo}
+	if len(courseRepos) > 0 {
+		h.courseRepo = courseRepos[0]
+	}
+	return h
 }
 
 func (h *CreateTeacherGameHandler) Handle(ctx context.Context, cmd CreateTeacherGameCommand) (*entities.TeacherGame, error) {
 	if cmd.TeacherID == "" {
 		return nil, errors.New("el identificador del docente es obligatorio")
+	}
+	if err := validateAudienceCourses(ctx, h.courseRepo, cmd.TeacherID, cmd.AssignedCourseIDs); err != nil {
+		return nil, err
 	}
 
 	title := strings.TrimSpace(cmd.Title)
@@ -109,24 +121,44 @@ func (h *CreateTeacherGameHandler) Handle(ctx context.Context, cmd CreateTeacher
 	if ownerType != entities.OwnerTypePlatform {
 		ownerType = entities.OwnerTypeTeacher
 	}
+	accessTier := cmd.AccessTier
+	if accessTier == "" {
+		accessTier = entities.AccessTierFree
+	}
+	audienceScope := strings.TrimSpace(cmd.AudienceScope)
+	if audienceScope != "selected_courses" {
+		audienceScope = "all_students"
+	}
+
+	var assignedCourseIDs *string
+	if len(cmd.AssignedCourseIDs) > 0 {
+		raw, _ := json.Marshal(cmd.AssignedCourseIDs)
+		str := string(raw)
+		assignedCourseIDs = &str
+	}
+
 	game := &entities.TeacherGame{
-		TeacherID:        cmd.TeacherID,
-		CourseID:         courseID,
-		CategoryID:       categoryID,
-		BaseArchetype:    archetype,
-		Title:            title,
-		Description:      cmd.Description,
-		Level:            level,
-		TimeLimitSeconds: timeLimit,
-		AllowedMistakes:  allowedMistakes,
-		RewardXP:         rewardXP,
-		ItemCount:        itemCount,
-		SourceType:       sourceType,
-		SourceID:         cmd.SourceID,
-		CustomWordsJSON:  customWordsJSON,
-		OwnerType:        ownerType,
-		IsGlobal:         false,
-		IsActive:         true,
+		TeacherID:             cmd.TeacherID,
+		CourseID:              courseID,
+		CategoryID:            categoryID,
+		BaseArchetype:         archetype,
+		Title:                 title,
+		Description:           cmd.Description,
+		Level:                 level,
+		AccessTier:            accessTier,
+		TimeLimitSeconds:      timeLimit,
+		AllowedMistakes:       allowedMistakes,
+		RewardXP:              rewardXP,
+		ItemCount:             itemCount,
+		SourceType:            sourceType,
+		SourceID:              cmd.SourceID,
+		CustomWordsJSON:       customWordsJSON,
+		OwnerType:             ownerType,
+		IsGlobal:              false,
+		IsPublishedStandalone: cmd.IsPublishedStandalone,
+		AudienceScope:         audienceScope,
+		AssignedCourseIDs:     assignedCourseIDs,
+		IsActive:              true,
 	}
 
 	if err := h.gameRepo.Create(ctx, game); err != nil {

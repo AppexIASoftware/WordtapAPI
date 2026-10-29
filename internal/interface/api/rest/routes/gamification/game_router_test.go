@@ -69,6 +69,20 @@ func (m *mockGameRouterRepo) FindGlobal(ctx context.Context) ([]entities.Teacher
 	return res, nil
 }
 
+func (m *mockGameRouterRepo) FindStandaloneByTeachers(ctx context.Context, teacherIDs []string) ([]entities.TeacherGame, error) {
+	teacherSet := make(map[string]bool)
+	for _, id := range teacherIDs {
+		teacherSet[id] = true
+	}
+	var res []entities.TeacherGame
+	for _, g := range m.games {
+		if teacherSet[g.TeacherID] && g.IsActive && g.IsPublishedStandalone {
+			res = append(res, g)
+		}
+	}
+	return res, nil
+}
+
 func (m *mockGameRouterRepo) Update(ctx context.Context, g *entities.TeacherGame) error {
 	for i, existing := range m.games {
 		if existing.ID == g.ID {
@@ -143,6 +157,17 @@ func TestGameRouter_Endpoints(t *testing.T) {
 
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("código esperado %d, obtenido %d", http.StatusCreated, rec.Code)
+		}
+
+		var resp struct {
+			Success bool           `json:"success"`
+			Data    map[string]any `json:"data"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("error decodificando respuesta: %v", err)
+		}
+		if resp.Data["access_tier"] != string(entities.AccessTierFree) {
+			t.Errorf("access_tier esperado 'free', obtenido '%v'", resp.Data["access_tier"])
 		}
 	})
 

@@ -13,29 +13,38 @@ import (
 )
 
 type UpdateTeacherGameCommand struct {
-	GameID           string  `json:"-"`
-	TeacherID        string  `json:"-"`
-	CourseID         *string `json:"course_id"`
-	CategoryID       *string `json:"category_id"`
-	BaseArchetype    string  `json:"base_archetype"`
-	Title            string  `json:"title"`
-	Description      *string `json:"description"`
-	Level            string  `json:"level"`
-	TimeLimitSeconds int     `json:"time_limit_seconds"`
-	AllowedMistakes  int     `json:"allowed_mistakes"`
-	RewardXP         int     `json:"reward_xp"`
-	ItemCount        int     `json:"item_count"`
-	SourceType       string  `json:"source_type"`
-	SourceID         *string `json:"source_id"`
-	CustomWordsJSON  *string `json:"custom_words_json"`
+	GameID                string               `json:"-"`
+	TeacherID             string               `json:"-"`
+	CourseID              *string              `json:"course_id"`
+	CategoryID            *string              `json:"category_id"`
+	BaseArchetype         string               `json:"base_archetype"`
+	Title                 string               `json:"title"`
+	Description           *string              `json:"description"`
+	Level                 string               `json:"level"`
+	AccessTier            *entities.AccessTier `json:"access_tier"`
+	TimeLimitSeconds      int                  `json:"time_limit_seconds"`
+	AllowedMistakes       int                  `json:"allowed_mistakes"`
+	RewardXP              int                  `json:"reward_xp"`
+	ItemCount             int                  `json:"item_count"`
+	SourceType            string               `json:"source_type"`
+	SourceID              *string              `json:"source_id"`
+	CustomWordsJSON       *string              `json:"custom_words_json"`
+	IsPublishedStandalone *bool                `json:"is_published_standalone"`
+	AudienceScope         *string              `json:"audience_scope"`
+	AssignedCourseIDs     *[]string            `json:"assigned_course_ids"`
 }
 
 type UpdateTeacherGameHandler struct {
-	gameRepo repositories.TeacherGameRepository
+	gameRepo   repositories.TeacherGameRepository
+	courseRepo audienceCourseRepository
 }
 
-func NewUpdateTeacherGameHandler(gameRepo repositories.TeacherGameRepository) *UpdateTeacherGameHandler {
-	return &UpdateTeacherGameHandler{gameRepo: gameRepo}
+func NewUpdateTeacherGameHandler(gameRepo repositories.TeacherGameRepository, courseRepos ...audienceCourseRepository) *UpdateTeacherGameHandler {
+	h := &UpdateTeacherGameHandler{gameRepo: gameRepo}
+	if len(courseRepos) > 0 {
+		h.courseRepo = courseRepos[0]
+	}
+	return h
 }
 
 func (h *UpdateTeacherGameHandler) Handle(ctx context.Context, cmd UpdateTeacherGameCommand) (*entities.TeacherGame, error) {
@@ -58,6 +67,19 @@ func (h *UpdateTeacherGameHandler) Handle(ctx context.Context, cmd UpdateTeacher
 	}
 	if game.TeacherID != cmd.TeacherID {
 		return nil, apperrors.New("No tienes permisos para editar esta actividad.")
+	}
+	if cmd.AssignedCourseIDs != nil {
+		if err := validateAudienceCourses(ctx, h.courseRepo, cmd.TeacherID, *cmd.AssignedCourseIDs); err != nil {
+			return nil, err
+		}
+	} else if game.AssignedCourseIDs != nil {
+		var ids []string
+		if err := json.Unmarshal([]byte(*game.AssignedCourseIDs), &ids); err != nil {
+			return nil, err
+		}
+		if err := validateAudienceCourses(ctx, h.courseRepo, cmd.TeacherID, ids); err != nil {
+			return nil, err
+		}
 	}
 	if game.SourceType == "course_lesson" && game.SourceID != nil && strings.TrimSpace(*game.SourceID) != "" {
 		if (strings.TrimSpace(cmd.SourceType) != "" && strings.TrimSpace(cmd.SourceType) != game.SourceType) ||
@@ -106,6 +128,10 @@ func (h *UpdateTeacherGameHandler) Handle(ctx context.Context, cmd UpdateTeacher
 		game.Level = level
 	}
 
+	if cmd.AccessTier != nil && *cmd.AccessTier != "" {
+		game.AccessTier = *cmd.AccessTier
+	}
+
 	if cmd.TimeLimitSeconds > 0 {
 		game.TimeLimitSeconds = cmd.TimeLimitSeconds
 	}
@@ -133,6 +159,27 @@ func (h *UpdateTeacherGameHandler) Handle(ctx context.Context, cmd UpdateTeacher
 			game.CustomWordsJSON = &empty
 		} else {
 			game.CustomWordsJSON = &trimmed
+		}
+	}
+
+	if cmd.IsPublishedStandalone != nil {
+		game.IsPublishedStandalone = *cmd.IsPublishedStandalone
+	}
+	if cmd.AudienceScope != nil {
+		scope := strings.TrimSpace(*cmd.AudienceScope)
+		if scope != "selected_courses" {
+			scope = "all_students"
+		}
+		game.AudienceScope = scope
+	}
+	if cmd.AssignedCourseIDs != nil {
+		if len(*cmd.AssignedCourseIDs) == 0 {
+			empty := "[]"
+			game.AssignedCourseIDs = &empty
+		} else {
+			raw, _ := json.Marshal(*cmd.AssignedCourseIDs)
+			str := string(raw)
+			game.AssignedCourseIDs = &str
 		}
 	}
 

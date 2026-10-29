@@ -19,10 +19,11 @@ type UpdateGlobalGameCommand struct {
 	AuthorID         string  `json:"-"`
 	CategoryID       *string `json:"category_id"`
 	BaseArchetype    string  `json:"base_archetype"`
-	Title            string  `json:"title"`
-	Description      *string `json:"description"`
-	Level            string  `json:"level"`
-	TimeLimitSeconds *int    `json:"time_limit_seconds"`
+	Title            string               `json:"title"`
+	Description      *string              `json:"description"`
+	Level            string               `json:"level"`
+	AccessTier       *entities.AccessTier `json:"access_tier"`
+	TimeLimitSeconds *int                 `json:"time_limit_seconds"`
 	AllowedMistakes  *int    `json:"allowed_mistakes"`
 	RewardXP         *int    `json:"reward_xp"`
 	ItemCount        *int    `json:"item_count"`
@@ -101,6 +102,10 @@ func (h *UpdateGlobalGameHandler) Handle(ctx context.Context, cmd UpdateGlobalGa
 	level := strings.TrimSpace(cmd.Level)
 	if level != "" {
 		game.Level = level
+	}
+
+	if cmd.AccessTier != nil && *cmd.AccessTier != "" {
+		game.AccessTier = *cmd.AccessTier
 	}
 
 	if cmd.TimeLimitSeconds != nil && *cmd.TimeLimitSeconds > 0 {

@@ -13,6 +13,7 @@ import (
 
 	classroomCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/commands"
 	classroomQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/queries"
+	catalogQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/catalog/queries"
 	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
 	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
 	gameCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/gamification/commands"
@@ -31,6 +32,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
 	restMiddleware "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/middleware"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/auth"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/catalog"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/classroom"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/course"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/docs"
@@ -112,8 +114,8 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	getStumbleListHandler := classroomQuery.NewGetStumbleListHandler(classroomRepo)
 
 	// Teacher Game Command & Query handlers
-	createTeacherGameHandler := gameCmd.NewCreateTeacherGameHandler(teacherGameRepo)
-	updateTeacherGameHandler := gameCmd.NewUpdateTeacherGameHandler(teacherGameRepo)
+	createTeacherGameHandler := gameCmd.NewCreateTeacherGameHandler(teacherGameRepo, courseRepo)
+	updateTeacherGameHandler := gameCmd.NewUpdateTeacherGameHandler(teacherGameRepo, courseRepo)
 	deleteTeacherGameHandler := gameCmd.NewDeleteTeacherGameHandler(teacherGameRepo)
 	listTeacherGamesHandler := gameQuery.NewListTeacherGamesHandler(teacherGameRepo)
 	getTeacherGameDetailHandler := gameQuery.NewGetTeacherGameDetailHandler(teacherGameRepo)
@@ -122,8 +124,8 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	createGlobalGameHandler := gameCmd.NewCreateGlobalGameHandler(teacherGameRepo)
 	updateGlobalGameHandler := gameCmd.NewUpdateGlobalGameHandler(teacherGameRepo)
 	deleteGlobalGameHandler := gameCmd.NewDeleteGlobalGameHandler(teacherGameRepo)
-	createCourseHandler := courseCmd.NewCreateCourseHandler(courseRepo)
-	updateCourseHandler := courseCmd.NewUpdateCourseHandler(courseRepo, courseReviewRepo)
+	createCourseHandler := courseCmd.NewCreateCourseHandler(courseRepo, settingRepo)
+	updateCourseHandler := courseCmd.NewUpdateCourseHandler(courseRepo, courseReviewRepo).WithSettingRepo(settingRepo)
 	deleteCourseHandler := courseCmd.NewDeleteCourseHandler(courseRepo)
 	submitCourseReviewHandler := courseCmd.NewSubmitCourseReviewHandler(courseRepo, courseReviewRepo)
 	withdrawCourseReviewHandler := courseCmd.NewWithdrawCourseReviewHandler(courseReviewRepo)
@@ -239,11 +241,16 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		updateGlobalGameHandler,
 		deleteGlobalGameHandler,
 	)
+	listStudentTeacherGamesHandler := gameQuery.NewListStudentTeacherGamesHandler(classroomRepo, teacherGameRepo)
+	getStudentTeacherGameDetailHandler := gameQuery.NewGetStudentTeacherGameDetailHandler(classroomRepo, teacherGameRepo)
+	gameStudentRouter := gamification.NewGameStudentRouter(listStudentTeacherGamesHandler, getStudentTeacherGameDetailHandler)
 	statsRepo := infraRepo.NewMySQLUserLearningStatsRepository(db)
 	livesRouter := gamification.NewLivesRouter(statsRepo)
 	recordGameVictoryHandler := gameCmd.NewRecordGameVictoryHandler(statsRepo)
 	getUserProgressHandler := gameQuery.NewGetUserProgressHandler(statsRepo)
 	progressRouter := gamification.NewProgressRouter(recordGameVictoryHandler, getUserProgressHandler)
+	catalogUnlockHandler := catalogQuery.NewGetCatalogUnlockStateHandler(courseRepo, teacherGameRepo, statsRepo)
+	catalogUnlockRouter := catalog.NewUnlockRouter(catalogUnlockHandler)
 	swaggerRouter := docs.NewSwaggerRouter()
 
 	// Middlewares específicos
@@ -282,8 +289,10 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	vaultRouter.RegisterRoutes(v1, authRequired, staffRoles, adminOrModerator, instructorOrAdmin)
 	classroomRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
 	gameRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)
+	gameStudentRouter.RegisterRoutes(v1, authRequired)
 	livesRouter.RegisterRoutes(v1, authRequired)
 	progressRouter.RegisterRoutes(v1, authRequired)
+	catalogUnlockRouter.RegisterRoutes(v1, authRequired)
 
 	return &Server{App: e}, nil
 }

@@ -62,6 +62,20 @@ func (m *mockTeacherGameRepo) FindGlobal(ctx context.Context) ([]entities.Teache
 	return res, nil
 }
 
+func (m *mockTeacherGameRepo) FindStandaloneByTeachers(ctx context.Context, teacherIDs []string) ([]entities.TeacherGame, error) {
+	teacherSet := make(map[string]bool)
+	for _, id := range teacherIDs {
+		teacherSet[id] = true
+	}
+	var res []entities.TeacherGame
+	for _, g := range m.games {
+		if teacherSet[g.TeacherID] && g.IsActive && g.IsPublishedStandalone {
+			res = append(res, g)
+		}
+	}
+	return res, nil
+}
+
 func (m *mockTeacherGameRepo) Update(ctx context.Context, g *entities.TeacherGame) error {
 	for i, existing := range m.games {
 		if existing.ID == g.ID {
@@ -117,8 +131,37 @@ func TestTeacherGameCommands(t *testing.T) {
 		if res.OwnerType != entities.OwnerTypeTeacher {
 			t.Errorf("propiedad esperada 'teacher', obtenida '%s'", res.OwnerType)
 		}
+		if res.AccessTier != entities.AccessTierFree {
+			t.Errorf("nivel de acceso esperado '%s', obtenido '%s'", entities.AccessTierFree, res.AccessTier)
+		}
 		if res.IsGlobal {
 			t.Error("una actividad de docente no puede ser global")
+		}
+	})
+
+	t.Run("CreateTeacherGameHandler con publicación standalone y audiencia específica", func(t *testing.T) {
+		handler := commands.NewCreateTeacherGameHandler(repo, audienceCoursesFake{courses: []entities.Course{{ID: "c-1"}, {ID: "c-2"}}})
+		cmd := commands.CreateTeacherGameCommand{
+			TeacherID:             "teacher-1",
+			Title:                 "Juego Standalone Select",
+			BaseArchetype:         "memory",
+			IsPublishedStandalone: true,
+			AudienceScope:         "selected_courses",
+			AssignedCourseIDs:     []string{"c-1", "c-2"},
+		}
+
+		res, err := handler.Handle(ctx, cmd)
+		if err != nil {
+			t.Fatalf("error creando juego: %v", err)
+		}
+		if !res.IsPublishedStandalone {
+			t.Error("se esperaba IsPublishedStandalone = true")
+		}
+		if res.AudienceScope != "selected_courses" {
+			t.Errorf("se esperaba AudienceScope 'selected_courses', obtenido '%s'", res.AudienceScope)
+		}
+		if res.AssignedCourseIDs == nil || *res.AssignedCourseIDs != `["c-1","c-2"]` {
+			t.Errorf("AssignedCourseIDs esperado '[\"c-1\",\"c-2\"]', obtenido '%v'", res.AssignedCourseIDs)
 		}
 	})
 
@@ -135,6 +178,9 @@ func TestTeacherGameCommands(t *testing.T) {
 		if res.OwnerType != entities.OwnerTypePlatform {
 			t.Errorf("propiedad esperada 'platform', obtenida '%s'", res.OwnerType)
 		}
+		if res.AccessTier != entities.AccessTierFree {
+			t.Errorf("nivel de acceso esperado '%s', obtenido '%s'", entities.AccessTierFree, res.AccessTier)
+		}
 		if !res.IsGlobal {
 			t.Error("una actividad de plataforma debe ser global")
 		}
@@ -150,11 +196,13 @@ func TestTeacherGameCommands(t *testing.T) {
 		})
 
 		handler := commands.NewUpdateTeacherGameHandler(repo)
+		tierSub := entities.AccessTierSubscription
 		cmd := commands.UpdateTeacherGameCommand{
 			GameID:           "game-10",
 			TeacherID:        "teacher-1",
 			Title:            "Juego Actualizado",
 			BaseArchetype:    "word_scramble",
+			AccessTier:       &tierSub,
 			TimeLimitSeconds: 60,
 		}
 
@@ -167,6 +215,9 @@ func TestTeacherGameCommands(t *testing.T) {
 		}
 		if res.BaseArchetype != "word_scramble" {
 			t.Errorf("arquetipo esperado 'word_scramble', obtenido '%s'", res.BaseArchetype)
+		}
+		if res.AccessTier != entities.AccessTierSubscription {
+			t.Errorf("nivel de acceso esperado '%s', obtenido '%s'", entities.AccessTierSubscription, res.AccessTier)
 		}
 		if res.TimeLimitSeconds != 60 {
 			t.Errorf("tiempo esperado 60, obtenido %d", res.TimeLimitSeconds)
@@ -185,11 +236,13 @@ func TestTeacherGameCommands(t *testing.T) {
 
 		handler := commands.NewUpdateGlobalGameHandler(repo)
 		newTime := 90
+		tierSub := entities.AccessTierSubscription
 		cmd := commands.UpdateGlobalGameCommand{
 			GameID:           "game-global-1",
 			AuthorID:         "admin-1",
 			Title:            "Global Actualizado",
 			BaseArchetype:    "match",
+			AccessTier:       &tierSub,
 			TimeLimitSeconds: &newTime,
 		}
 
@@ -202,6 +255,9 @@ func TestTeacherGameCommands(t *testing.T) {
 		}
 		if res.BaseArchetype != "match" {
 			t.Errorf("arquetipo esperado 'match', obtenido '%s'", res.BaseArchetype)
+		}
+		if res.AccessTier != entities.AccessTierSubscription {
+			t.Errorf("nivel de acceso esperado '%s', obtenido '%s'", entities.AccessTierSubscription, res.AccessTier)
 		}
 		if res.TimeLimitSeconds != 90 {
 			t.Errorf("tiempo esperado 90, obtenido %d", res.TimeLimitSeconds)

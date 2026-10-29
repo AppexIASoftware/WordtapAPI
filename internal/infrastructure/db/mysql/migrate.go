@@ -108,6 +108,12 @@ func AutoMigrate(db *gorm.DB) error {
 		return fmt.Errorf("failed to backfill teacher game ownership: %w", err)
 	}
 	if err := db.Exec(
+		`UPDATE teacher_games SET access_tier = ? WHERE access_tier IS NULL OR access_tier = ''`,
+		entities.AccessTierFree,
+	).Error; err != nil {
+		return fmt.Errorf("failed to backfill teacher game access tier: %w", err)
+	}
+	if err := db.Exec(
 		`UPDATE courses SET owner_type = ? WHERE owner_type IS NULL OR owner_type = ''`,
 		entities.OwnerTypeTeacher,
 	).Error; err != nil {

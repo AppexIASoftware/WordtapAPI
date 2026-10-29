@@ -12,6 +12,7 @@ type TeacherGameRepository interface {
 	FindByID(ctx context.Context, id string) (*entities.TeacherGame, error)
 	FindByTeacher(ctx context.Context, teacherID string) ([]entities.TeacherGame, error)
 	FindGlobal(ctx context.Context) ([]entities.TeacherGame, error)
+	FindStandaloneByTeachers(ctx context.Context, teacherIDs []string) ([]entities.TeacherGame, error)
 	FindAll(ctx context.Context) ([]entities.TeacherGame, error)
 	Update(ctx context.Context, game *entities.TeacherGame) error
 	Delete(ctx context.Context, id string) error
