@@ -12,6 +12,7 @@ type ClassroomRepository interface {
 	FindByID(ctx context.Context, id string) (*entities.Classroom, error)
 	FindByCode(ctx context.Context, code string) (*entities.Classroom, error)
 	FindByTeacher(ctx context.Context, teacherID string) ([]entities.Classroom, error)
+	FindByStudent(ctx context.Context, studentID string) ([]entities.Classroom, error)
 	EnrollStudent(ctx context.Context, enrollment *entities.ClassroomEnrollment) error
 	FindEnrollment(ctx context.Context, classroomID, studentID string) (*entities.ClassroomEnrollment, error)
 	ListEnrollments(ctx context.Context, classroomID string) ([]entities.ClassroomEnrollment, error)

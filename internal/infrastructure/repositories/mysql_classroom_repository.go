@@ -75,6 +75,22 @@ func (r *MySQLClassroomRepository) FindByTeacher(ctx context.Context, teacherID 
 	return classrooms, nil
 }
 
+// FindByStudent recupera las aulas activas donde el estudiante está inscrito.
+func (r *MySQLClassroomRepository) FindByStudent(ctx context.Context, studentID string) ([]entities.Classroom, error) {
+	classrooms := make([]entities.Classroom, 0)
+	err := r.db.WithContext(ctx).
+		Joins("JOIN classroom_enrollments ON classroom_enrollments.classroom_id = classrooms.id").
+		Where("classroom_enrollments.student_id = ? AND classrooms.is_active = ?", studentID, true).
+		Preload("Teacher").
+		Preload("Course").
+		Order("classrooms.created_at DESC").
+		Find(&classrooms).Error
+	if err != nil {
+		return nil, err
+	}
+	return classrooms, nil
+}
+
 // EnrollStudent registra a un alumno en el aula virtual.
 func (r *MySQLClassroomRepository) EnrollStudent(ctx context.Context, enrollment *entities.ClassroomEnrollment) error {
 	return r.db.WithContext(ctx).Create(enrollment).Error

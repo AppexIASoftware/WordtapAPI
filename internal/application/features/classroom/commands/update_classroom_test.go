@@ -32,6 +32,10 @@ func (m *mockUpdateClassroomRepo) FindByTeacher(ctx context.Context, teacherID s
 	return nil, nil
 }
 
+func (m *mockUpdateClassroomRepo) FindByStudent(ctx context.Context, studentID string) ([]entities.Classroom, error) {
+	return nil, nil
+}
+
 func (m *mockUpdateClassroomRepo) EnrollStudent(ctx context.Context, e *entities.ClassroomEnrollment) error {
 	return nil
 }
@@ -166,4 +170,36 @@ func TestUpdateClassroomHandler(t *testing.T) {
 			t.Fatalf("se esperaba error de validación de nombre")
 		}
 	})
+}
+
+func TestUpdateClassroomCourseAssignments(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		ids        []string
+		single     *string
+		wantList   string
+		wantCourse string
+	}{
+		{name: "omitted preserves assignments", wantList: "old,other", wantCourse: "old"},
+		{name: "empty list clears assignments", ids: []string{}, wantList: "", wantCourse: ""},
+		{name: "replacement synchronizes primary", ids: []string{"new", "other"}, wantList: "new,other", wantCourse: "new"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			old, list := "old", "old,other"
+			repo := &mockUpdateClassroomRepo{classroom: &entities.Classroom{ID: "class", TeacherID: "teacher", CourseID: &old, AssignedCourses: &list}}
+			got, err := commands.NewUpdateClassroomHandler(repo).Handle(context.Background(), commands.UpdateClassroomCommand{ClassroomID: "class", TeacherID: "teacher", Name: "Class", CourseIDs: tc.ids, CourseID: tc.single})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.AssignedCourses == nil || *got.AssignedCourses != tc.wantList {
+				t.Fatalf("assigned courses = %v, want %q", got.AssignedCourses, tc.wantList)
+			}
+			if tc.wantCourse == "" && got.CourseID != nil {
+				t.Fatalf("course ID = %v, want nil", *got.CourseID)
+			}
+			if tc.wantCourse != "" && (got.CourseID == nil || *got.CourseID != tc.wantCourse) {
+				t.Fatalf("course ID = %v, want %q", got.CourseID, tc.wantCourse)
+			}
+		})
+	}
 }

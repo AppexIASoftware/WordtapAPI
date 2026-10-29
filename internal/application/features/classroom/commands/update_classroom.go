@@ -69,13 +69,27 @@ func (h *UpdateClassroomHandler) Handle(ctx context.Context, cmd UpdateClassroom
 		classroom.Description = cmd.Description
 	}
 
-	if cmd.CourseID != nil && *cmd.CourseID != "" {
-		classroom.CourseID = cmd.CourseID
-	}
-
-	if len(cmd.CourseIDs) > 0 {
-		str := strings.Join(cmd.CourseIDs, ",")
-		classroom.AssignedCourses = &str
+	if cmd.CourseIDs != nil {
+		// The explicit list is authoritative, including an empty list.
+		courses := make([]string, 0, len(cmd.CourseIDs))
+		for _, id := range cmd.CourseIDs {
+			if id = strings.TrimSpace(id); id != "" {
+				courses = append(courses, id)
+			}
+		}
+		assigned := strings.Join(courses, ",")
+		classroom.AssignedCourses = &assigned
+		classroom.CourseID = nil
+		if len(courses) > 0 {
+			classroom.CourseID = &courses[0]
+		}
+	} else if cmd.CourseID != nil {
+		id := strings.TrimSpace(*cmd.CourseID)
+		classroom.AssignedCourses = &id
+		classroom.CourseID = nil
+		if id != "" {
+			classroom.CourseID = &id
+		}
 	}
 
 	if len(cmd.GameIDs) > 0 {

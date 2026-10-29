@@ -59,6 +59,10 @@ func (m *mockClassroomRepo) FindByTeacher(ctx context.Context, teacherID string)
 	return list, nil
 }
 
+func (m *mockClassroomRepo) FindByStudent(ctx context.Context, studentID string) ([]entities.Classroom, error) {
+	return nil, nil
+}
+
 func (m *mockClassroomRepo) EnrollStudent(ctx context.Context, e *entities.ClassroomEnrollment) error {
 	return nil
 }
