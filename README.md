@@ -84,6 +84,8 @@ AUTO_MIGRATE=true
 AUTO_SEED=true
 ```
 
+Las tablas, incluida `teacher_games`, deben existir y estar actualizadas antes de usar la API. La migración de arranque se ejecuta únicamente cuando `AUTO_MIGRATE=true`; crear el repositorio de juegos no modifica el esquema ni verifica su compatibilidad. Si se desactiva, el esquema debe prepararse de antemano. No hay un procedimiento independiente de migración documentado en este repositorio: el flujo de arranque también ejecuta backfills que modifican datos. No habilites migraciones o semillas sobre una base real sin revisar sus efectos y contar con autorización.
+
 ### Ejecución de la API
 
 1. **Instalar y sincronizar dependencias:**

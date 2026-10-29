@@ -2,6 +2,7 @@ package gamification
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 
@@ -75,6 +76,7 @@ func (r *GameRouter) RegisterRoutes(
 
 type CreateGameRequest struct {
 	CourseID         *string `json:"course_id"`
+	CategoryID       *string `json:"category_id"`
 	BaseArchetype    string  `json:"base_archetype"`
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
@@ -90,6 +92,7 @@ type CreateGameRequest struct {
 
 type UpdateGameRequest struct {
 	CourseID         *string `json:"course_id"`
+	CategoryID       *string `json:"category_id"`
 	BaseArchetype    string  `json:"base_archetype"`
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
@@ -113,10 +116,14 @@ func (r *GameRouter) CreateGame(c *echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
+	if strings.TrimSpace(req.SourceType) == "course_lesson" && req.SourceID != nil && strings.TrimSpace(*req.SourceID) != "" {
+		return response.Fail(c, http.StatusBadRequest, "Crea la actividad desde la lección correspondiente.")
+	}
 
 	cmd := commands.CreateTeacherGameCommand{
 		TeacherID:        userID,
 		CourseID:         req.CourseID,
+		CategoryID:       req.CategoryID,
 		BaseArchetype:    req.BaseArchetype,
 		Title:            req.Title,
 		Description:      req.Description,
@@ -247,6 +254,7 @@ func (r *GameRouter) UpdateGame(c *echo.Context) error {
 		GameID:           id,
 		TeacherID:        userID,
 		CourseID:         req.CourseID,
+		CategoryID:       req.CategoryID,
 		BaseArchetype:    req.BaseArchetype,
 		Title:            req.Title,
 		Description:      req.Description,
@@ -309,6 +317,11 @@ func formatTeacherGameDTO(g *entities.TeacherGame) map[string]any {
 		teacherEmail = g.Teacher.Email
 	}
 
+	categoryName := ""
+	if g.Category != nil {
+		categoryName = g.Category.Name
+	}
+
 	return map[string]any{
 		"id":                 g.ID,
 		"teacher_id":         g.TeacherID,
@@ -316,6 +329,8 @@ func formatTeacherGameDTO(g *entities.TeacherGame) map[string]any {
 		"teacher_email":      teacherEmail,
 		"course_id":          g.CourseID,
 		"course_title":       courseTitle,
+		"category_id":        g.CategoryID,
+		"category_name":      categoryName,
 		"base_archetype":     g.BaseArchetype,
 		"title":              g.Title,
 		"description":        g.Description,
@@ -329,6 +344,7 @@ func formatTeacherGameDTO(g *entities.TeacherGame) map[string]any {
 		"custom_words_json":  g.CustomWordsJSON,
 		"owner_type":         g.OwnerType,
 		"is_global":          g.IsGlobal,
+		"usage_count":        g.UsageCount,
 		"is_active":          g.IsActive,
 		"created_at":         g.CreatedAt.Format("02/01/2006"),
 	}

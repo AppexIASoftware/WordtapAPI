@@ -12,6 +12,7 @@ type TeacherGame struct {
 	ID               string    `gorm:"type:varchar(36);primaryKey" json:"id"`
 	TeacherID        string    `gorm:"type:varchar(36);not null;index" json:"teacher_id"`
 	CourseID         *string   `gorm:"type:varchar(36);index" json:"course_id,omitempty"`
+	CategoryID       *string   `gorm:"type:varchar(36);index" json:"category_id,omitempty"`
 	BaseArchetype    string    `gorm:"type:varchar(40);not null" json:"base_archetype"` // match, memory, multiple_choice, word_scramble, listening
 	Title            string    `gorm:"type:varchar(180);not null" json:"title"`
 	Description      *string   `gorm:"type:text" json:"description,omitempty"`
@@ -32,8 +33,9 @@ type TeacherGame struct {
 	// UsageCount is ephemeral and counts active lesson links.
 	UsageCount int `gorm:"-" json:"usage_count"`
 
-	Teacher *User   `gorm:"foreignKey:TeacherID" json:"teacher,omitempty"`
-	Course  *Course `gorm:"foreignKey:CourseID" json:"course,omitempty"`
+	Teacher  *User            `gorm:"foreignKey:TeacherID" json:"teacher,omitempty"`
+	Course   *Course          `gorm:"foreignKey:CourseID" json:"course,omitempty"`
+	Category *ContentCategory `gorm:"foreignKey:CategoryID" json:"category,omitempty"`
 }
 
 func (tg *TeacherGame) BeforeCreate(tx *gorm.DB) error {

@@ -16,6 +16,7 @@ type UpdateTeacherGameCommand struct {
 	GameID           string  `json:"-"`
 	TeacherID        string  `json:"-"`
 	CourseID         *string `json:"course_id"`
+	CategoryID       *string `json:"category_id"`
 	BaseArchetype    string  `json:"base_archetype"`
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
@@ -58,6 +59,12 @@ func (h *UpdateTeacherGameHandler) Handle(ctx context.Context, cmd UpdateTeacher
 	if game.TeacherID != cmd.TeacherID {
 		return nil, apperrors.New("No tienes permisos para editar esta actividad.")
 	}
+	if game.SourceType == "course_lesson" && game.SourceID != nil && strings.TrimSpace(*game.SourceID) != "" {
+		if (strings.TrimSpace(cmd.SourceType) != "" && strings.TrimSpace(cmd.SourceType) != game.SourceType) ||
+			(cmd.SourceID != nil && strings.TrimSpace(*cmd.SourceID) != *game.SourceID) {
+			return nil, apperrors.New("No se puede cambiar la lección de esta actividad.")
+		}
+	}
 
 	archetype := strings.ToLower(strings.TrimSpace(cmd.BaseArchetype))
 	if archetype != "" {
@@ -75,6 +82,14 @@ func (h *UpdateTeacherGameHandler) Handle(ctx context.Context, cmd UpdateTeacher
 		} else {
 			trimmed := strings.TrimSpace(*cmd.CourseID)
 			game.CourseID = &trimmed
+		}
+	}
+	if cmd.CategoryID != nil {
+		if strings.TrimSpace(*cmd.CategoryID) == "" {
+			game.CategoryID = nil
+		} else {
+			trimmed := strings.TrimSpace(*cmd.CategoryID)
+			game.CategoryID = &trimmed
 		}
 	}
 	if cmd.Description != nil {

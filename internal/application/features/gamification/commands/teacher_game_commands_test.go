@@ -208,6 +208,32 @@ func TestTeacherGameCommands(t *testing.T) {
 		}
 	})
 
+	t.Run("UpdateGlobalGameHandler reactiva un juego archivado", func(t *testing.T) {
+		repo.games = append(repo.games, entities.TeacherGame{
+			ID:        "game-global-archived",
+			TeacherID: "admin-1",
+			OwnerType: entities.OwnerTypePlatform,
+			Title:     "Global Archivado",
+			IsActive:  false,
+		})
+
+		handler := commands.NewUpdateGlobalGameHandler(repo)
+		reactivate := true
+		cmd := commands.UpdateGlobalGameCommand{
+			GameID:   "game-global-archived",
+			AuthorID: "admin-1",
+			IsActive: &reactivate,
+		}
+
+		res, err := handler.Handle(ctx, cmd)
+		if err != nil {
+			t.Fatalf("error reactivando juego global: %v", err)
+		}
+		if !res.IsActive {
+			t.Errorf("se esperaba que el juego fuera reactivado (IsActive = true)")
+		}
+	})
+
 	t.Run("DeleteTeacherGameHandler exitoso", func(t *testing.T) {
 		repo.games = append(repo.games, entities.TeacherGame{
 			ID:        "game-20",

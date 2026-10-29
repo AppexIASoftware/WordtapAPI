@@ -15,6 +15,7 @@ import (
 // belong to the platform itself, so they are never attached to a course.
 type CreateGlobalGameCommand struct {
 	AuthorID         string  `json:"-"`
+	CategoryID       *string `json:"category_id"`
 	BaseArchetype    string  `json:"base_archetype"`
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
@@ -85,6 +86,12 @@ func (h *CreateGlobalGameHandler) Handle(ctx context.Context, cmd CreateGlobalGa
 		sourceType = "course_lesson"
 	}
 
+	var categoryID *string
+	if cmd.CategoryID != nil && strings.TrimSpace(*cmd.CategoryID) != "" {
+		trimmed := strings.TrimSpace(*cmd.CategoryID)
+		categoryID = &trimmed
+	}
+
 	var customWordsJSON *string
 	if cmd.CustomWordsJSON != nil && strings.TrimSpace(*cmd.CustomWordsJSON) != "" {
 		trimmed := strings.TrimSpace(*cmd.CustomWordsJSON)
@@ -97,6 +104,7 @@ func (h *CreateGlobalGameHandler) Handle(ctx context.Context, cmd CreateGlobalGa
 	game := &entities.TeacherGame{
 		TeacherID:        cmd.AuthorID,
 		CourseID:         nil,
+		CategoryID:       categoryID,
 		BaseArchetype:    archetype,
 		Title:            title,
 		Description:      cmd.Description,

@@ -17,6 +17,7 @@ import (
 type UpdateGlobalGameCommand struct {
 	GameID           string  `json:"-"`
 	AuthorID         string  `json:"-"`
+	CategoryID       *string `json:"category_id"`
 	BaseArchetype    string  `json:"base_archetype"`
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
@@ -28,6 +29,7 @@ type UpdateGlobalGameCommand struct {
 	SourceType       string  `json:"source_type"`
 	SourceID         *string `json:"source_id"`
 	CustomWordsJSON  *string `json:"custom_words_json"`
+	IsActive         *bool   `json:"is_active"`
 }
 
 type UpdateGlobalGameHandler struct {
@@ -62,6 +64,12 @@ func (h *UpdateGlobalGameHandler) Handle(ctx context.Context, cmd UpdateGlobalGa
 	if game.OwnerType != entities.OwnerTypePlatform {
 		return nil, apperrors.New("Solo se pueden gestionar actividades de la plataforma.")
 	}
+	if game.SourceType == "course_lesson" && game.SourceID != nil && strings.TrimSpace(*game.SourceID) != "" {
+		if (strings.TrimSpace(cmd.SourceType) != "" && strings.TrimSpace(cmd.SourceType) != game.SourceType) ||
+			(cmd.SourceID != nil && strings.TrimSpace(*cmd.SourceID) != *game.SourceID) {
+			return nil, apperrors.New("No se puede cambiar la lección de esta actividad.")
+		}
+	}
 
 	archetype := strings.ToLower(strings.TrimSpace(cmd.BaseArchetype))
 	if archetype != "" {
@@ -79,6 +87,14 @@ func (h *UpdateGlobalGameHandler) Handle(ctx context.Context, cmd UpdateGlobalGa
 			game.Description = nil
 		} else {
 			game.Description = &trimmedDesc
+		}
+	}
+	if cmd.CategoryID != nil {
+		if strings.TrimSpace(*cmd.CategoryID) == "" {
+			game.CategoryID = nil
+		} else {
+			trimmed := strings.TrimSpace(*cmd.CategoryID)
+			game.CategoryID = &trimmed
 		}
 	}
 
@@ -118,6 +134,9 @@ func (h *UpdateGlobalGameHandler) Handle(ctx context.Context, cmd UpdateGlobalGa
 		default:
 			game.CustomWordsJSON = &trimmed
 		}
+	}
+	if cmd.IsActive != nil {
+		game.IsActive = *cmd.IsActive
 	}
 
 	game.UpdatedAt = time.Now()

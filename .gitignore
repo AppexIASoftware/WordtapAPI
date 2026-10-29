@@ -10,5 +10,6 @@ tmp/
 .codegraph/
 odd/
 .atl/
+.test-cache/
 
 

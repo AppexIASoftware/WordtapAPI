@@ -17,9 +17,6 @@ type MySQLTeacherGameRepository struct {
 
 // NewMySQLTeacherGameRepository instancia el repositorio para juegos del docente.
 func NewMySQLTeacherGameRepository(db *gorm.DB) domainRepo.TeacherGameRepository {
-	if db != nil {
-		_ = db.AutoMigrate(&entities.TeacherGame{})
-	}
 	return &MySQLTeacherGameRepository{db: db}
 }
 
@@ -33,6 +30,7 @@ func (r *MySQLTeacherGameRepository) FindByID(ctx context.Context, id string) (*
 	var game entities.TeacherGame
 	err := r.db.WithContext(ctx).
 		Preload("Course").
+		Preload("Category").
 		First(&game, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -49,6 +47,7 @@ func (r *MySQLTeacherGameRepository) FindByTeacher(ctx context.Context, teacherI
 	err := r.db.WithContext(ctx).
 		Where("teacher_id = ?", teacherID).
 		Preload("Course").
+		Preload("Category").
 		Order("created_at DESC").
 		Find(&games).Error
 	if err != nil {
@@ -60,13 +59,14 @@ func (r *MySQLTeacherGameRepository) FindByTeacher(ctx context.Context, teacherI
 	return games, nil
 }
 
-// FindGlobal lista las actividades de plataforma disponibles para cualquier curso.
-// owner_type es la única autoridad de propiedad; is_global queda como legado.
+// FindGlobal excludes ambiguous legacy records that identify a specific lesson.
 func (r *MySQLTeacherGameRepository) FindGlobal(ctx context.Context) ([]entities.TeacherGame, error) {
 	games := make([]entities.TeacherGame, 0)
 	err := r.db.WithContext(ctx).
-		Where("owner_type = ? AND is_active = ?", entities.OwnerTypePlatform, true).
+		Where("is_global = ? AND is_active = ?", true, true).
+		Where("NOT (source_type = ? AND source_id IS NOT NULL AND source_id <> '')", "course_lesson").
 		Preload("Teacher").
+		Preload("Category").
 		Order("created_at DESC").
 		Find(&games).Error
 	if err != nil {
@@ -84,6 +84,7 @@ func (r *MySQLTeacherGameRepository) FindAll(ctx context.Context) ([]entities.Te
 	err := r.db.WithContext(ctx).
 		Preload("Teacher").
 		Preload("Course").
+		Preload("Category").
 		Order("created_at DESC").
 		Find(&games).Error
 	if err != nil {

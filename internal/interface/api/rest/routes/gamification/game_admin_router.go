@@ -13,6 +13,7 @@ import (
 // creation endpoint. There is no course_id: global activities are not linked to
 // a course.
 type CreateAdminGameRequest struct {
+	CategoryID       *string `json:"category_id"`
 	BaseArchetype    string  `json:"base_archetype"`
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
@@ -29,6 +30,7 @@ type CreateAdminGameRequest struct {
 // UpdateAdminGameRequest is the payload of the platform-global activity update
 // endpoint. There is no course_id: global activities are not linked to a course.
 type UpdateAdminGameRequest struct {
+	CategoryID       *string `json:"category_id"`
 	BaseArchetype    string  `json:"base_archetype"`
 	Title            string  `json:"title"`
 	Description      *string `json:"description"`
@@ -40,6 +42,7 @@ type UpdateAdminGameRequest struct {
 	SourceType       string  `json:"source_type"`
 	SourceID         *string `json:"source_id"`
 	CustomWordsJSON  *string `json:"custom_words_json"`
+	IsActive         *bool   `json:"is_active"`
 }
 
 // CreateAdminGame handles POST /api/v1/admin/games and creates a platform-global
@@ -58,6 +61,7 @@ func (r *GameRouter) CreateAdminGame(c *echo.Context) error {
 
 	cmd := commands.CreateGlobalGameCommand{
 		AuthorID:         userID,
+		CategoryID:       req.CategoryID,
 		BaseArchetype:    req.BaseArchetype,
 		Title:            req.Title,
 		Description:      req.Description,
@@ -103,6 +107,7 @@ func (r *GameRouter) UpdateAdminGame(c *echo.Context) error {
 	cmd := commands.UpdateGlobalGameCommand{
 		GameID:           id,
 		AuthorID:         userID,
+		CategoryID:       req.CategoryID,
 		BaseArchetype:    req.BaseArchetype,
 		Title:            req.Title,
 		Description:      req.Description,
@@ -114,6 +119,7 @@ func (r *GameRouter) UpdateAdminGame(c *echo.Context) error {
 		SourceType:       req.SourceType,
 		SourceID:         req.SourceID,
 		CustomWordsJSON:  req.CustomWordsJSON,
+		IsActive:         req.IsActive,
 	}
 
 	game, err := r.updateGlobalGameHandler.Handle(c.Request().Context(), cmd)

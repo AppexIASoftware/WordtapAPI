@@ -12,19 +12,21 @@ import (
 )
 
 type CreateTeacherGameCommand struct {
-	TeacherID        string  `json:"-"`
-	CourseID         *string `json:"course_id"`
-	BaseArchetype    string  `json:"base_archetype"`
-	Title            string  `json:"title"`
-	Description      *string `json:"description"`
-	Level            string  `json:"level"`
-	TimeLimitSeconds int     `json:"time_limit_seconds"`
-	AllowedMistakes  int     `json:"allowed_mistakes"`
-	RewardXP         int     `json:"reward_xp"`
-	ItemCount        int     `json:"item_count"`
-	SourceType       string  `json:"source_type"`
-	SourceID         *string `json:"source_id"`
-	CustomWordsJSON  *string `json:"custom_words_json"`
+	TeacherID        string             `json:"-"`
+	OwnerType        entities.OwnerType `json:"-"`
+	CourseID         *string            `json:"course_id"`
+	CategoryID       *string            `json:"category_id"`
+	BaseArchetype    string             `json:"base_archetype"`
+	Title            string             `json:"title"`
+	Description      *string            `json:"description"`
+	Level            string             `json:"level"`
+	TimeLimitSeconds int                `json:"time_limit_seconds"`
+	AllowedMistakes  int                `json:"allowed_mistakes"`
+	RewardXP         int                `json:"reward_xp"`
+	ItemCount        int                `json:"item_count"`
+	SourceType       string             `json:"source_type"`
+	SourceID         *string            `json:"source_id"`
+	CustomWordsJSON  *string            `json:"custom_words_json"`
 }
 
 type CreateTeacherGameHandler struct {
@@ -86,6 +88,12 @@ func (h *CreateTeacherGameHandler) Handle(ctx context.Context, cmd CreateTeacher
 		courseID = &trimmed
 	}
 
+	var categoryID *string
+	if cmd.CategoryID != nil && strings.TrimSpace(*cmd.CategoryID) != "" {
+		trimmed := strings.TrimSpace(*cmd.CategoryID)
+		categoryID = &trimmed
+	}
+
 	var customWordsJSON *string
 	if cmd.CustomWordsJSON != nil && strings.TrimSpace(*cmd.CustomWordsJSON) != "" {
 		trimmed := strings.TrimSpace(*cmd.CustomWordsJSON)
@@ -97,9 +105,14 @@ func (h *CreateTeacherGameHandler) Handle(ctx context.Context, cmd CreateTeacher
 		}
 	}
 
+	ownerType := cmd.OwnerType
+	if ownerType != entities.OwnerTypePlatform {
+		ownerType = entities.OwnerTypeTeacher
+	}
 	game := &entities.TeacherGame{
 		TeacherID:        cmd.TeacherID,
 		CourseID:         courseID,
+		CategoryID:       categoryID,
 		BaseArchetype:    archetype,
 		Title:            title,
 		Description:      cmd.Description,
@@ -111,7 +124,7 @@ func (h *CreateTeacherGameHandler) Handle(ctx context.Context, cmd CreateTeacher
 		SourceType:       sourceType,
 		SourceID:         cmd.SourceID,
 		CustomWordsJSON:  customWordsJSON,
-		OwnerType:        entities.OwnerTypeTeacher,
+		OwnerType:        ownerType,
 		IsGlobal:         false,
 		IsActive:         true,
 	}
