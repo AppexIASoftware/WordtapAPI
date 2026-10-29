@@ -64,6 +64,29 @@ func TestListLessonGamesHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("student cannot read games unless both course and lesson are published", func(t *testing.T) {
+		for _, tc := range []struct {
+			name         string
+			courseStatus entities.ContentStatus
+			lessonStatus entities.ContentStatus
+		}{
+			{"draft course", entities.ContentStatusDraft, entities.ContentStatusPublished},
+			{"draft lesson", entities.ContentStatusPublished, entities.ContentStatusDraft},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				fixture := lessontest.NewFixture()
+				fixture.Courses.Courses["course-teacher"].Status = tc.courseStatus
+				fixture.Lessons.Lessons["lesson-teacher"].Status = tc.lessonStatus
+				dtos, err := fixture.ListHandler().Handle(ctx, lessonQuery.ListLessonGamesQuery{
+					LessonID: "lesson-teacher", RequesterID: "student-1", RequesterRole: entities.RoleStudent,
+				})
+				if !errors.Is(err, lessonQuery.ErrLessonGamesAccessDenied) || len(dtos) != 0 {
+					t.Fatalf("expected access denied and no games, got games=%+v err=%v", dtos, err)
+				}
+			})
+		}
+	})
+
 	t.Run("usage count reflects links across lessons", func(t *testing.T) {
 		fixture := lessontest.NewFixture()
 		linkGames(t, fixture, "lesson-platform", "game-global", "admin-1", entities.RoleAdmin)
@@ -108,6 +131,25 @@ func TestListLessonGamesHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("equal sort order uses item ID as deterministic tie breaker", func(t *testing.T) {
+		fixture := lessontest.NewFixture()
+		fixture.Lessons.Lessons["lesson-teacher"].Items = []entities.LessonItem{
+			{ID: "b", SortOrder: 1, VocabularyItem: &entities.VocabularyItem{English: "Second", Spanish: "Segundo"}},
+			{ID: "a", SortOrder: 1, VocabularyItem: &entities.VocabularyItem{English: "First", Spanish: "Primero"}},
+		}
+		fixture.Games.Games["game-teacher"].ItemCount = 1
+		linkGames(t, fixture, "lesson-teacher", "game-teacher", "teacher-1", entities.RoleInstructor)
+		dtos, err := fixture.ListHandler().Handle(ctx, lessonQuery.ListLessonGamesQuery{
+			LessonID: "lesson-teacher", RequesterID: "student-1", RequesterRole: entities.RoleStudent,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(dtos) != 1 || len(dtos[0].Words) != 1 || dtos[0].Words[0].Term != "First" {
+			t.Fatalf("expected first item by ID, got %+v", dtos)
+		}
+	})
+
 	t.Run("words are derived from lesson cards", func(t *testing.T) {
 		fixture := lessontest.NewFixture()
 		fixture.Lessons.Lessons["lesson-teacher"].Items = []entities.LessonItem{
@@ -120,7 +162,8 @@ func TestListLessonGamesHandler(t *testing.T) {
 				},
 			},
 			{
-				ID: "item-phrase-1",
+				ID:        "item-phrase-1",
+				SortOrder: 1,
 				Phrase: &entities.Phrase{
 					ID:      "phrase-1",
 					English: "How are you?",
@@ -128,7 +171,8 @@ func TestListLessonGamesHandler(t *testing.T) {
 				},
 			},
 			{
-				ID: "item-vault-1",
+				ID:        "item-vault-1",
+				SortOrder: 2,
 				ContentBankItem: &entities.ContentBankItem{
 					ID:         "vault-1",
 					TargetText: "Book",

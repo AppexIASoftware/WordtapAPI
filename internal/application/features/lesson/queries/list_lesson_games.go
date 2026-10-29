@@ -2,11 +2,11 @@ package queries
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	lessonAccess "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson"
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/gamecontent"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
@@ -18,13 +18,7 @@ var (
 )
 
 // LessonGameWordDTO represents a playable word pair.
-type LessonGameWordDTO struct {
-	ID          string `json:"id,omitempty"`
-	Term        string `json:"term"`
-	Translation string `json:"translation"`
-	English     string `json:"en,omitempty"`
-	Spanish     string `json:"es,omitempty"`
-}
+type LessonGameWordDTO = gamecontent.Word
 
 // LessonGameDTO projects a lesson-game link.
 type LessonGameDTO struct {
@@ -76,104 +70,6 @@ func ToLessonGameDTO(link entities.LessonGame) LessonGameDTO {
 	dto.UsageCount = game.UsageCount
 	dto.LevelWarning = link.LevelWarning
 	return dto
-}
-
-// extractGameWords extracts words from lesson cards with custom words fallback.
-func extractGameWords(lesson *entities.Lesson, game *entities.TeacherGame) []LessonGameWordDTO {
-	words := make([]LessonGameWordDTO, 0)
-	if lesson != nil && len(lesson.Items) > 0 {
-		for _, item := range lesson.Items {
-			var term, translation, id string
-			if item.VocabularyItem != nil {
-				term = strings.TrimSpace(item.VocabularyItem.English)
-				translation = strings.TrimSpace(item.VocabularyItem.Spanish)
-				id = item.VocabularyItem.ID
-			} else if item.Phrase != nil {
-				term = strings.TrimSpace(item.Phrase.English)
-				translation = strings.TrimSpace(item.Phrase.Spanish)
-				id = item.Phrase.ID
-			} else if item.ContentBankItem != nil {
-				term = strings.TrimSpace(item.ContentBankItem.TargetText)
-				translation = strings.TrimSpace(item.ContentBankItem.PromptText)
-				id = item.ContentBankItem.ID
-			} else if item.ContentText != nil && strings.TrimSpace(*item.ContentText) != "" {
-				var cardPayload struct {
-					EN          string `json:"en"`
-					ES          string `json:"es"`
-					Title       string `json:"title"`
-					Term        string `json:"term"`
-					Translation string `json:"translation"`
-				}
-				if err := json.Unmarshal([]byte(*item.ContentText), &cardPayload); err == nil {
-					if cardPayload.EN != "" {
-						term = strings.TrimSpace(cardPayload.EN)
-					} else if cardPayload.Term != "" {
-						term = strings.TrimSpace(cardPayload.Term)
-					} else if cardPayload.Title != "" {
-						term = strings.TrimSpace(cardPayload.Title)
-					}
-					if cardPayload.ES != "" {
-						translation = strings.TrimSpace(cardPayload.ES)
-					} else if cardPayload.Translation != "" {
-						translation = strings.TrimSpace(cardPayload.Translation)
-					}
-				}
-			}
-			if id == "" {
-				id = item.ID
-			}
-			if term != "" && translation != "" {
-				words = append(words, LessonGameWordDTO{
-					ID:          id,
-					Term:        term,
-					Translation: translation,
-					English:     term,
-					Spanish:     translation,
-				})
-			}
-		}
-	}
-
-	if len(words) == 0 && game != nil && game.CustomWordsJSON != nil && strings.TrimSpace(*game.CustomWordsJSON) != "" {
-		var raw []struct {
-			ID          string `json:"id"`
-			Term        string `json:"term"`
-			Translation string `json:"translation"`
-			English     string `json:"en"`
-			Spanish     string `json:"es"`
-		}
-		if err := json.Unmarshal([]byte(*game.CustomWordsJSON), &raw); err == nil {
-			for i, r := range raw {
-				term := strings.TrimSpace(r.Term)
-				if term == "" {
-					term = strings.TrimSpace(r.English)
-				}
-				trans := strings.TrimSpace(r.Translation)
-				if trans == "" {
-					trans = strings.TrimSpace(r.Spanish)
-				}
-				id := strings.TrimSpace(r.ID)
-				if id == "" {
-					id = fmt.Sprintf("custom-%d", i+1)
-				}
-				if term != "" && trans != "" {
-					words = append(words, LessonGameWordDTO{
-						ID:          id,
-						Term:        term,
-						Translation: trans,
-						English:     term,
-						Spanish:     trans,
-					})
-				}
-			}
-		}
-	}
-
-	if game != nil && game.ItemCount > 0 && len(words) > game.ItemCount {
-		words = words[:game.ItemCount]
-	}
-
-	return words
 }
 
 type ListLessonGamesQuery struct {
@@ -255,7 +151,7 @@ func (h *ListLessonGamesHandler) Handle(ctx context.Context, query ListLessonGam
 		dto.LevelWarning = entities.LevelWarningMessage(
 			entities.CompareLevels(course.Level, link.TeacherGame.Level),
 		)
-		dto.Words = extractGameWords(lesson, link.TeacherGame)
+		dto.Words = gamecontent.Resolve(lesson, link.TeacherGame)
 		dtos = append(dtos, dto)
 	}
 

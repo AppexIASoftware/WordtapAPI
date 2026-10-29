@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -54,12 +55,20 @@ func (h *GetLessonDetailHandler) Handle(ctx context.Context, query GetLessonDeta
 		return nil, err
 	}
 
+	introText := ""
+	subtitleText := "Domina los conceptos esenciales"
+	if lesson.Description != nil && strings.TrimSpace(*lesson.Description) != "" {
+		introText = strings.TrimSpace(*lesson.Description)
+		subtitleText = strings.TrimSpace(*lesson.Description)
+	}
+
 	dto := &LessonDetailDTO{
 		ID:           lesson.ID,
 		Title:        lesson.Title,
+		Subtitle:     subtitleText,
 		AccessTier:   string(lesson.AccessTier),
-		SectionTitle: "Verbos esenciales",
-		Intro:        "Los verbos son el corazón del inglés. Estos verbos representan la base fundamental de las conversaciones cotidianas.",
+		SectionTitle: "Tarjetas de estudio",
+		Intro:        introText,
 		Items:        make([]LessonItemDTO, 0, len(lesson.Items)),
 	}
 

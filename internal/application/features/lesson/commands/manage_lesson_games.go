@@ -44,12 +44,12 @@ func loadLessonCourse(
 	return lesson, course, nil
 }
 
-// isGameAccessible checks active state and platform or teacher ownership.
+// isGameAccessible checks active state, explicit global scope or authorship.
 func isGameAccessible(game *entities.TeacherGame, requesterID string) bool {
 	if game == nil || !game.IsActive {
 		return false
 	}
-	if game.OwnerType == entities.OwnerTypePlatform {
+	if game.IsGlobal {
 		return true
 	}
 	return game.TeacherID == requesterID
@@ -103,6 +103,12 @@ func (h *LinkLessonGameHandler) Handle(ctx context.Context, cmd LinkLessonGameCo
 	game, err := h.gameRepo.FindByID(ctx, cmd.GameID)
 	if err != nil || game == nil || !isGameAccessible(game, cmd.RequesterID) {
 		return nil, ErrLessonGameGameNotFound
+	}
+	// A source lesson is not transferable, even when old data also marks it global.
+	if game.SourceType == "course_lesson" && game.SourceID != nil && strings.TrimSpace(*game.SourceID) != "" {
+		if game.IsGlobal || *game.SourceID != cmd.LessonID {
+			return nil, ErrLessonGameGameNotFound
+		}
 	}
 
 	levelCompat := entities.CompareLevels(course.Level, game.Level)

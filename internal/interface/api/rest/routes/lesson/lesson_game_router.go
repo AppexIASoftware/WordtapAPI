@@ -14,10 +14,12 @@ import (
 
 // LessonGameRouter exposes lesson game linking endpoints.
 type LessonGameRouter struct {
-	listHandler   *lessonQuery.ListLessonGamesHandler
-	linkHandler   *lessonCmd.LinkLessonGameHandler
-	updateHandler *lessonCmd.UpdateLessonGameHandler
-	unlinkHandler *lessonCmd.UnlinkLessonGameHandler
+	listHandler           *lessonQuery.ListLessonGamesHandler
+	linkHandler           *lessonCmd.LinkLessonGameHandler
+	updateHandler         *lessonCmd.UpdateLessonGameHandler
+	unlinkHandler         *lessonCmd.UnlinkLessonGameHandler
+	createHandler         *lessonCmd.CreateLessonGameHandler
+	updateActivityHandler *lessonCmd.UpdateLessonGameActivityHandler
 }
 
 func NewLessonGameRouter(
@@ -25,12 +27,16 @@ func NewLessonGameRouter(
 	linkHandler *lessonCmd.LinkLessonGameHandler,
 	updateHandler *lessonCmd.UpdateLessonGameHandler,
 	unlinkHandler *lessonCmd.UnlinkLessonGameHandler,
+	createHandler *lessonCmd.CreateLessonGameHandler,
+	updateActivityHandler *lessonCmd.UpdateLessonGameActivityHandler,
 ) *LessonGameRouter {
 	return &LessonGameRouter{
-		listHandler:   listHandler,
-		linkHandler:   linkHandler,
-		updateHandler: updateHandler,
-		unlinkHandler: unlinkHandler,
+		listHandler:           listHandler,
+		linkHandler:           linkHandler,
+		updateHandler:         updateHandler,
+		unlinkHandler:         unlinkHandler,
+		createHandler:         createHandler,
+		updateActivityHandler: updateActivityHandler,
 	}
 }
 
@@ -42,6 +48,8 @@ func (r *LessonGameRouter) RegisterRoutes(
 ) {
 	v1.GET("/lessons/:id/games", r.List, authRequired)
 	v1.POST("/lessons/:id/games", r.Link, authRequired, instructorOrAdmin)
+	v1.POST("/lessons/:id/games/create", r.Create, authRequired, instructorOrAdmin)
+	v1.PUT("/lessons/:id/games/:game_id", r.UpdateActivity, authRequired, instructorOrAdmin)
 	v1.PATCH("/lessons/:id/games/:game_id", r.Update, authRequired, instructorOrAdmin)
 	v1.DELETE("/lessons/:id/games/:game_id", r.Unlink, authRequired, instructorOrAdmin)
 }

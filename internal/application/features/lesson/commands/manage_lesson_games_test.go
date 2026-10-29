@@ -13,6 +13,33 @@ import (
 func TestLinkLessonGameHandler(t *testing.T) {
 	ctx := context.Background()
 
+	for _, tc := range []struct {
+		name   string
+		source string
+		global bool
+		allow  bool
+	}{
+		{"own lesson", "lesson-teacher", false, true},
+		{"different lesson", "another-lesson", false, false},
+		{"ambiguous global lesson source", "lesson-teacher", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := lessontest.NewFixture()
+			game := fixture.Games.Games["game-teacher"]
+			game.SourceType, game.SourceID, game.IsGlobal = "course_lesson", &tc.source, tc.global
+			link, err := fixture.LinkHandler().Handle(ctx, lessonCmd.LinkLessonGameCommand{
+				LessonID: "lesson-teacher", GameID: "game-teacher",
+				RequesterID: "teacher-1", RequesterRole: entities.RoleInstructor,
+			})
+			if tc.allow && (err != nil || link == nil) {
+				t.Fatalf("expected link, got %v, %v", link, err)
+			}
+			if !tc.allow && (!errors.Is(err, lessonCmd.ErrLessonGameGameNotFound) || link != nil || len(fixture.Links.Links) != 0) {
+				t.Fatalf("expected rejection without a link, got %v, %v", link, err)
+			}
+		})
+	}
+
 	t.Run("admin links global games to a platform lesson in order", func(t *testing.T) {
 		fixture := lessontest.NewFixture()
 		handler := fixture.LinkHandler()
@@ -120,7 +147,7 @@ func TestLinkLessonGameHandler(t *testing.T) {
 		})
 	}
 
-	t.Run("owner type permits a platform game without the legacy global flag", func(t *testing.T) {
+	t.Run("platform ownership alone does not make a game global", func(t *testing.T) {
 		fixture := lessontest.NewFixture()
 		fixture.Games.Games["game-global"].IsGlobal = false
 		if _, err := fixture.LinkHandler().Handle(ctx, lessonCmd.LinkLessonGameCommand{
@@ -128,21 +155,22 @@ func TestLinkLessonGameHandler(t *testing.T) {
 			GameID:        "game-global",
 			RequesterID:   "teacher-1",
 			RequesterRole: entities.RoleInstructor,
-		}); err != nil {
-			t.Fatalf("expected platform owner type to allow the link, got %v", err)
+		}); !errors.Is(err, lessonCmd.ErrLessonGameGameNotFound) {
+			t.Fatalf("expected game not found, got %v", err)
 		}
 	})
 
-	t.Run("legacy global flag does not grant access to another teacher's game", func(t *testing.T) {
+	t.Run("explicit global scope is independent of owner type", func(t *testing.T) {
 		fixture := lessontest.NewFixture()
 		fixture.Games.Games["game-other"].IsGlobal = true
+		fixture.Games.Games["game-other"].Level = "B1"
 		if _, err := fixture.LinkHandler().Handle(ctx, lessonCmd.LinkLessonGameCommand{
 			LessonID:      "lesson-teacher",
 			GameID:        "game-other",
 			RequesterID:   "teacher-1",
 			RequesterRole: entities.RoleInstructor,
-		}); !errors.Is(err, lessonCmd.ErrLessonGameGameNotFound) {
-			t.Fatalf("expected game not found for another teacher's game, got %v", err)
+		}); err != nil {
+			t.Fatalf("expected global game to be accessible, got %v", err)
 		}
 	})
 

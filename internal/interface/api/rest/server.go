@@ -161,6 +161,8 @@ func NewServer(db *gorm.DB) (*Server, error) {
 
 	// Vault Command & Query handlers
 	listVaultTypesHandler := vaultQuery.NewListVaultTypesHandler(contentBankRepo)
+	listVaultCategoriesHandler := vaultQuery.NewListVaultCategoriesHandler(contentBankRepo)
+	createVaultCategoryHandler := vaultCmd.NewCreateVaultCategoryHandler(contentBankRepo)
 	listVaultItemsHandler := vaultQuery.NewListVaultItemsHandler(contentBankRepo)
 	createVaultItemHandler := vaultCmd.NewCreateVaultItemHandler(contentBankRepo)
 	updateVaultItemHandler := vaultCmd.NewUpdateVaultItemHandler(contentBankRepo)
@@ -177,11 +179,14 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		saveLessonItemHandler,
 		deleteLessonItemHandler,
 	)
+	updateLessonGameActivityHandler := lessonCmd.NewUpdateLessonGameActivityHandler(lessonRepo, courseRepo, teacherGameRepo)
 	lessonGameRouter := lesson.NewLessonGameRouter(
 		listLessonGamesHandler,
 		linkLessonGameHandler,
 		updateLessonGameHandler,
 		unlinkLessonGameHandler,
+		lessonCmd.NewCreateLessonGameHandler(lessonRepo, courseRepo, createTeacherGameHandler),
+		updateLessonGameActivityHandler,
 	)
 	authRouter := auth.NewAuthRouter(loginWithGoogleHandler, userRepo, teacherAppRepo, jwtService, devLoginEnabled)
 	courseRouter := course.NewCourseRouter(
@@ -208,6 +213,8 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	)
 	vaultRouter := vault.NewVaultRouter(
 		listVaultTypesHandler,
+		listVaultCategoriesHandler,
+		createVaultCategoryHandler,
 		listVaultItemsHandler,
 		createVaultItemHandler,
 		updateVaultItemHandler,
