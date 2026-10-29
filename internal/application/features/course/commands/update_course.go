@@ -31,8 +31,9 @@ type UpdateCourseCommand struct {
 }
 
 type UpdateCourseHandler struct {
-	courseRepo repositories.CourseRepository
-	reviewRepo repositories.CourseReviewRepository
+	courseRepo  repositories.CourseRepository
+	reviewRepo  repositories.CourseReviewRepository
+	settingRepo repositories.PlatformSettingRepository
 }
 
 func NewUpdateCourseHandler(courseRepo repositories.CourseRepository, reviewRepo ...repositories.CourseReviewRepository) *UpdateCourseHandler {
@@ -41,6 +42,11 @@ func NewUpdateCourseHandler(courseRepo repositories.CourseRepository, reviewRepo
 		rRepo = reviewRepo[0]
 	}
 	return &UpdateCourseHandler{courseRepo: courseRepo, reviewRepo: rRepo}
+}
+
+func (h *UpdateCourseHandler) WithSettingRepo(settingRepo repositories.PlatformSettingRepository) *UpdateCourseHandler {
+	h.settingRepo = settingRepo
+	return h
 }
 
 func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseCommand) (*entities.Course, error) {
@@ -129,6 +135,17 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 	if cmd.PriceCents != nil && *cmd.PriceCents != course.PriceCents {
 		changed = append(changed, fmt.Sprintf("Precio: %d -> %d", course.PriceCents, *cmd.PriceCents))
 		course.PriceCents = *cmd.PriceCents
+	}
+
+	if course.AccessTier == entities.AccessTierSubscription || course.AccessTier == entities.AccessTierFree {
+		if course.PriceCents != 0 {
+			course.PriceCents = 0
+		}
+	} else if course.AccessTier == entities.AccessTierCourse && courseAccess.EffectiveOwnerType(course) == entities.OwnerTypeTeacher {
+		minPriceCents := resolveMinPriceCents(ctx, h.settingRepo)
+		if course.PriceCents < minPriceCents {
+			return nil, apperrors.New(fmt.Sprintf("El precio mínimo para cursos individuales de docentes es de S/ %.2f PEN.", float64(minPriceCents)/100.0))
+		}
 	}
 
 	if cmd.Status != nil && (cmd.RequesterRole == entities.RoleAdmin || cmd.RequesterRole == entities.RoleModerator) {

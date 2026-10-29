@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +17,26 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
+
+const (
+	DefaultCourseMinPriceCents = 2000
+	CourseMinPriceSettingKey   = "course_min_price_pen"
+)
+
+func resolveMinPriceCents(ctx context.Context, repo repositories.PlatformSettingRepository) int {
+	if repo == nil {
+		return DefaultCourseMinPriceCents
+	}
+	s, err := repo.Get(ctx, CourseMinPriceSettingKey)
+	if err != nil || s == nil {
+		return DefaultCourseMinPriceCents
+	}
+	val, err := strconv.Atoi(strings.TrimSpace(s.Value))
+	if err != nil || val <= 0 {
+		return DefaultCourseMinPriceCents
+	}
+	return val
+}
 
 var nonAlphanumericRegex = regexp.MustCompile(`[^a-z0-9]+`)
 
@@ -34,11 +55,21 @@ type CreateCourseCommand struct {
 }
 
 type CreateCourseHandler struct {
-	courseRepo repositories.CourseRepository
+	courseRepo  repositories.CourseRepository
+	settingRepo repositories.PlatformSettingRepository
 }
 
-func NewCreateCourseHandler(courseRepo repositories.CourseRepository) *CreateCourseHandler {
-	return &CreateCourseHandler{courseRepo: courseRepo}
+func NewCreateCourseHandler(courseRepo repositories.CourseRepository, settingRepo ...repositories.PlatformSettingRepository) *CreateCourseHandler {
+	var sRepo repositories.PlatformSettingRepository
+	if len(settingRepo) > 0 {
+		sRepo = settingRepo[0]
+	}
+	return &CreateCourseHandler{courseRepo: courseRepo, settingRepo: sRepo}
+}
+
+func (h *CreateCourseHandler) WithSettingRepo(settingRepo repositories.PlatformSettingRepository) *CreateCourseHandler {
+	h.settingRepo = settingRepo
+	return h
 }
 
 func (h *CreateCourseHandler) Handle(ctx context.Context, cmd CreateCourseCommand) (*entities.Course, error) {
@@ -72,17 +103,23 @@ func (h *CreateCourseHandler) Handle(ctx context.Context, cmd CreateCourseComman
 		targetLang = "en"
 	}
 
-	priceCents := cmd.PriceCents
-	if priceCents == 0 && accessTier == entities.AccessTierCourse {
-		priceCents = 1999
-	}
-	if accessTier == entities.AccessTierSubscription || accessTier == entities.AccessTierFree {
-		priceCents = 0
-	}
-
 	ownerType := cmd.OwnerType
 	if !ownerType.IsValid() {
 		ownerType = entities.OwnerTypeTeacher
+	}
+
+	priceCents := cmd.PriceCents
+	if accessTier == entities.AccessTierSubscription || accessTier == entities.AccessTierFree {
+		priceCents = 0
+	} else if accessTier == entities.AccessTierCourse {
+		if ownerType == entities.OwnerTypeTeacher {
+			minPriceCents := resolveMinPriceCents(ctx, h.settingRepo)
+			if priceCents < minPriceCents {
+				return nil, apperrors.New(fmt.Sprintf("El precio mínimo para cursos individuales de docentes es de S/ %.2f PEN.", float64(minPriceCents)/100.0))
+			}
+		} else if priceCents == 0 {
+			priceCents = resolveMinPriceCents(ctx, h.settingRepo)
+		}
 	}
 
 	course := &entities.Course{
