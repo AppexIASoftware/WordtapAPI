@@ -2,9 +2,11 @@ package queries
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	lessonAccess "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/gamecontent"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
@@ -82,6 +84,12 @@ type ListLessonGamesHandler struct {
 	lessonRepo repositories.LessonRepository
 	courseRepo repositories.CourseRepository
 	linkRepo   repositories.LessonGameRepository
+	policy     *access.ContentPolicy
+}
+
+func (h *ListLessonGamesHandler) WithContentPolicy(policy *access.ContentPolicy) *ListLessonGamesHandler {
+	h.policy = policy
+	return h
 }
 
 func NewListLessonGamesHandler(
@@ -112,10 +120,11 @@ func (h *ListLessonGamesHandler) Handle(ctx context.Context, query ListLessonGam
 	}
 
 	canManage := lessonAccess.CanManageCourse(course, query.RequesterID, query.RequesterRole)
-	if !canManage {
-		if course.Status != entities.ContentStatusPublished || lesson.Status != entities.ContentStatusPublished {
+	if err := h.policy.Authorize(ctx, course, lesson, query.RequesterID, query.RequesterRole); err != nil {
+		if errors.Is(err, access.ErrContentDenied) {
 			return nil, ErrLessonGamesAccessDenied
 		}
+		return nil, err
 	}
 
 	links, err := h.linkRepo.FindByLesson(ctx, query.LessonID)

@@ -5,6 +5,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	lessonCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/commands"
 	lessonQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
@@ -278,5 +279,11 @@ func (f *Fixture) UnlinkHandler() *lessonCmd.UnlinkLessonGameHandler {
 }
 
 func (f *Fixture) ListHandler() *lessonQuery.ListLessonGamesHandler {
-	return lessonQuery.NewListLessonGamesHandler(f.Lessons, f.Courses, f.Links)
+	return lessonQuery.NewListLessonGamesHandler(f.Lessons, f.Courses, f.Links).WithContentPolicy(access.NewContentPolicy(fixturePurchases{}, true))
+}
+
+type fixturePurchases struct{}
+
+func (fixturePurchases) HasPurchase(_ context.Context, studentID, courseID string) (bool, error) {
+	return studentID == "student-1" && courseID == "course-teacher", nil
 }

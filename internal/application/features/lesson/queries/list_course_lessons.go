@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
@@ -23,6 +24,12 @@ type ListCourseLessonsQuery struct {
 type ListCourseLessonsHandler struct {
 	lessonRepo repositories.LessonRepository
 	courseRepo repositories.CourseRepository
+	policy     *access.ContentPolicy
+}
+
+func (h *ListCourseLessonsHandler) WithContentPolicy(policy *access.ContentPolicy) *ListCourseLessonsHandler {
+	h.policy = policy
+	return h
 }
 
 func NewListCourseLessonsHandler(lessonRepo repositories.LessonRepository, courseRepo repositories.CourseRepository) *ListCourseLessonsHandler {
@@ -39,13 +46,21 @@ func (h *ListCourseLessonsHandler) Handle(ctx context.Context, query ListCourseL
 		if err != nil || course == nil {
 			return nil, ErrCourseLessonsNotFound
 		}
-
 		isOwner := query.RequesterID != "" && course.CreatedBy != nil && *course.CreatedBy == query.RequesterID
 		isAdmin := query.RequesterRole == entities.RoleAdmin
 		isModerator := query.RequesterRole == entities.RoleModerator && course.Status == entities.ContentStatusInReview
 
 		if course.Status != entities.ContentStatusPublished && !isOwner && !isAdmin && !isModerator {
-			return nil, ErrCourseLessonsAccessDenied
+			if h.policy != nil {
+				if err := h.policy.Authorize(ctx, course, nil, query.RequesterID, query.RequesterRole); err != nil {
+					if errors.Is(err, access.ErrContentDenied) {
+						return nil, ErrCourseLessonsAccessDenied
+					}
+					return nil, err
+				}
+			} else {
+				return nil, ErrCourseLessonsAccessDenied
+			}
 		}
 
 		lessons := course.Lessons
@@ -71,5 +86,5 @@ func (h *ListCourseLessonsHandler) Handle(ctx context.Context, query ListCourseL
 		return lessons, nil
 	}
 
-	return h.lessonRepo.FindByCourseID(ctx, query.CourseID)
+	return nil, ErrCourseLessonsAccessDenied
 }

@@ -299,6 +299,7 @@ func TestLessonRoutesRBAC(t *testing.T) {
 			ID:        pubCourseID,
 			Title:     "Curso Publicado",
 			Status:    entities.ContentStatusPublished,
+			OwnerType: entities.OwnerTypePlatform,
 			CreatedBy: &authorID,
 		})
 		lessonRepo.lessons = append(lessonRepo.lessons, entities.Lesson{

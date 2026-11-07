@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"gorm.io/gorm"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/commands"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
@@ -22,6 +23,11 @@ type LessonRouter struct {
 	deleteLessonHandler      *commands.DeleteLessonHandler
 	saveLessonItemHandler    *commands.SaveLessonItemHandler
 	deleteLessonItemHandler  *commands.DeleteLessonItemHandler
+}
+
+func (r *LessonRouter) WithContentPolicy(policy *access.ContentPolicy) *LessonRouter {
+	r.getLessonDetailHandler.WithContentPolicy(policy)
+	return r
 }
 
 func NewLessonRouter(
@@ -71,8 +77,13 @@ func (r *LessonRouter) GetLessonDetail(c *echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	dto, err := r.getLessonDetailHandler.Handle(ctx, queries.GetLessonDetailQuery{Identifier: identifier})
+	userID, _ := c.Get("user_id").(string)
+	role, _ := c.Get("user_role").(string)
+	dto, err := r.getLessonDetailHandler.Handle(ctx, queries.GetLessonDetailQuery{Identifier: identifier, RequesterID: userID, RequesterRole: entities.UserRole(role)})
 	if err != nil {
+		if errors.Is(err, access.ErrContentDenied) {
+			return response.Fail(c, http.StatusNotFound, "No se encontró la lección.")
+		}
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return response.Fail(c, http.StatusNotFound, "No se encontró la lección.")
 		}

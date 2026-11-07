@@ -6,12 +6,16 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
 // GetLessonDetailQuery represents the query parameter for retrieving lesson details.
 type GetLessonDetailQuery struct {
-	Identifier string
+	Identifier    string
+	RequesterID   string
+	RequesterRole entities.UserRole
 }
 
 // LessonItemDTO represents a study item or card within a lesson for the mobile client.
@@ -40,10 +44,16 @@ type LessonDetailDTO struct {
 
 // GetLessonDetailHandler processes the lesson detail query (CQRS query handler).
 type GetLessonDetailHandler struct {
-	repo repositories.LessonRepository
+	repo   repositories.LessonRepository
+	policy *access.ContentPolicy
 }
 
-// NewGetLessonDetailHandler inicializa el manejador de la consulta.
+func (h *GetLessonDetailHandler) WithContentPolicy(policy *access.ContentPolicy) *GetLessonDetailHandler {
+	h.policy = policy
+	return h
+}
+
+// NewGetLessonDetailHandler initializes the query handler.
 func NewGetLessonDetailHandler(repo repositories.LessonRepository) *GetLessonDetailHandler {
 	return &GetLessonDetailHandler{repo: repo}
 }
@@ -52,6 +62,12 @@ func NewGetLessonDetailHandler(repo repositories.LessonRepository) *GetLessonDet
 func (h *GetLessonDetailHandler) Handle(ctx context.Context, query GetLessonDetailQuery) (*LessonDetailDTO, error) {
 	lesson, err := h.repo.FindByIDOrSlug(ctx, query.Identifier)
 	if err != nil {
+		return nil, err
+	}
+	if lesson == nil {
+		return nil, access.ErrContentDenied
+	}
+	if err := h.policy.Authorize(ctx, lesson.Course, lesson, query.RequesterID, query.RequesterRole); err != nil {
 		return nil, err
 	}
 
