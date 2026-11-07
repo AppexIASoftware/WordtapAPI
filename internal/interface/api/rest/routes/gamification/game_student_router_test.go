@@ -18,6 +18,12 @@ type mockStudentClassroomRepoForRouter struct {
 	classrooms []entities.Classroom
 }
 
+type emptyGameLinks struct{}
+
+func (emptyGameLinks) FindLessonsByGame(context.Context, string) ([]entities.LessonGame, error) {
+	return nil, nil
+}
+
 func (m *mockStudentClassroomRepoForRouter) Create(ctx context.Context, c *entities.Classroom) error {
 	return nil
 }
@@ -111,8 +117,9 @@ func TestGameStudentRouter(t *testing.T) {
 	gameRepo := newMockGameRouterRepo()
 	gameRepo.games = games
 
-	listHandler := gameQuery.NewListStudentTeacherGamesHandler(classroomRepo, gameRepo)
-	getHandler := gameQuery.NewGetStudentTeacherGameDetailHandler(classroomRepo, gameRepo)
+	guard := gameQuery.NewCourseGameAccess(nil, emptyGameLinks{}, nil)
+	listHandler := gameQuery.NewListStudentTeacherGamesHandler(classroomRepo, gameRepo).WithCourseGameAccess(guard)
+	getHandler := gameQuery.NewGetStudentTeacherGameDetailHandler(classroomRepo, gameRepo).WithCourseGameAccess(guard)
 	studentRouter := gamification.NewGameStudentRouter(listHandler, getHandler)
 
 	e := echo.New()

@@ -52,7 +52,9 @@ func (h *DeleteTeacherGameHandler) Handle(ctx context.Context, cmd DeleteTeacher
 		return err
 	}
 
-	if usage > 0 {
+	// If the activity is active and linked to lessons, archive it first
+	// as a safeguard. If it is already archived, the teacher confirms permanent deletion.
+	if game.IsActive && usage > 0 {
 		game.IsActive = false
 		game.UpdatedAt = time.Now()
 		return h.gameRepo.Update(ctx, game)

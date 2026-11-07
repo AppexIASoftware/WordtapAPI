@@ -95,6 +95,7 @@ type CreateGameRequest struct {
 	IsPublishedStandalone *bool    `json:"is_published_standalone"`
 	AudienceScope         *string  `json:"audience_scope"`
 	AssignedCourseIDs     []string `json:"assigned_course_ids"`
+	AssignedClassroomIDs  []string `json:"assigned_classroom_ids"`
 }
 
 type UpdateGameRequest struct {
@@ -115,6 +116,7 @@ type UpdateGameRequest struct {
 	IsPublishedStandalone *bool     `json:"is_published_standalone"`
 	AudienceScope         *string   `json:"audience_scope"`
 	AssignedCourseIDs     *[]string `json:"assigned_course_ids"`
+	AssignedClassroomIDs  *[]string `json:"assigned_classroom_ids"`
 }
 
 func (r *GameRouter) CreateGame(c *echo.Context) error {
@@ -155,7 +157,7 @@ func (r *GameRouter) CreateGame(c *echo.Context) error {
 		Level:                 req.Level,
 		AccessTier:            accessTier,
 		TimeLimitSeconds:      req.TimeLimitSeconds,
-		AllowedMistakes:        req.AllowedMistakes,
+		AllowedMistakes:       req.AllowedMistakes,
 		RewardXP:              req.RewardXP,
 		ItemCount:             req.ItemCount,
 		SourceType:            req.SourceType,
@@ -164,6 +166,7 @@ func (r *GameRouter) CreateGame(c *echo.Context) error {
 		IsPublishedStandalone: isPublishedStandalone,
 		AudienceScope:         audienceScope,
 		AssignedCourseIDs:     req.AssignedCourseIDs,
+		AssignedClassroomIDs:  req.AssignedClassroomIDs,
 	}
 
 	game, err := r.createHandler.Handle(c.Request().Context(), cmd)
@@ -286,18 +289,18 @@ func (r *GameRouter) UpdateGame(c *echo.Context) error {
 	}
 
 	cmd := commands.UpdateTeacherGameCommand{
-		GameID:           id,
-		TeacherID:        userID,
-		CourseID:         req.CourseID,
-		CategoryID:       req.CategoryID,
-		BaseArchetype:    req.BaseArchetype,
-		Title:            req.Title,
-		Description:      req.Description,
-		Level:            req.Level,
-		AccessTier:       accessTier,
-		TimeLimitSeconds: req.TimeLimitSeconds,
-		AllowedMistakes:  req.AllowedMistakes,
-		RewardXP:         req.RewardXP,
+		GameID:                id,
+		TeacherID:             userID,
+		CourseID:              req.CourseID,
+		CategoryID:            req.CategoryID,
+		BaseArchetype:         req.BaseArchetype,
+		Title:                 req.Title,
+		Description:           req.Description,
+		Level:                 req.Level,
+		AccessTier:            accessTier,
+		TimeLimitSeconds:      req.TimeLimitSeconds,
+		AllowedMistakes:       req.AllowedMistakes,
+		RewardXP:              req.RewardXP,
 		ItemCount:             req.ItemCount,
 		SourceType:            req.SourceType,
 		SourceID:              req.SourceID,
@@ -305,6 +308,7 @@ func (r *GameRouter) UpdateGame(c *echo.Context) error {
 		IsPublishedStandalone: req.IsPublishedStandalone,
 		AudienceScope:         req.AudienceScope,
 		AssignedCourseIDs:     req.AssignedCourseIDs,
+		AssignedClassroomIDs:  req.AssignedClassroomIDs,
 	}
 
 	game, err := r.updateHandler.Handle(c.Request().Context(), cmd)

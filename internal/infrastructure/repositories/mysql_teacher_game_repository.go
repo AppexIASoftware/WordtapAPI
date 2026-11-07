@@ -157,14 +157,20 @@ func (r *MySQLTeacherGameRepository) Update(ctx context.Context, game *entities.
 			"is_published_standalone": game.IsPublishedStandalone,
 			"audience_scope":          game.AudienceScope,
 			"assigned_course_ids":     game.AssignedCourseIDs,
+			"assigned_classroom_ids":  game.AssignedClassroomIDs,
 			"is_active":               game.IsActive,
 			"updated_at":              game.UpdatedAt,
 		}).Error
 }
 
-// Delete permanently removes a teacher's custom game.
+// Delete permanently removes a teacher's custom game and any lesson links it has.
 func (r *MySQLTeacherGameRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&entities.TeacherGame{}, "id = ?", id).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("teacher_game_id = ?", id).Delete(&entities.LessonGame{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&entities.TeacherGame{}, "id = ?", id).Error
+	})
 }
 
 // CountLessonUsage counts how many lessons use an activity.

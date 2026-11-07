@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 
+	"errors"
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -16,6 +18,12 @@ type ListStudentTeacherGamesQuery struct {
 type ListStudentTeacherGamesHandler struct {
 	classroomRepo repositories.ClassroomRepository
 	gameRepo      repositories.TeacherGameRepository
+	courseAccess  *CourseGameAccess
+}
+
+func (h *ListStudentTeacherGamesHandler) WithCourseGameAccess(a *CourseGameAccess) *ListStudentTeacherGamesHandler {
+	h.courseAccess = a
+	return h
 }
 
 func NewListStudentTeacherGamesHandler(
@@ -96,6 +104,12 @@ func (h *ListStudentTeacherGamesHandler) Handle(ctx context.Context, q ListStude
 		if !g.IsActive || !g.IsPublishedStandalone {
 			continue
 		}
+		if err := h.courseAccess.authorize(ctx, &g, studentID); err != nil {
+			if errors.Is(err, access.ErrContentDenied) {
+				continue
+			}
+			return nil, err
+		}
 
 		enrolledCourses, ok := enrolledCoursesByTeacher[g.TeacherID]
 		if !ok {
@@ -103,6 +117,12 @@ func (h *ListStudentTeacherGamesHandler) Handle(ctx context.Context, q ListStude
 		}
 
 		scope := strings.TrimSpace(g.AudienceScope)
+		if scope == "selected_classrooms" {
+			if matchesClassroomAudience(&g, classrooms) {
+				result = append(result, g)
+			}
+			continue
+		}
 		if scope == "" || scope == "all_students" {
 			result = append(result, g)
 			continue

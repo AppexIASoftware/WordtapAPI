@@ -32,11 +32,18 @@ type UpdateTeacherGameCommand struct {
 	IsPublishedStandalone *bool                `json:"is_published_standalone"`
 	AudienceScope         *string              `json:"audience_scope"`
 	AssignedCourseIDs     *[]string            `json:"assigned_course_ids"`
+	AssignedClassroomIDs  *[]string            `json:"assigned_classroom_ids"`
 }
 
 type UpdateTeacherGameHandler struct {
-	gameRepo   repositories.TeacherGameRepository
-	courseRepo audienceCourseRepository
+	gameRepo      repositories.TeacherGameRepository
+	courseRepo    audienceCourseRepository
+	classroomRepo audienceClassroomRepository
+}
+
+func (h *UpdateTeacherGameHandler) WithClassrooms(repo audienceClassroomRepository) *UpdateTeacherGameHandler {
+	h.classroomRepo = repo
+	return h
 }
 
 func NewUpdateTeacherGameHandler(gameRepo repositories.TeacherGameRepository, courseRepos ...audienceCourseRepository) *UpdateTeacherGameHandler {
@@ -67,6 +74,34 @@ func (h *UpdateTeacherGameHandler) Handle(ctx context.Context, cmd UpdateTeacher
 	}
 	if game.TeacherID != cmd.TeacherID {
 		return nil, apperrors.New("No tienes permisos para editar esta actividad.")
+	}
+	if game.AudienceScope == "selected_courses" && (cmd.AudienceScope == nil || (*cmd.AudienceScope != "all_students" && *cmd.AudienceScope != "selected_classrooms")) {
+		return nil, apperrors.New("Selecciona una nueva audiencia para actualizar esta actividad.")
+	}
+	scope := game.AudienceScope
+	if cmd.AudienceScope != nil {
+		scope = strings.TrimSpace(*cmd.AudienceScope)
+		if scope != "all_students" && scope != "selected_classrooms" {
+			return nil, apperrors.New("La audiencia seleccionada no es válida.")
+		}
+	}
+	if scope == "selected_classrooms" {
+		var ids []string
+		if cmd.AssignedClassroomIDs != nil {
+			ids = *cmd.AssignedClassroomIDs
+		} else if game.AssignedClassroomIDs != nil {
+			if err := json.Unmarshal([]byte(*game.AssignedClassroomIDs), &ids); err != nil {
+				return nil, err
+			}
+		}
+		if err := validateAudienceClassrooms(ctx, h.classroomRepo, cmd.TeacherID, ids); err != nil {
+			return nil, err
+		}
+		raw, _ := json.Marshal(ids)
+		value := string(raw)
+		game.AssignedClassroomIDs = &value
+	} else if cmd.AudienceScope != nil {
+		game.AssignedClassroomIDs = nil
 	}
 	if cmd.AssignedCourseIDs != nil {
 		if err := validateAudienceCourses(ctx, h.courseRepo, cmd.TeacherID, *cmd.AssignedCourseIDs); err != nil {
@@ -166,13 +201,12 @@ func (h *UpdateTeacherGameHandler) Handle(ctx context.Context, cmd UpdateTeacher
 		game.IsPublishedStandalone = *cmd.IsPublishedStandalone
 	}
 	if cmd.AudienceScope != nil {
-		scope := strings.TrimSpace(*cmd.AudienceScope)
-		if scope != "selected_courses" {
-			scope = "all_students"
+		game.AudienceScope = strings.TrimSpace(*cmd.AudienceScope)
+		if game.AudienceScope != "selected_courses" {
+			game.AssignedCourseIDs = nil
 		}
-		game.AudienceScope = scope
 	}
-	if cmd.AssignedCourseIDs != nil {
+	if cmd.AssignedCourseIDs != nil && game.AudienceScope == "selected_courses" {
 		if len(*cmd.AssignedCourseIDs) == 0 {
 			empty := "[]"
 			game.AssignedCourseIDs = &empty

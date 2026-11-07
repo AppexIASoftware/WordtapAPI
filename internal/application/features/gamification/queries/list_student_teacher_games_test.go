@@ -12,6 +12,12 @@ type mockStudentClassroomRepo struct {
 	classrooms []entities.Classroom
 }
 
+type emptyGameLinks struct{}
+
+func (emptyGameLinks) FindLessonsByGame(context.Context, string) ([]entities.LessonGame, error) {
+	return nil, nil
+}
+
 func (m *mockStudentClassroomRepo) Create(ctx context.Context, c *entities.Classroom) error {
 	return nil
 }
@@ -125,7 +131,14 @@ func TestListStudentTeacherGamesHandler(t *testing.T) {
 			IsPublishedStandalone: false,
 			AudienceScope:         "all_students",
 		},
-		// Teacher 2: publicado standalone, pero aula inactiva -> acceso revocado
+		{
+			ID:                    "game-unknown-scope",
+			TeacherID:             "teacher-1",
+			IsActive:              true,
+			IsPublishedStandalone: true,
+			AudienceScope:         "selected_classrooms",
+		},
+		// Teacher 2: published standalone, but classroom inactive -> access revoked
 		{
 			ID:                    "game-5",
 			TeacherID:             "teacher-2",
@@ -143,12 +156,19 @@ func TestListStudentTeacherGamesHandler(t *testing.T) {
 			IsPublishedStandalone: true,
 			AudienceScope:         "all_students",
 		},
+		{
+			ID:                    "game-unknown-scope",
+			TeacherID:             "teacher-1",
+			IsActive:              true,
+			IsPublishedStandalone: true,
+			AudienceScope:         "selected_classrooms",
+		},
 	}
 
 	gameRepo := &mockQueryGameRepo{games: games}
 	classroomRepo := &mockStudentClassroomRepo{classrooms: classrooms}
 
-	handler := queries.NewListStudentTeacherGamesHandler(classroomRepo, gameRepo)
+	handler := queries.NewListStudentTeacherGamesHandler(classroomRepo, gameRepo).WithCourseGameAccess(queries.NewCourseGameAccess(nil, emptyGameLinks{}, nil))
 
 	t.Run("alumno lista exclusivamente juegos autorizados de sus docentes", func(t *testing.T) {
 		res, err := handler.Handle(ctx, queries.ListStudentTeacherGamesQuery{
@@ -253,7 +273,17 @@ func TestGetStudentTeacherGameDetailHandler(t *testing.T) {
 	gameRepo := &mockQueryGameRepo{games: games}
 	classroomRepo := &mockStudentClassroomRepo{classrooms: classrooms}
 
-	handler := queries.NewGetStudentTeacherGameDetailHandler(classroomRepo, gameRepo)
+	handler := queries.NewGetStudentTeacherGameDetailHandler(classroomRepo, gameRepo).WithCourseGameAccess(queries.NewCourseGameAccess(nil, emptyGameLinks{}, nil))
+
+	t.Run("unrecognized audience is denied", func(t *testing.T) {
+		_, err := handler.Handle(ctx, queries.GetStudentTeacherGameDetailQuery{
+			StudentID: "student-1",
+			GameID:    "game-unknown-scope",
+		})
+		if err == nil {
+			t.Fatal("expected unrecognized audience to be denied")
+		}
+	})
 
 	t.Run("acceso permitido a juego general", func(t *testing.T) {
 		g, err := handler.Handle(ctx, queries.GetStudentTeacherGameDetailQuery{

@@ -19,6 +19,12 @@ type GetStudentTeacherGameDetailQuery struct {
 type GetStudentTeacherGameDetailHandler struct {
 	classroomRepo repositories.ClassroomRepository
 	gameRepo      repositories.TeacherGameRepository
+	courseAccess  *CourseGameAccess
+}
+
+func (h *GetStudentTeacherGameDetailHandler) WithCourseGameAccess(a *CourseGameAccess) *GetStudentTeacherGameDetailHandler {
+	h.courseAccess = a
+	return h
 }
 
 func NewGetStudentTeacherGameDetailHandler(
@@ -47,6 +53,9 @@ func (h *GetStudentTeacherGameDetailHandler) Handle(ctx context.Context, q GetSt
 	}
 	if game == nil || !game.IsActive || !game.IsPublishedStandalone {
 		return nil, apperrors.New("No se encontró la actividad o no está disponible.")
+	}
+	if err := h.courseAccess.authorize(ctx, game, studentID); err != nil {
+		return nil, err
 	}
 
 	classrooms, err := h.classroomRepo.FindByStudent(ctx, studentID)
@@ -90,6 +99,15 @@ func (h *GetStudentTeacherGameDetailHandler) Handle(ctx context.Context, q GetSt
 	}
 
 	scope := strings.TrimSpace(game.AudienceScope)
+	if scope == "selected_classrooms" {
+		if !matchesClassroomAudience(game, classrooms) {
+			return nil, apperrors.New("No tienes permisos para acceder a esta actividad.")
+		}
+		return game, nil
+	}
+	if scope != "" && scope != "all_students" && scope != "selected_courses" {
+		return nil, apperrors.New("No tienes permisos para acceder a esta actividad.")
+	}
 	if scope == "selected_courses" {
 		if game.AssignedCourseIDs == nil {
 			return nil, apperrors.New("No tienes permisos para acceder a esta actividad.")

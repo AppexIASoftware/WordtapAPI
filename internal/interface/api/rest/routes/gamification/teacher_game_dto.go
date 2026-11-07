@@ -44,6 +44,11 @@ func formatTeacherGameDTO(g *entities.TeacherGame) map[string]any {
 		}
 	}
 
+	assignedClassroomIDs := make([]string, 0)
+	if g.AssignedClassroomIDs != nil {
+		_ = json.Unmarshal([]byte(*g.AssignedClassroomIDs), &assignedClassroomIDs)
+	}
+
 	return map[string]any{
 		"id":                      g.ID,
 		"teacher_id":              g.TeacherID,
@@ -70,6 +75,7 @@ func formatTeacherGameDTO(g *entities.TeacherGame) map[string]any {
 		"is_published_standalone": g.IsPublishedStandalone,
 		"audience_scope":          g.AudienceScope,
 		"assigned_course_ids":     assignedCourseIDs,
+		"assigned_classroom_ids":  assignedClassroomIDs,
 		"usage_count":             g.UsageCount,
 		"is_active":               g.IsActive,
 		"created_at":              g.CreatedAt.Format("02/01/2006"),

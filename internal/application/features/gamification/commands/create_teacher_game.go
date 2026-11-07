@@ -31,11 +31,18 @@ type CreateTeacherGameCommand struct {
 	IsPublishedStandalone bool                `json:"is_published_standalone"`
 	AudienceScope         string              `json:"audience_scope"`
 	AssignedCourseIDs     []string            `json:"assigned_course_ids"`
+	AssignedClassroomIDs  []string            `json:"assigned_classroom_ids"`
 }
 
 type CreateTeacherGameHandler struct {
-	gameRepo   repositories.TeacherGameRepository
-	courseRepo audienceCourseRepository
+	gameRepo      repositories.TeacherGameRepository
+	courseRepo    audienceCourseRepository
+	classroomRepo audienceClassroomRepository
+}
+
+func (h *CreateTeacherGameHandler) WithClassrooms(repo audienceClassroomRepository) *CreateTeacherGameHandler {
+	h.classroomRepo = repo
+	return h
 }
 
 func NewCreateTeacherGameHandler(gameRepo repositories.TeacherGameRepository, courseRepos ...audienceCourseRepository) *CreateTeacherGameHandler {
@@ -126,8 +133,20 @@ func (h *CreateTeacherGameHandler) Handle(ctx context.Context, cmd CreateTeacher
 		accessTier = entities.AccessTierFree
 	}
 	audienceScope := strings.TrimSpace(cmd.AudienceScope)
-	if audienceScope != "selected_courses" {
+	if audienceScope == "" {
 		audienceScope = "all_students"
+	}
+	if audienceScope != "all_students" && audienceScope != "selected_courses" && audienceScope != "selected_classrooms" {
+		return nil, apperrors.New("La audiencia seleccionada no es válida.")
+	}
+	var assignedClassroomIDs *string
+	if audienceScope == "selected_classrooms" {
+		if err := validateAudienceClassrooms(ctx, h.classroomRepo, cmd.TeacherID, cmd.AssignedClassroomIDs); err != nil {
+			return nil, err
+		}
+		raw, _ := json.Marshal(cmd.AssignedClassroomIDs)
+		value := string(raw)
+		assignedClassroomIDs = &value
 	}
 
 	var assignedCourseIDs *string
@@ -158,6 +177,7 @@ func (h *CreateTeacherGameHandler) Handle(ctx context.Context, cmd CreateTeacher
 		IsPublishedStandalone: cmd.IsPublishedStandalone,
 		AudienceScope:         audienceScope,
 		AssignedCourseIDs:     assignedCourseIDs,
+		AssignedClassroomIDs:  assignedClassroomIDs,
 		IsActive:              true,
 	}
 

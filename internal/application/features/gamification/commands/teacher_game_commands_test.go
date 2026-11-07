@@ -375,6 +375,29 @@ func TestTeacherGameCommands(t *testing.T) {
 		}
 	})
 
+	t.Run("DeleteTeacherGameHandler elimina definitivamente una actividad ya archivada", func(t *testing.T) {
+		repo.games = append(repo.games, entities.TeacherGame{
+			ID:        "game-31",
+			TeacherID: "teacher-1",
+			Title:     "Actividad Archivada",
+			IsActive:  false,
+		})
+		repo.usage["game-31"] = 2
+
+		handler := commands.NewDeleteTeacherGameHandler(repo)
+		if err := handler.Handle(ctx, commands.DeleteTeacherGameCommand{
+			GameID:    "game-31",
+			TeacherID: "teacher-1",
+		}); err != nil {
+			t.Fatalf("error eliminando juego archivado: %v", err)
+		}
+
+		stored, _ := repo.FindByID(ctx, "game-31")
+		if stored != nil {
+			t.Fatal("una actividad ya archivada debe eliminarse definitivamente al volver a pulsar eliminar")
+		}
+	})
+
 	t.Run("DeleteGlobalGameHandler archiva una actividad global en uso", func(t *testing.T) {
 		repo.games = append(repo.games, entities.TeacherGame{
 			ID:        "game-global-3",
