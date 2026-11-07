@@ -11,6 +11,11 @@ type PublishedCourseEditRepository interface {
 	UpdatePublishedAndSubmit(context.Context, *entities.Course, *entities.CourseReviewRequest) error
 }
 
+// CourseReviewHistoryRepository returns completed moderation decisions.
+type CourseReviewHistoryRepository interface {
+	ListDecided(context.Context) ([]entities.CourseReviewRequest, error)
+}
+
 // CourseReviewRepository owns atomic course-review lifecycle transitions.
 type CourseReviewRepository interface {
 	CreateSubmission(context.Context, *entities.CourseReviewRequest) error

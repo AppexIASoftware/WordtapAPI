@@ -13,3 +13,5 @@ odd/
 .test-cache/
 
 
+# CocoIndex Code (ccc)
+/.cocoindex_code/

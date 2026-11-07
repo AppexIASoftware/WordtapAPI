@@ -11,9 +11,10 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 	"gorm.io/gorm"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
+	catalogQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/catalog/queries"
 	classroomCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/commands"
 	classroomQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/queries"
-	catalogQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/catalog/queries"
 	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
 	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
 	gameCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/gamification/commands"
@@ -103,19 +104,34 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	classroomRepo := infraRepo.NewMySQLClassroomRepository(db)
 	teacherGameRepo := infraRepo.NewMySQLTeacherGameRepository(db)
 	lessonGameRepo := infraRepo.NewMySQLLessonGameRepository(db)
+	// Test mode keeps in-memory access to avoid writing simulated purchases
+	// to the database. Otherwise, the policy uses the real repository.
+	simulationEnabled := courseCmd.SimulationEnabled(appEnv, os.Getenv("ENABLE_SIMULATED_COURSE_PURCHASES"))
+	var purchaseReader access.PurchaseReader
+	var simulatedPurchaseStore courseCmd.SimulatedPurchaseRepository
+	if simulationEnabled {
+		demoPurchases := infraRepo.NewDemoPurchaseRepository()
+		purchaseReader = demoPurchases
+		simulatedPurchaseStore = demoPurchases
+	} else {
+		mysqlPurchases := infraRepo.NewMySQLSimulatedPurchaseRepository(db)
+		purchaseReader = mysqlPurchases
+		simulatedPurchaseStore = mysqlPurchases
+	}
+	contentPolicy := access.NewContentPolicy(purchaseReader, simulationEnabled)
 
 	// Use cases
 	loginWithGoogleHandler := commands.NewLoginWithGoogleHandler(userRepo, googleVerifier, jwtService, teacherAppRepo)
 	// Classroom Command & Query handlers
-	createClassroomHandler := classroomCmd.NewCreateClassroomHandler(classroomRepo)
-	updateClassroomHandler := classroomCmd.NewUpdateClassroomHandler(classroomRepo)
+	createClassroomHandler := classroomCmd.NewCreateClassroomHandler(classroomRepo, courseRepo)
+	updateClassroomHandler := classroomCmd.NewUpdateClassroomHandler(classroomRepo, courseRepo)
 	enrollStudentHandler := classroomCmd.NewEnrollStudentHandler(classroomRepo)
 	listClassroomsHandler := classroomQuery.NewListTeacherClassroomsHandler(classroomRepo)
 	getStumbleListHandler := classroomQuery.NewGetStumbleListHandler(classroomRepo)
 
 	// Teacher Game Command & Query handlers
-	createTeacherGameHandler := gameCmd.NewCreateTeacherGameHandler(teacherGameRepo, courseRepo)
-	updateTeacherGameHandler := gameCmd.NewUpdateTeacherGameHandler(teacherGameRepo, courseRepo)
+	createTeacherGameHandler := gameCmd.NewCreateTeacherGameHandler(teacherGameRepo, courseRepo).WithClassrooms(classroomRepo)
+	updateTeacherGameHandler := gameCmd.NewUpdateTeacherGameHandler(teacherGameRepo, courseRepo).WithClassrooms(classroomRepo)
 	deleteTeacherGameHandler := gameCmd.NewDeleteTeacherGameHandler(teacherGameRepo)
 	listTeacherGamesHandler := gameQuery.NewListTeacherGamesHandler(teacherGameRepo)
 	getTeacherGameDetailHandler := gameQuery.NewGetTeacherGameDetailHandler(teacherGameRepo)
@@ -150,7 +166,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	listApplicationsHandler := teacherAppQuery.NewListApplicationsHandler(teacherAppRepo)
 
 	// Lesson Command & Query handlers
-	listCourseLessonsHandler := lessonQuery.NewListCourseLessonsHandler(lessonRepo, courseRepo)
+	listCourseLessonsHandler := lessonQuery.NewListCourseLessonsHandler(lessonRepo, courseRepo).WithContentPolicy(contentPolicy)
 	createLessonHandler := lessonCmd.NewCreateLessonHandler(lessonRepo, courseRepo)
 	updateLessonHandler := lessonCmd.NewUpdateLessonHandler(lessonRepo, courseRepo)
 	deleteLessonHandler := lessonCmd.NewDeleteLessonHandler(lessonRepo, courseRepo)
@@ -159,7 +175,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	linkLessonGameHandler := lessonCmd.NewLinkLessonGameHandler(lessonRepo, courseRepo, teacherGameRepo, lessonGameRepo)
 	updateLessonGameHandler := lessonCmd.NewUpdateLessonGameHandler(lessonRepo, courseRepo, lessonGameRepo)
 	unlinkLessonGameHandler := lessonCmd.NewUnlinkLessonGameHandler(lessonRepo, courseRepo, lessonGameRepo)
-	listLessonGamesHandler := lessonQuery.NewListLessonGamesHandler(lessonRepo, courseRepo, lessonGameRepo)
+	listLessonGamesHandler := lessonQuery.NewListLessonGamesHandler(lessonRepo, courseRepo, lessonGameRepo).WithContentPolicy(contentPolicy)
 
 	// Vault Command & Query handlers
 	listVaultTypesHandler := vaultQuery.NewListVaultTypesHandler(contentBankRepo)
@@ -180,7 +196,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		deleteLessonHandler,
 		saveLessonItemHandler,
 		deleteLessonItemHandler,
-	)
+	).WithContentPolicy(contentPolicy)
 	updateLessonGameActivityHandler := lessonCmd.NewUpdateLessonGameActivityHandler(lessonRepo, courseRepo, teacherGameRepo)
 	lessonGameRouter := lesson.NewLessonGameRouter(
 		listLessonGamesHandler,
@@ -200,7 +216,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		listPublishedCoursesHandler,
 		listAdminCoursesHandler,
 		getCourseDetailHandler,
-	)
+	).WithContentPolicy(contentPolicy)
 	teacherAppRouter := teacher_application.NewTeacherApplicationRouter(
 		applyTeacherHandler,
 		reviewApplicationHandler,
@@ -229,6 +245,8 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		listClassroomsHandler,
 		getStumbleListHandler,
 	)
+	listStudentClassroomsHandler := classroomQuery.NewListStudentClassroomsHandler(classroomRepo)
+	studentClassroomRouter := classroom.NewStudentClassroomRouter(listStudentClassroomsHandler, enrollStudentHandler).WithContentPolicy(contentPolicy)
 	gameRouter := gamification.NewGameRouter(
 		createTeacherGameHandler,
 		updateTeacherGameHandler,
@@ -241,8 +259,9 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		updateGlobalGameHandler,
 		deleteGlobalGameHandler,
 	)
-	listStudentTeacherGamesHandler := gameQuery.NewListStudentTeacherGamesHandler(classroomRepo, teacherGameRepo)
-	getStudentTeacherGameDetailHandler := gameQuery.NewGetStudentTeacherGameDetailHandler(classroomRepo, teacherGameRepo)
+	courseGameAccess := gameQuery.NewCourseGameAccess(lessonRepo, infraRepo.NewGameLessonLinks(db), contentPolicy)
+	listStudentTeacherGamesHandler := gameQuery.NewListStudentTeacherGamesHandler(classroomRepo, teacherGameRepo).WithCourseGameAccess(courseGameAccess)
+	getStudentTeacherGameDetailHandler := gameQuery.NewGetStudentTeacherGameDetailHandler(classroomRepo, teacherGameRepo).WithCourseGameAccess(courseGameAccess)
 	gameStudentRouter := gamification.NewGameStudentRouter(listStudentTeacherGamesHandler, getStudentTeacherGameDetailHandler)
 	statsRepo := infraRepo.NewMySQLUserLearningStatsRepository(db)
 	livesRouter := gamification.NewLivesRouter(statsRepo)
@@ -260,6 +279,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	studentOrStaff := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)
 	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
 	adminOrModerator := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
+	studentOnly := restMiddleware.RequireRole(entities.RoleStudent)
 
 	// --- Root Status Probe (Render / Uptime monitors) ---
 	rootHandler := func(c *echo.Context) error {
@@ -282,12 +302,15 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	lessonRouter.RegisterRoutes(v1, authRequired, studentOrStaff, instructorOrAdmin)
 	lessonGameRouter.RegisterRoutes(v1, authRequired, staffRoles, instructorOrAdmin)
 	courseRouter.RegisterRoutes(v1, authRequired, catalogRoles, studentOrStaff, staffRoles, instructorOrAdmin, adminOrModerator)
-	courseReviewRouter := course.NewCourseReviewRouter(submitCourseReviewHandler, withdrawCourseReviewHandler, reviewCourseHandler, listCourseReviewsHandler, listTeacherCourseReviewsHandler)
+	simulatedPurchaseHandler := courseCmd.NewSimulatePurchaseHandler(simulatedPurchaseStore, simulationEnabled)
+	course.NewSimulatedPurchaseRouter(simulatedPurchaseHandler).RegisterRoutes(v1, authRequired, studentOnly)
+	courseReviewRouter := course.NewCourseReviewRouter(submitCourseReviewHandler, withdrawCourseReviewHandler, reviewCourseHandler, listCourseReviewsHandler, listTeacherCourseReviewsHandler, courseQuery.NewListReviewHistoryHandler(courseReviewRepo))
 	courseReviewRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)
 	teacherAppRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
 	settingRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
 	vaultRouter.RegisterRoutes(v1, authRequired, staffRoles, adminOrModerator, instructorOrAdmin)
 	classroomRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
+	studentClassroomRouter.RegisterRoutes(v1, authRequired)
 	gameRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)
 	gameStudentRouter.RegisterRoutes(v1, authRequired)
 	livesRouter.RegisterRoutes(v1, authRequired)
