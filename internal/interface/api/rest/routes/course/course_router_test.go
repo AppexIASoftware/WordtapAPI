@@ -461,7 +461,7 @@ func TestCourseRoutesRBAC(t *testing.T) {
 			t.Fatalf("expected 401 Unauthorized for anonymous, got %d", recAnon.Code)
 		}
 
-		// 2. Teacher -> 403 Forbidden (el docente no tiene acceso a catálogo público de Wordtap)
+		// 2. Teacher -> 403 Forbidden (teachers cannot access the Wordtap public catalog)
 		reqTeacher := httptest.NewRequest(http.MethodGet, "/api/v1/courses", nil)
 		reqTeacher.Header.Set("Authorization", "Bearer "+teacherToken)
 		recTeacher := httptest.NewRecorder()
@@ -470,7 +470,7 @@ func TestCourseRoutesRBAC(t *testing.T) {
 			t.Fatalf("expected 403 Forbidden for teacher accessing public courses, got %d", recTeacher.Code)
 		}
 
-		// 3. Student -> 200 OK (acceso habilitado al catálogo público)
+		// 3. Student -> 200 OK (public catalog access enabled)
 		studentToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
 			ID:    "student-1",
 			Email: "student@wordtap.app",

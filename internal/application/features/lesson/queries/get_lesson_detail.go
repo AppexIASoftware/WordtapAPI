@@ -9,12 +9,12 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
-// GetLessonDetailQuery representa el parámetro de consulta para obtener el detalle de una lección.
+// GetLessonDetailQuery represents the query parameter for retrieving lesson details.
 type GetLessonDetailQuery struct {
 	Identifier string
 }
 
-// LessonItemDTO representa un elemento o tarjeta de estudio dentro de la lección para el cliente móvil.
+// LessonItemDTO represents a study item or card within a lesson for the mobile client.
 type LessonItemDTO struct {
 	ID                 string `json:"id"`
 	BadgeType          string `json:"badgeType"`
@@ -26,7 +26,7 @@ type LessonItemDTO struct {
 	NoteType           string `json:"noteType"`
 }
 
-// LessonDetailDTO es la respuesta estructurada consumida por la aplicación móvil.
+// LessonDetailDTO is the structured response consumed by the mobile application.
 type LessonDetailDTO struct {
 	ID           string          `json:"id"`
 	Title        string          `json:"title"`
@@ -38,7 +38,7 @@ type LessonDetailDTO struct {
 	Items        []LessonItemDTO `json:"items"`
 }
 
-// GetLessonDetailHandler procesa la consulta de detalle de lección (CQRS Query Handler).
+// GetLessonDetailHandler processes the lesson detail query (CQRS query handler).
 type GetLessonDetailHandler struct {
 	repo repositories.LessonRepository
 }
@@ -48,7 +48,7 @@ func NewGetLessonDetailHandler(repo repositories.LessonRepository) *GetLessonDet
 	return &GetLessonDetailHandler{repo: repo}
 }
 
-// Handle ejecuta la búsqueda y transforma la entidad a un DTO desacoplado para la app móvil.
+// Handle executes the lookup and transforms the entity into a decoupled DTO for the mobile app.
 func (h *GetLessonDetailHandler) Handle(ctx context.Context, query GetLessonDetailQuery) (*LessonDetailDTO, error) {
 	lesson, err := h.repo.FindByIDOrSlug(ctx, query.Identifier)
 	if err != nil {

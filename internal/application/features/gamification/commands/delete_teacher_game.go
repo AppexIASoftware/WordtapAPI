@@ -23,8 +23,8 @@ func NewDeleteTeacherGameHandler(gameRepo repositories.TeacherGameRepository) *D
 	return &DeleteTeacherGameHandler{gameRepo: gameRepo}
 }
 
-// Handle elimina una actividad propia del docente. Si la actividad está vinculada
-// a lecciones se archiva en lugar de borrarse, para no romper esos vínculos.
+// Handle deletes a teacher's own activity. If the activity is linked
+// to lessons it is archived instead of deleted, to preserve those links.
 func (h *DeleteTeacherGameHandler) Handle(ctx context.Context, cmd DeleteTeacherGameCommand) error {
 	if cmd.TeacherID == "" {
 		return errors.New("el identificador del docente es obligatorio")

@@ -79,7 +79,7 @@ func TestListStudentTeacherGamesHandler(t *testing.T) {
 			ID:              "cls-2",
 			TeacherID:       "teacher-2",
 			AssignedCourses: &courseB,
-			IsActive:        false, // Inactiva (revocada)
+			IsActive:        false, // Inactive (revoked)
 			Enrollments: []entities.ClassroomEnrollment{
 				{StudentID: "student-1"},
 			},
@@ -87,7 +87,7 @@ func TestListStudentTeacherGamesHandler(t *testing.T) {
 	}
 
 	games := []entities.TeacherGame{
-		// Teacher 1: publicado standalone para todos los alumnos
+		// Teacher 1: published standalone for all students
 		{
 			ID:                    "game-1",
 			TeacherID:             "teacher-1",
@@ -96,7 +96,7 @@ func TestListStudentTeacherGamesHandler(t *testing.T) {
 			IsPublishedStandalone: true,
 			AudienceScope:         "all_students",
 		},
-		// Teacher 1: publicado standalone solo para alumnos de course-A (alumno inscrito en course-A -> acceso concedido)
+		// Teacher 1: published standalone only for course-A students (student enrolled in course-A -> access granted)
 		{
 			ID:                    "game-2",
 			TeacherID:             "teacher-1",
@@ -106,7 +106,7 @@ func TestListStudentTeacherGamesHandler(t *testing.T) {
 			AudienceScope:         "selected_courses",
 			AssignedCourseIDs:     &assignedCourseJSON,
 		},
-		// Teacher 1: publicado standalone solo para alumnos de course-X (alumno NO inscrito en course-X -> acceso denegado)
+		// Teacher 1: published standalone only for course-X students (student NOT enrolled in course-X -> access denied)
 		{
 			ID:                    "game-3",
 			TeacherID:             "teacher-1",
@@ -116,7 +116,7 @@ func TestListStudentTeacherGamesHandler(t *testing.T) {
 			AudienceScope:         "selected_courses",
 			AssignedCourseIDs:     &assignedCourseOtherJSON,
 		},
-		// Teacher 1: NO publicado standalone (solo lecciones -> alumno NO debe verlo en catálogo app)
+		// Teacher 1: NOT published standalone (lessons only -> student MUST NOT see it in the app catalog)
 		{
 			ID:                    "game-4",
 			TeacherID:             "teacher-1",
@@ -134,7 +134,7 @@ func TestListStudentTeacherGamesHandler(t *testing.T) {
 			IsPublishedStandalone: true,
 			AudienceScope:         "all_students",
 		},
-		// Teacher 3: publicado standalone, pero alumno NO está inscrito con Teacher 3
+		// Teacher 3: published standalone, but the student is NOT enrolled with Teacher 3
 		{
 			ID:                    "game-6",
 			TeacherID:             "teacher-3",

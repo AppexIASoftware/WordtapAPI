@@ -11,7 +11,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
-// UpdateClassroomCommand encapsula los parámetros para actualizar la configuración de un aula.
+// UpdateClassroomCommand encapsulates parameters to update classroom configuration.
 type UpdateClassroomCommand struct {
 	ClassroomID     string   `json:"-"`
 	TeacherID       string   `json:"-"`
@@ -24,7 +24,7 @@ type UpdateClassroomCommand struct {
 	Description     *string  `json:"description"`
 }
 
-// UpdateClassroomHandler procesa la actualización de aulas virtuales con validación de pertenencia.
+// UpdateClassroomHandler processes classroom updates with ownership validation.
 type UpdateClassroomHandler struct {
 	classroomRepo repositories.ClassroomRepository
 }
@@ -34,7 +34,7 @@ func NewUpdateClassroomHandler(classroomRepo repositories.ClassroomRepository) *
 	return &UpdateClassroomHandler{classroomRepo: classroomRepo}
 }
 
-// Handle valida los datos y aplica las modificaciones sobre la entidad Classroom en base de datos.
+// Handle validates data and applies modifications to the Classroom entity in the database.
 func (h *UpdateClassroomHandler) Handle(ctx context.Context, cmd UpdateClassroomCommand) (*entities.Classroom, error) {
 	name := strings.TrimSpace(cmd.Name)
 	if name == "" {
@@ -63,8 +63,8 @@ func (h *UpdateClassroomHandler) Handle(ctx context.Context, cmd UpdateClassroom
 		classroom.Level = level
 	}
 	classroom.Name = name
-	// Solo se sobrescribe cuando el campo viaja en la petición: un PUT parcial
-	// (por ejemplo cambiar solo los minijuegos) no debe borrar la descripción.
+	// Only overwrite this field when it is present in the request: a partial PUT
+	// (for example, changing only the minigames) must not clear the description.
 	if cmd.Description != nil {
 		classroom.Description = cmd.Description
 	}

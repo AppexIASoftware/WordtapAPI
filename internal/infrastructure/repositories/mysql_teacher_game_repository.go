@@ -10,22 +10,22 @@ import (
 	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
-// MySQLTeacherGameRepository implementa TeacherGameRepository mediante GORM y MySQL.
+// MySQLTeacherGameRepository implements TeacherGameRepository using GORM and MySQL.
 type MySQLTeacherGameRepository struct {
 	db *gorm.DB
 }
 
-// NewMySQLTeacherGameRepository instancia el repositorio para juegos del docente.
+// NewMySQLTeacherGameRepository creates the repository for teacher games.
 func NewMySQLTeacherGameRepository(db *gorm.DB) domainRepo.TeacherGameRepository {
 	return &MySQLTeacherGameRepository{db: db}
 }
 
-// Create inserta un juego personalizado en la base de datos.
+// Create inserts a custom game into the database.
 func (r *MySQLTeacherGameRepository) Create(ctx context.Context, game *entities.TeacherGame) error {
 	return r.db.WithContext(ctx).Create(game).Error
 }
 
-// FindByID recupera un juego por ID con su curso asociado.
+// FindByID retrieves a game by ID with its associated course.
 func (r *MySQLTeacherGameRepository) FindByID(ctx context.Context, id string) (*entities.TeacherGame, error) {
 	var game entities.TeacherGame
 	err := r.db.WithContext(ctx).
@@ -41,7 +41,7 @@ func (r *MySQLTeacherGameRepository) FindByID(ctx context.Context, id string) (*
 	return &game, nil
 }
 
-// FindByTeacher lista los juegos creados por un docente ordenados cronológicamente.
+// FindByTeacher lists games created by a teacher in chronological order.
 func (r *MySQLTeacherGameRepository) FindByTeacher(ctx context.Context, teacherID string) ([]entities.TeacherGame, error) {
 	games := make([]entities.TeacherGame, 0)
 	err := r.db.WithContext(ctx).
@@ -78,7 +78,7 @@ func (r *MySQLTeacherGameRepository) FindGlobal(ctx context.Context) ([]entities
 	return games, nil
 }
 
-// FindStandaloneByTeachers recupera los juegos publicados fuera de lecciones creados por los docentes indicados.
+// FindStandaloneByTeachers retrieves standalone published games created by the specified teachers.
 func (r *MySQLTeacherGameRepository) FindStandaloneByTeachers(ctx context.Context, teacherIDs []string) ([]entities.TeacherGame, error) {
 	if len(teacherIDs) == 0 {
 		return []entities.TeacherGame{}, nil
@@ -115,7 +115,7 @@ func (r *MySQLTeacherGameRepository) FindAll(ctx context.Context) ([]entities.Te
 	return games, nil
 }
 
-// fillUsage completa UsageCount con el conteo agrupado de vínculos en lecciones.
+// fillUsage populates UsageCount with the grouped count of lesson links.
 func (r *MySQLTeacherGameRepository) fillUsage(ctx context.Context, games []entities.TeacherGame) error {
 	ids := make([]string, 0, len(games))
 	for _, game := range games {
@@ -133,8 +133,8 @@ func (r *MySQLTeacherGameRepository) fillUsage(ctx context.Context, games []enti
 	return nil
 }
 
-// Update persiste únicamente las columnas mutables del juego. La lista explícita
-// evita reescribir asociaciones y campos que ningún handler modifica.
+// Update persists only the mutable game columns. The explicit list prevents
+// rewriting associations and fields that no handler modifies.
 func (r *MySQLTeacherGameRepository) Update(ctx context.Context, game *entities.TeacherGame) error {
 	return r.db.WithContext(ctx).
 		Model(&entities.TeacherGame{}).
@@ -162,12 +162,12 @@ func (r *MySQLTeacherGameRepository) Update(ctx context.Context, game *entities.
 		}).Error
 }
 
-// Delete elimina físicamente un juego personalizado del docente.
+// Delete permanently removes a teacher's custom game.
 func (r *MySQLTeacherGameRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Delete(&entities.TeacherGame{}, "id = ?", id).Error
 }
 
-// CountLessonUsage cuenta cuántas lecciones usan una actividad.
+// CountLessonUsage counts how many lessons use an activity.
 func (r *MySQLTeacherGameRepository) CountLessonUsage(ctx context.Context, gameID string) (int, error) {
 	return countLessonGamesByGameID(ctx, r.db, gameID)
 }

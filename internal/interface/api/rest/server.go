@@ -49,7 +49,7 @@ type Server struct {
 }
 
 func NewServer(db *gorm.DB) (*Server, error) {
-	// 1. Validar variables de entorno requeridas
+	// 1. Validate required environment variables
 	corsOrigins := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS"))
 	if corsOrigins == "" {
 		return nil, fmt.Errorf("missing required environment variable: CORS_ALLOWED_ORIGINS")
@@ -73,7 +73,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 
 	e := echo.New()
 
-	// Middlewares globales
+	// Global middleware
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
 
@@ -88,11 +88,11 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	}
 	e.Use(middleware.CORS(origins...))
 
-	// Configuración de seguridad y servicios auxiliares
+	// Security configuration and auxiliary services
 	jwtService := security.NewJWTService(jwtSecret, 15*time.Minute, 30*24*time.Hour)
 	googleVerifier := security.NewHTTPGoogleVerifier(googleClientID)
 
-	// Repositorios de infraestructura
+	// Infrastructure repositories
 	lessonRepo := infraRepo.NewMySQLLessonRepository(db)
 	userRepo := infraRepo.NewMySQLUserRepository(db)
 	courseRepo := infraRepo.NewMySQLCourseRepository(db)
@@ -104,7 +104,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	teacherGameRepo := infraRepo.NewMySQLTeacherGameRepository(db)
 	lessonGameRepo := infraRepo.NewMySQLLessonGameRepository(db)
 
-	// Casos de uso
+	// Use cases
 	loginWithGoogleHandler := commands.NewLoginWithGoogleHandler(userRepo, googleVerifier, jwtService, teacherAppRepo)
 	// Classroom Command & Query handlers
 	createClassroomHandler := classroomCmd.NewCreateClassroomHandler(classroomRepo)
@@ -253,7 +253,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	catalogUnlockRouter := catalog.NewUnlockRouter(catalogUnlockHandler)
 	swaggerRouter := docs.NewSwaggerRouter()
 
-	// Middlewares específicos
+	// Specific middleware
 	authRequired := restMiddleware.RequireAuth(jwtService)
 	catalogRoles := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)
 	staffRoles := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator)
@@ -272,10 +272,10 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	e.GET("/", rootHandler)
 	e.HEAD("/", rootHandler)
 
-	// --- Grupos de enrutamiento ---
+	// --- Route groups ---
 	v1 := e.Group("/api/v1")
 
-	// --- Registro modular de rutas por dominio ---
+	// --- Modular route registration by domain ---
 	healthRouter.RegisterRoutes(e, v1)
 	swaggerRouter.RegisterRoutes(e)
 	authRouter.RegisterRoutes(v1, authRequired)

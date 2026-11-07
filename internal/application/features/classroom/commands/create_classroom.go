@@ -46,7 +46,7 @@ func (h *CreateClassroomHandler) Handle(ctx context.Context, cmd CreateClassroom
 		level = "B1 Intermediate"
 	}
 
-	// Extraer prefijo de nivel (ej. "B1", "A2", "C1")
+	// Extract level prefix (e.g. "B1", "A2", "C1")
 	levelTag := "B1"
 	if len(level) >= 2 {
 		tag := strings.ToUpper(level[:2])
@@ -55,7 +55,7 @@ func (h *CreateClassroomHandler) Handle(ctx context.Context, cmd CreateClassroom
 		}
 	}
 
-	// Generar código alfanumérico único con formato WT-{NIVEL}-{XXXX}
+	// Generate unique alphanumeric code with format WT-{LEVEL}-{XXXX}
 	var uniqueCode string
 	for i := 0; i < 5; i++ {
 		n, err := rand.Int(rand.Reader, big.NewInt(9000))
@@ -117,7 +117,7 @@ func (h *CreateClassroomHandler) Handle(ctx context.Context, cmd CreateClassroom
 		return nil, err
 	}
 
-	// Sembrar diagnósticos pedagógicos iniciales de tropiezo según el nivel
+	// Seed initial stumble diagnostics for the level
 	stumbles := defaultStumblesForLevel(classroom.ID, levelTag)
 	for i := range stumbles {
 		_ = h.classroomRepo.CreateStumble(ctx, &stumbles[i])

@@ -10,22 +10,22 @@ import (
 	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
-// MySQLClassroomRepository implementa ClassroomRepository mediante GORM y MySQL.
+// MySQLClassroomRepository implements ClassroomRepository using GORM and MySQL.
 type MySQLClassroomRepository struct {
 	db *gorm.DB
 }
 
-// NewMySQLClassroomRepository crea una instancia del repositorio MySQL para aulas y cohortes.
+// NewMySQLClassroomRepository creates a MySQL repository instance for classrooms and cohorts.
 func NewMySQLClassroomRepository(db *gorm.DB) domainRepo.ClassroomRepository {
 	return &MySQLClassroomRepository{db: db}
 }
 
-// Create inserta una nueva aula virtual en la base de datos.
+// Create inserts a new virtual classroom into the database.
 func (r *MySQLClassroomRepository) Create(ctx context.Context, classroom *entities.Classroom) error {
 	return r.db.WithContext(ctx).Create(classroom).Error
 }
 
-// FindByID recupera un aula por su identificador primario con sus relaciones cargadas.
+// FindByID retrieves a classroom by its primary identifier with its relationships loaded.
 func (r *MySQLClassroomRepository) FindByID(ctx context.Context, id string) (*entities.Classroom, error) {
 	var classroom entities.Classroom
 	err := r.db.WithContext(ctx).
@@ -43,7 +43,7 @@ func (r *MySQLClassroomRepository) FindByID(ctx context.Context, id string) (*en
 	return &classroom, nil
 }
 
-// FindByCode localiza un aula por su código alfanumérico único.
+// FindByCode locates a classroom by its unique alphanumeric code.
 func (r *MySQLClassroomRepository) FindByCode(ctx context.Context, code string) (*entities.Classroom, error) {
 	var classroom entities.Classroom
 	err := r.db.WithContext(ctx).
@@ -59,7 +59,7 @@ func (r *MySQLClassroomRepository) FindByCode(ctx context.Context, code string) 
 	return &classroom, nil
 }
 
-// FindByTeacher lista todas las aulas administradas por un docente con sus cohortes y diagnósticos.
+// FindByTeacher lists all classrooms managed by a teacher with their cohorts and diagnostics.
 func (r *MySQLClassroomRepository) FindByTeacher(ctx context.Context, teacherID string) ([]entities.Classroom, error) {
 	classrooms := make([]entities.Classroom, 0)
 	err := r.db.WithContext(ctx).
@@ -75,7 +75,7 @@ func (r *MySQLClassroomRepository) FindByTeacher(ctx context.Context, teacherID 
 	return classrooms, nil
 }
 
-// FindByStudent recupera las aulas activas donde el estudiante está inscrito.
+// FindByStudent retrieves active classrooms where the student is enrolled.
 func (r *MySQLClassroomRepository) FindByStudent(ctx context.Context, studentID string) ([]entities.Classroom, error) {
 	classrooms := make([]entities.Classroom, 0)
 	err := r.db.WithContext(ctx).
@@ -91,12 +91,12 @@ func (r *MySQLClassroomRepository) FindByStudent(ctx context.Context, studentID 
 	return classrooms, nil
 }
 
-// EnrollStudent registra a un alumno en el aula virtual.
+// EnrollStudent registers a student in the virtual classroom.
 func (r *MySQLClassroomRepository) EnrollStudent(ctx context.Context, enrollment *entities.ClassroomEnrollment) error {
 	return r.db.WithContext(ctx).Create(enrollment).Error
 }
 
-// FindEnrollment comprueba si un estudiante ya está inscrito en un aula.
+// FindEnrollment checks whether a student is already enrolled in a classroom.
 func (r *MySQLClassroomRepository) FindEnrollment(ctx context.Context, classroomID, studentID string) (*entities.ClassroomEnrollment, error) {
 	var enrollment entities.ClassroomEnrollment
 	err := r.db.WithContext(ctx).
@@ -110,7 +110,7 @@ func (r *MySQLClassroomRepository) FindEnrollment(ctx context.Context, classroom
 	return &enrollment, nil
 }
 
-// ListEnrollments lista los estudiantes pertenecientes a una cohorte.
+// ListEnrollments lists the students belonging to a cohort.
 func (r *MySQLClassroomRepository) ListEnrollments(ctx context.Context, classroomID string) ([]entities.ClassroomEnrollment, error) {
 	enrollments := make([]entities.ClassroomEnrollment, 0)
 	err := r.db.WithContext(ctx).
@@ -124,7 +124,7 @@ func (r *MySQLClassroomRepository) ListEnrollments(ctx context.Context, classroo
 	return enrollments, nil
 }
 
-// ListStumbles consulta las palabras de alta tasa de fallo en el aula.
+// ListStumbles retrieves words with a high failure rate in the classroom.
 func (r *MySQLClassroomRepository) ListStumbles(ctx context.Context, classroomID string) ([]entities.StudentStumble, error) {
 	stumbles := make([]entities.StudentStumble, 0)
 	err := r.db.WithContext(ctx).
@@ -137,12 +137,12 @@ func (r *MySQLClassroomRepository) ListStumbles(ctx context.Context, classroomID
 	return stumbles, nil
 }
 
-// CreateStumble inserta un registro de tropiezo pedagógico.
+// CreateStumble inserts a pedagogical stumble record.
 func (r *MySQLClassroomRepository) CreateStumble(ctx context.Context, stumble *entities.StudentStumble) error {
 	return r.db.WithContext(ctx).Create(stumble).Error
 }
 
-// Update actualiza los atributos y configuración de un aula virtual existente.
+// Update changes the attributes and configuration of an existing virtual classroom.
 func (r *MySQLClassroomRepository) Update(ctx context.Context, classroom *entities.Classroom) error {
 	return r.db.WithContext(ctx).Save(classroom).Error
 }

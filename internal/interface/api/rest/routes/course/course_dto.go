@@ -6,7 +6,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 )
 
-// PublicLessonDTO representa la vista pública de una lección sin tarjetas internas.
+// PublicLessonDTO represents the public view of a lesson without internal cards.
 type PublicLessonDTO struct {
 	ID               string                 `json:"id"`
 	CourseID         string                 `json:"course_id"`
@@ -21,7 +21,7 @@ type PublicLessonDTO struct {
 	UpdatedAt        time.Time              `json:"updated_at"`
 }
 
-// PublicAuthorDTO representa los datos públicos del autor/docente de un curso.
+// PublicAuthorDTO represents the public details of a course's author or teacher.
 type PublicAuthorDTO struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
@@ -29,7 +29,7 @@ type PublicAuthorDTO struct {
 	AvatarURL *string `json:"avatar_url,omitempty"`
 }
 
-// PublicCourseDTO proyecta un curso para catálogo y detalle público con autor sanitizado.
+// PublicCourseDTO projects a course for the public catalog and detail view with a sanitized author.
 type PublicCourseDTO struct {
 	ID                    string                 `json:"id"`
 	Title                 string                 `json:"title"`
@@ -54,7 +54,7 @@ type PublicCourseDTO struct {
 	UpdatedAt             time.Time              `json:"updated_at"`
 }
 
-// ToPublicCourseDTO convierte una entidad Course en un DTO público sanitizado.
+// ToPublicCourseDTO converts a Course entity into a sanitized public DTO.
 func ToPublicCourseDTO(c *entities.Course) PublicCourseDTO {
 	publicLessons := make([]PublicLessonDTO, 0)
 	totalMinutes := 0
