@@ -12,15 +12,16 @@ import (
 )
 
 type CourseReviewRouter struct {
-	submit   *commands.SubmitCourseReviewHandler
-	withdraw *commands.WithdrawCourseReviewHandler
-	review   *commands.ReviewCourseHandler
-	pending  *queries.ListCourseReviewsHandler
-	history  *queries.ListTeacherCourseReviewsHandler
+	submit       *commands.SubmitCourseReviewHandler
+	withdraw     *commands.WithdrawCourseReviewHandler
+	review       *commands.ReviewCourseHandler
+	pending      *queries.ListCourseReviewsHandler
+	history      *queries.ListTeacherCourseReviewsHandler
+	adminHistory *queries.ListReviewHistoryHandler
 }
 
-func NewCourseReviewRouter(submit *commands.SubmitCourseReviewHandler, withdraw *commands.WithdrawCourseReviewHandler, review *commands.ReviewCourseHandler, pending *queries.ListCourseReviewsHandler, history *queries.ListTeacherCourseReviewsHandler) *CourseReviewRouter {
-	return &CourseReviewRouter{submit: submit, withdraw: withdraw, review: review, pending: pending, history: history}
+func NewCourseReviewRouter(submit *commands.SubmitCourseReviewHandler, withdraw *commands.WithdrawCourseReviewHandler, review *commands.ReviewCourseHandler, pending *queries.ListCourseReviewsHandler, history *queries.ListTeacherCourseReviewsHandler, adminHistory *queries.ListReviewHistoryHandler) *CourseReviewRouter {
+	return &CourseReviewRouter{submit: submit, withdraw: withdraw, review: review, pending: pending, history: history, adminHistory: adminHistory}
 }
 
 func (r *CourseReviewRouter) RegisterRoutes(v1 *echo.Group, auth echo.MiddlewareFunc, teacher echo.MiddlewareFunc, admin echo.MiddlewareFunc) {
@@ -29,7 +30,21 @@ func (r *CourseReviewRouter) RegisterRoutes(v1 *echo.Group, auth echo.Middleware
 	v1.POST("/teacher/course-reviews/:id/withdraw", r.Withdraw, auth, teacher)
 	v1.GET("/teacher/course-reviews", r.History, auth, teacher)
 	v1.GET("/admin/course-reviews", r.Pending, auth, admin)
+	v1.GET("/admin/course-reviews/history", r.AdminHistory, auth, admin)
 	v1.POST("/admin/course-reviews/:id/decision", r.Decide, auth, admin)
+}
+
+func (r *CourseReviewRouter) AdminHistory(c *echo.Context) error {
+	userID, _ := c.Get("user_id").(string)
+	role, _ := c.Get("user_role").(string)
+	if userID == "" || (entities.UserRole(role) != entities.RoleAdmin && entities.UserRole(role) != entities.RoleModerator) {
+		return response.Fail(c, http.StatusForbidden, "No tienes permisos para ver el historial de revisiones.")
+	}
+	items, err := r.adminHistory.Handle(c.Request().Context(), queries.ListCourseReviewsQuery{RequesterID: userID, RequesterRole: entities.UserRole(role)})
+	if err != nil {
+		return response.Error(c, http.StatusInternalServerError, "No se pudo cargar el historial de revisiones.", err)
+	}
+	return c.JSON(http.StatusOK, items)
 }
 
 type SubmitCourseReviewRequestBody struct {

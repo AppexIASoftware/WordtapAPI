@@ -135,7 +135,7 @@ func TestReviewCourseRequiresPendingRequestAndPersistsDecision(t *testing.T) {
 func TestUpdatePublishedCourseTriggersReviewRequest(t *testing.T) {
 	author := "teacher-1"
 	newTitle := "Updated Title for Published Course"
-	course := &entities.Course{ID: "course-pub-2", Title: "Old Title", CreatedBy: &author, Status: entities.ContentStatusPublished}
+	course := &entities.Course{ID: "course-pub-2", Title: "Old Title", CreatedBy: &author, Status: entities.ContentStatusPublished, AccessTier: entities.AccessTierCourse, PriceCents: 2000}
 	reviews := &reviewCourseRepo{course: course}
 	handler := commands.NewUpdateCourseHandler(&submissionCourseRepo{course}, reviews)
 	result, err := handler.Handle(context.Background(), commands.UpdateCourseCommand{

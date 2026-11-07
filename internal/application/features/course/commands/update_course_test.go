@@ -133,7 +133,7 @@ func TestUpdateCourseMinPriceValidation(t *testing.T) {
 		}
 	})
 
-	t.Run("free course does not require minimum price", func(t *testing.T) {
+	t.Run("legacy free teacher course cannot be edited without valid pricing", func(t *testing.T) {
 		initialCourse := &entities.Course{
 			ID:         "c-4",
 			Title:      "Free Course",
@@ -147,17 +147,17 @@ func TestUpdateCourseMinPriceValidation(t *testing.T) {
 		handler := commands.NewUpdateCourseHandler(repo)
 
 		newTitle := "Updated Free Course"
-		updated, err := handler.Handle(context.Background(), commands.UpdateCourseCommand{
+		_, err := handler.Handle(context.Background(), commands.UpdateCourseCommand{
 			CourseID:      initialCourse.ID,
 			Title:         &newTitle,
 			RequesterID:   author,
 			RequesterRole: entities.RoleInstructor,
 		})
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		if err == nil {
+			t.Fatal("expected invalid legacy pricing to be rejected")
 		}
-		if updated.PriceCents != 0 {
-			t.Errorf("expected price 0, got %d", updated.PriceCents)
+		if initialCourse.Title != "Free Course" || initialCourse.PriceCents != 0 {
+			t.Fatal("rejected edit modified the original course")
 		}
 	})
 }

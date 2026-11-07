@@ -32,7 +32,7 @@ func (r *failingReloadRepo) FindByID(ctx context.Context, id string) (*entities.
 
 func TestCourseUpdateSucceedsWhenCategoryReloadFails(t *testing.T) {
  owner, newCategory := "teacher", "new"
- repo := &failingReloadRepo{mockCourseRepository: &mockCourseRepository{courses: []entities.Course{{ID: "course", CreatedBy: &owner, OwnerType: entities.OwnerTypeTeacher}}}}
+ repo := &failingReloadRepo{mockCourseRepository: &mockCourseRepository{courses: []entities.Course{{ID: "course", CreatedBy: &owner, OwnerType: entities.OwnerTypeTeacher, AccessTier: entities.AccessTierCourse, PriceCents: 2000}}}}
  result, err := courseCmd.NewUpdateCourseHandler(repo).Handle(context.Background(), courseCmd.UpdateCourseCommand{CourseID: "course", RequesterID: owner, RequesterRole: entities.RoleInstructor, CategoryID: &newCategory, CategoryIDSet: true})
  if err != nil { t.Fatalf("persisted update must not report failure: %v", err) }
  if result.CategoryID == nil || *result.CategoryID != newCategory || repo.courses[0].CategoryID == nil || *repo.courses[0].CategoryID != newCategory { t.Fatal("updated category not returned and persisted") }
@@ -40,7 +40,7 @@ func TestCourseUpdateSucceedsWhenCategoryReloadFails(t *testing.T) {
 
 func TestUpdatedCourseIncludesCategory(t *testing.T) {
  owner, oldCategory, newCategory := "teacher", "old", "new"
- repo := categoryLoadingRepo{&mockCourseRepository{courses: []entities.Course{{ID:"course", CreatedBy:&owner, OwnerType:entities.OwnerTypeTeacher, CategoryID:&oldCategory}}}}
+ repo := categoryLoadingRepo{&mockCourseRepository{courses: []entities.Course{{ID:"course", CreatedBy:&owner, OwnerType:entities.OwnerTypeTeacher, CategoryID:&oldCategory, AccessTier:entities.AccessTierCourse, PriceCents:2000}}}}
  result, err := courseCmd.NewUpdateCourseHandler(repo).Handle(context.Background(), courseCmd.UpdateCourseCommand{CourseID:"course", RequesterID:owner, RequesterRole:entities.RoleInstructor, CategoryID:&newCategory, CategoryIDSet:true})
  if err != nil { t.Fatal(err) }
  if result.Category == nil || result.Category.ID != newCategory { t.Fatalf("updated category missing from response: %+v", result.Category) }

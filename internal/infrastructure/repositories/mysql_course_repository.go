@@ -96,6 +96,9 @@ func (r *MySQLCourseRepository) FindByID(ctx context.Context, id string) (*entit
 		Preload("Lessons.Items", func(db *gorm.DB) *gorm.DB {
 			return db.Order("lesson_items.sort_order ASC")
 		}).
+		Preload("Lessons.Items.ContentBankItem").
+		Preload("Lessons.Items.VocabularyItem").
+		Preload("Lessons.Items.Phrase").
 		Where("id = ?", id).
 		First(&course).Error
 	if err != nil {

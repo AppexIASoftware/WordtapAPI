@@ -109,15 +109,14 @@ func (h *CreateCourseHandler) Handle(ctx context.Context, cmd CreateCourseComman
 	}
 
 	priceCents := cmd.PriceCents
-	if accessTier == entities.AccessTierSubscription || accessTier == entities.AccessTierFree {
+	if ownerType == entities.OwnerTypeTeacher {
+		if err := validateTeacherCoursePricing(ctx, h.settingRepo, accessTier, priceCents); err != nil {
+			return nil, err
+		}
+	} else if accessTier == entities.AccessTierSubscription || accessTier == entities.AccessTierFree {
 		priceCents = 0
 	} else if accessTier == entities.AccessTierCourse {
-		if ownerType == entities.OwnerTypeTeacher {
-			minPriceCents := resolveMinPriceCents(ctx, h.settingRepo)
-			if priceCents < minPriceCents {
-				return nil, apperrors.New(fmt.Sprintf("El precio mínimo para cursos individuales de docentes es de S/ %.2f PEN.", float64(minPriceCents)/100.0))
-			}
-		} else if priceCents == 0 {
+		if priceCents == 0 {
 			priceCents = resolveMinPriceCents(ctx, h.settingRepo)
 		}
 	}

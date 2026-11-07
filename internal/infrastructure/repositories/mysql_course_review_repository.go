@@ -9,13 +9,22 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
-	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
 type MySQLCourseReviewRepository struct{ db *gorm.DB }
 
-func NewMySQLCourseReviewRepository(db *gorm.DB) domainRepo.CourseReviewRepository {
+const courseReviewReviewerAssociation = "ReviewerAdmin"
+
+func NewMySQLCourseReviewRepository(db *gorm.DB) *MySQLCourseReviewRepository {
 	return &MySQLCourseReviewRepository{db: db}
+}
+
+func (r *MySQLCourseReviewRepository) ListDecided(ctx context.Context) ([]entities.CourseReviewRequest, error) {
+	items := make([]entities.CourseReviewRequest, 0)
+	err := r.db.WithContext(ctx).Preload("Course").Preload("Course.Author").Preload("Instructor").Preload(courseReviewReviewerAssociation).
+		Where("status IN ?", []entities.CourseReviewStatus{entities.CourseReviewStatusApproved, entities.CourseReviewStatusChangesRequested, entities.CourseReviewStatusRejected, entities.CourseReviewStatusWithdrawn}).
+		Order("reviewed_at DESC").Order("id DESC").Find(&items).Error
+	return items, err
 }
 
 func (r *MySQLCourseReviewRepository) CreateSubmission(ctx context.Context, request *entities.CourseReviewRequest) error {

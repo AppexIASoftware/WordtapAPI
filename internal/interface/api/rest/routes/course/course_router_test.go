@@ -29,6 +29,16 @@ type mockCourseReviewRepository struct {
 	courses  *mockCourseRepository
 }
 
+func (m *mockCourseReviewRepository) ListDecided(_ context.Context) ([]entities.CourseReviewRequest, error) {
+	items := make([]entities.CourseReviewRequest, 0)
+	for _, item := range m.requests {
+		if item.Status == entities.CourseReviewStatusApproved || item.Status == entities.CourseReviewStatusRejected || item.Status == entities.CourseReviewStatusChangesRequested || item.Status == entities.CourseReviewStatusWithdrawn {
+			items = append(items, item)
+		}
+	}
+	return items, nil
+}
+
 func (m *mockCourseReviewRepository) CreateSubmission(_ context.Context, req *entities.CourseReviewRequest) error {
 	for i := range m.courses.courses {
 		c := &m.courses.courses[i]
@@ -206,7 +216,7 @@ func setupTestServer() (*echo.Echo, *security.JWTService, *mockCourseRepository,
 
 	v1 := e.Group("/api/v1")
 	router.RegisterRoutes(v1, authRequired, catalogRoles, studentOrStaff, staffRoles, instructorOrAdmin, adminOrMod)
-	reviewRouter := course.NewCourseReviewRouter(submitCmd, withdrawCmd, reviewCmd, pendingQuery, historyQuery)
+	reviewRouter := course.NewCourseReviewRouter(submitCmd, withdrawCmd, reviewCmd, pendingQuery, historyQuery, courseQuery.NewListReviewHistoryHandler(reviewRepo))
 	reviewRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrMod)
 
 	return e, jwtSvc, repo, reviewRepo
@@ -253,7 +263,7 @@ func TestCourseRoutesRBAC(t *testing.T) {
 	})
 
 	t.Run("teacher can create course (201 Created)", func(t *testing.T) {
-		body := `{"title":"Curso Permitido","level":"A1"}`
+		body := `{"title":"Curso Permitido","level":"A1","access_tier":"course","price_cents":2000}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/courses", bytes.NewBufferString(body))
 		req.Header.Set("Authorization", "Bearer "+teacherToken)
 		req.Header.Set("Content-Type", "application/json")

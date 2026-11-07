@@ -18,7 +18,7 @@ func TestCourseCategoryUpdate(t *testing.T) {
   t.Run(tc.name, func(t *testing.T) {
    e, jwt, repo, _ := setupTestServer()
    owner, category := "teacher-123", "category-1"
-   repo.courses = append(repo.courses, entities.Course{ID:"course-1", CreatedBy:&owner, OwnerType:entities.OwnerTypeTeacher, CategoryID:&category})
+   repo.courses = append(repo.courses, entities.Course{ID:"course-1", CreatedBy:&owner, OwnerType:entities.OwnerTypeTeacher, CategoryID:&category, AccessTier:entities.AccessTierCourse, PriceCents:2000})
    token, _, _ := jwt.GenerateAccessToken(&entities.User{ID:owner, Email:"teacher@wordtap.app", Role:entities.RoleInstructor})
    req := httptest.NewRequest(http.MethodPut, "/api/v1/courses/course-1", strings.NewReader(tc.body))
    req.Header.Set("Authorization", "Bearer "+token)

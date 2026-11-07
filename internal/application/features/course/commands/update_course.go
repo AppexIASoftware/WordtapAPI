@@ -63,9 +63,9 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 	// own their teacher courses. Staff may still change only the review status
 	// of a teacher course (approve/publish), never its content.
 	isStaff := cmd.RequesterRole == entities.RoleAdmin || cmd.RequesterRole == entities.RoleModerator
+	hasContentChanges := cmd.Title != nil || cmd.Description != nil || cmd.Level != nil ||
+		cmd.CoverImageURL != nil || cmd.AccessTier != nil || cmd.PriceCents != nil || cmd.CategoryIDSet || cmd.CategoryID != nil
 	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
-		hasContentChanges := cmd.Title != nil || cmd.Description != nil || cmd.Level != nil ||
-			cmd.CoverImageURL != nil || cmd.AccessTier != nil || cmd.PriceCents != nil || cmd.CategoryIDSet || cmd.CategoryID != nil
 		if !isStaff || hasContentChanges {
 			if courseAccess.EffectiveOwnerType(course) == entities.OwnerTypePlatform {
 				return nil, apperrors.New("No puedes editar un curso de la plataforma.")
@@ -78,6 +78,18 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 	// The repository must also enforce this transactionally against races.
 	if course.Status == entities.ContentStatusInReview {
 		return nil, apperrors.New("No puedes editar un curso mientras está en revisión.")
+	}
+	if courseAccess.EffectiveOwnerType(course) == entities.OwnerTypeTeacher && hasContentChanges {
+		tier, price := course.AccessTier, course.PriceCents
+		if cmd.AccessTier != nil {
+			tier = *cmd.AccessTier
+		}
+		if cmd.PriceCents != nil {
+			price = *cmd.PriceCents
+		}
+		if err := validateTeacherCoursePricing(ctx, h.settingRepo, tier, price); err != nil {
+			return nil, err
+		}
 	}
 
 	var changed []string
@@ -137,14 +149,9 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 		course.PriceCents = *cmd.PriceCents
 	}
 
-	if course.AccessTier == entities.AccessTierSubscription || course.AccessTier == entities.AccessTierFree {
+	if courseAccess.EffectiveOwnerType(course) != entities.OwnerTypeTeacher && (course.AccessTier == entities.AccessTierSubscription || course.AccessTier == entities.AccessTierFree) {
 		if course.PriceCents != 0 {
 			course.PriceCents = 0
-		}
-	} else if course.AccessTier == entities.AccessTierCourse && courseAccess.EffectiveOwnerType(course) == entities.OwnerTypeTeacher {
-		minPriceCents := resolveMinPriceCents(ctx, h.settingRepo)
-		if course.PriceCents < minPriceCents {
-			return nil, apperrors.New(fmt.Sprintf("El precio mínimo para cursos individuales de docentes es de S/ %.2f PEN.", float64(minPriceCents)/100.0))
 		}
 	}
 

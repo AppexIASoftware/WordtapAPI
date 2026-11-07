@@ -26,7 +26,7 @@ func TestAdminCannotEditOrDeleteTeacherCourse(t *testing.T) {
 		AccessTier: entities.AccessTierCourse,
 	})
 
-	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/courses", bytes.NewBufferString(`{"title":"Curso de Docente para Supervisión","level":"A2"}`))
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/courses", bytes.NewBufferString(`{"title":"Curso de Docente para Supervisión","level":"A2","access_tier":"course","price_cents":2000}`))
 	createReq.Header.Set("Authorization", "Bearer "+teacherToken)
 	createReq.Header.Set("Content-Type", "application/json")
 	createRec := httptest.NewRecorder()

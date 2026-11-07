@@ -53,7 +53,8 @@ func TestCreateCourseHandler(t *testing.T) {
 		cmd := commands.CreateCourseCommand{
 			Title:      "Inglés para Viajeros",
 			Level:      "A2",
-			AccessTier: entities.AccessTierFree,
+			AccessTier: entities.AccessTierCourse,
+			PriceCents: 2000,
 			AuthorID:   "usr-teacher-1",
 		}
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
 	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
@@ -21,6 +22,12 @@ type CourseRouter struct {
 	listPublishedCoursesHandler *courseQuery.ListPublishedCoursesHandler
 	listAdminCoursesHandler     *courseQuery.ListAdminCoursesHandler
 	getCourseDetailHandler      *courseQuery.GetCourseDetailHandler
+	contentPolicy               *access.ContentPolicy
+}
+
+func (r *CourseRouter) WithContentPolicy(policy *access.ContentPolicy) *CourseRouter {
+	r.contentPolicy = policy
+	return r
 }
 
 func NewCourseRouter(
@@ -91,15 +98,15 @@ type CreateCourseRequest struct {
 }
 
 type UpdateCourseRequest struct {
-	Title         *string `json:"title"`
-	Description   *string `json:"description"`
-	Level         *string `json:"level"`
+	Title         *string                 `json:"title"`
+	Description   *string                 `json:"description"`
+	Level         *string                 `json:"level"`
 	CategoryID    entities.OptionalString `json:"category_id"`
-	AccessTier    *string `json:"access_tier"`
-	PriceCents    *int    `json:"price_cents"`
-	Status        *string `json:"status"`
-	CoverImageURL *string `json:"cover_image_url"`
-	ChangeSummary *string `json:"change_summary"`
+	AccessTier    *string                 `json:"access_tier"`
+	PriceCents    *int                    `json:"price_cents"`
+	Status        *string                 `json:"status"`
+	CoverImageURL *string                 `json:"cover_image_url"`
+	ChangeSummary *string                 `json:"change_summary"`
 }
 
 // CreateCourse handles POST /api/v1/courses
@@ -258,10 +265,15 @@ func (r *CourseRouter) GetCourseDetail(c *echo.Context) error {
 	isAdmin := entities.UserRole(roleStr) == entities.RoleAdmin
 
 	if !isOwner && !isAdmin {
-		return c.JSON(http.StatusOK, ToPublicCourseDTO(course))
+		err := r.contentPolicy.Authorize(ctx, course, nil, userID, entities.UserRole(roleStr))
+		if err != nil && !errors.Is(err, access.ErrContentDenied) {
+			return response.Error(c, http.StatusInternalServerError, "No se pudo cargar el curso.", err)
+		}
+		return c.JSON(http.StatusOK, toPublicCourseDTO(course, true))
 	}
 
-	return c.JSON(http.StatusOK, course)
+	// Propietario/admin: también devolver DTO público para consistencia con la app móvil
+	return c.JSON(http.StatusOK, toPublicCourseDTO(course, true))
 }
 
 // GetTeacherCourseDetail handles GET /api/v1/teacher/courses/:id (private teacher-owned detail path)

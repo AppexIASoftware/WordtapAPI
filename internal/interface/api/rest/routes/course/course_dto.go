@@ -56,28 +56,36 @@ type PublicCourseDTO struct {
 
 // ToPublicCourseDTO converts a Course entity into a sanitized public DTO.
 func ToPublicCourseDTO(c *entities.Course) PublicCourseDTO {
+	return toPublicCourseDTO(c, c.OwnerType == entities.OwnerTypePlatform)
+}
+
+func toPublicCourseDTO(c *entities.Course, includeLessons bool) PublicCourseDTO {
 	publicLessons := make([]PublicLessonDTO, 0)
 	totalMinutes := 0
+	lessonCount := 0
 	for _, l := range c.Lessons {
 		if l.Status == entities.ContentStatusPublished {
+			lessonCount++
 			mins := 15
 			if l.EstimatedMinutes != nil && *l.EstimatedMinutes > 0 {
 				mins = *l.EstimatedMinutes
 			}
 			totalMinutes += mins
-			publicLessons = append(publicLessons, PublicLessonDTO{
-				ID:               l.ID,
-				CourseID:         l.CourseID,
-				Title:            l.Title,
-				Slug:             l.Slug,
-				Description:      l.Description,
-				AccessTier:       l.AccessTier,
-				Status:           l.Status,
-				SortOrder:        l.SortOrder,
-				EstimatedMinutes: l.EstimatedMinutes,
-				CreatedAt:        l.CreatedAt,
-				UpdatedAt:        l.UpdatedAt,
-			})
+			if includeLessons {
+				publicLessons = append(publicLessons, PublicLessonDTO{
+					ID:               l.ID,
+					CourseID:         l.CourseID,
+					Title:            l.Title,
+					Slug:             l.Slug,
+					Description:      l.Description,
+					AccessTier:       l.AccessTier,
+					Status:           l.Status,
+					SortOrder:        l.SortOrder,
+					EstimatedMinutes: l.EstimatedMinutes,
+					CreatedAt:        l.CreatedAt,
+					UpdatedAt:        l.UpdatedAt,
+				})
+			}
 		}
 	}
 
@@ -113,7 +121,7 @@ func ToPublicCourseDTO(c *entities.Course) PublicCourseDTO {
 		SourceLang:            c.SourceLang,
 		TargetLang:            c.TargetLang,
 		Author:                authorDTO,
-		LessonsCount:          len(publicLessons),
+		LessonsCount:          lessonCount,
 		TotalEstimatedMinutes: totalMinutes,
 		Lessons:               publicLessons,
 		CreatedAt:             c.CreatedAt,
