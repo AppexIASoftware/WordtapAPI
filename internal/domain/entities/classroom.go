@@ -9,25 +9,27 @@ import (
 
 // Classroom representa un aula virtual privada creada por un docente para una cohorte.
 type Classroom struct {
-	ID          string    `gorm:"type:varchar(36);primaryKey" json:"id"`
-	TeacherID   string    `gorm:"type:varchar(36);index;not null" json:"teacher_id"`
-	CourseID    *string   `gorm:"type:varchar(36);index" json:"course_id,omitempty"`
-	Name        string    `gorm:"type:varchar(180);not null" json:"name"`
-	Code        string    `gorm:"type:varchar(30);uniqueIndex;not null" json:"code"`
+	ID              string    `gorm:"type:varchar(36);primaryKey" json:"id"`
+	TeacherID       string    `gorm:"type:varchar(36);index;not null" json:"teacher_id"`
+	CourseID        *string   `gorm:"type:varchar(36);index" json:"course_id,omitempty"`
+	Name            string    `gorm:"type:varchar(180);not null" json:"name"`
+	Code            string    `gorm:"type:varchar(30);uniqueIndex;not null" json:"code"`
 	Level           string    `gorm:"type:varchar(50);default:'B1 Intermediate';not null" json:"level"`
 	Description     *string   `gorm:"type:text" json:"description,omitempty"`
-	AssignedCourses *string   `gorm:"type:text" json:"assigned_courses,omitempty"` // JSON o lista separada por comas de IDs de cursos
-	ActiveGames     *string   `gorm:"type:text" json:"active_games,omitempty"`     // JSON o lista de modos de minijuegos habilitados
+	AssignedCourses *string   `gorm:"type:text" json:"assigned_courses,omitempty"`     // JSON o lista separada por comas de IDs de cursos
+	AssignedLessons *string   `gorm:"type:longtext" json:"assigned_lessons,omitempty"` // NULL denotes legacy classrooms without an explicit selection.
+	ActiveGames     *string   `gorm:"type:text" json:"active_games,omitempty"`         // JSON o lista de modos de minijuegos habilitados
 	WeeklyGoalWords int       `gorm:"default:50;not null" json:"weekly_goal_words"`
 	IsActive        bool      `gorm:"default:true;not null" json:"is_active"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 
 	// Relaciones
-	Teacher     *User                 `gorm:"foreignKey:TeacherID" json:"teacher,omitempty"`
-	Course      *Course               `gorm:"foreignKey:CourseID" json:"course,omitempty"`
-	Enrollments []ClassroomEnrollment `gorm:"foreignKey:ClassroomID;constraint:OnDelete:CASCADE" json:"enrollments,omitempty"`
-	Stumbles    []StudentStumble      `gorm:"foreignKey:ClassroomID;constraint:OnDelete:CASCADE" json:"stumbles,omitempty"`
+	Teacher         *User                 `gorm:"foreignKey:TeacherID" json:"teacher,omitempty"`
+	Course          *Course               `gorm:"foreignKey:CourseID" json:"course,omitempty"`
+	ResolvedCourses []Course              `gorm:"-" json:"-"`
+	Enrollments     []ClassroomEnrollment `gorm:"foreignKey:ClassroomID;constraint:OnDelete:CASCADE" json:"enrollments,omitempty"`
+	Stumbles        []StudentStumble      `gorm:"foreignKey:ClassroomID;constraint:OnDelete:CASCADE" json:"stumbles,omitempty"`
 }
 
 func (c *Classroom) BeforeCreate(tx *gorm.DB) error {

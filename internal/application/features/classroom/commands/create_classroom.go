@@ -19,6 +19,7 @@ type CreateClassroomCommand struct {
 	Level           string   `json:"level"`
 	CourseID        *string  `json:"course_id"`
 	CourseIDs       []string `json:"course_ids"`
+	LessonIDs       []string `json:"lesson_ids"`
 	GameIDs         []string `json:"game_ids"`
 	WeeklyGoalWords int      `json:"weekly_goal_words"`
 	Description     *string  `json:"description"`
@@ -26,10 +27,15 @@ type CreateClassroomCommand struct {
 
 type CreateClassroomHandler struct {
 	classroomRepo repositories.ClassroomRepository
+	courseRepo    CourseLookup
 }
 
-func NewCreateClassroomHandler(classroomRepo repositories.ClassroomRepository) *CreateClassroomHandler {
-	return &CreateClassroomHandler{classroomRepo: classroomRepo}
+func NewCreateClassroomHandler(classroomRepo repositories.ClassroomRepository, courses ...CourseLookup) *CreateClassroomHandler {
+	var lookup CourseLookup
+	if len(courses) > 0 {
+		lookup = courses[0]
+	}
+	return &CreateClassroomHandler{classroomRepo: classroomRepo, courseRepo: lookup}
 }
 
 func (h *CreateClassroomHandler) Handle(ctx context.Context, cmd CreateClassroomCommand) (*entities.Classroom, error) {
@@ -39,6 +45,17 @@ func (h *CreateClassroomHandler) Handle(ctx context.Context, cmd CreateClassroom
 	}
 	if cmd.TeacherID == "" {
 		return nil, errors.New("el identificador del docente es obligatorio")
+	}
+	ids := cmd.CourseIDs
+	if len(ids) == 0 && cmd.CourseID != nil {
+		ids = []string{*cmd.CourseID}
+	}
+	if err := validateCourses(ctx, h.courseRepo, cmd.TeacherID, ids); err != nil {
+		return nil, err
+	}
+	selection, err := encodeLessonSelection(ctx, h.courseRepo, ids, cmd.LessonIDs)
+	if err != nil {
+		return nil, err
 	}
 
 	level := strings.TrimSpace(cmd.Level)
@@ -100,14 +117,22 @@ func (h *CreateClassroomHandler) Handle(ctx context.Context, cmd CreateClassroom
 		weeklyGoal = 50
 	}
 
+	var primaryCourseID *string
+	for _, id := range ids {
+		if clean := strings.TrimSpace(id); clean != "" {
+			primaryCourseID = &clean
+			break
+		}
+	}
 	classroom := &entities.Classroom{
 		TeacherID:       cmd.TeacherID,
-		CourseID:        cmd.CourseID,
+		CourseID:        primaryCourseID,
 		Name:            name,
 		Code:            uniqueCode,
 		Level:           level,
 		Description:     cmd.Description,
 		AssignedCourses: assignedCoursesStr,
+		AssignedLessons: selection,
 		ActiveGames:     activeGamesStr,
 		WeeklyGoalWords: weeklyGoal,
 		IsActive:        true,

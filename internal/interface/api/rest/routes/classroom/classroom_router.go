@@ -49,29 +49,6 @@ func (r *ClassroomRouter) RegisterRoutes(
 	teacherGroup.PUT("/:id", r.UpdateClassroom)
 	teacherGroup.GET("", r.ListTeacherClassrooms)
 	teacherGroup.GET("/:id/stumbles", r.GetClassroomStumbles)
-
-	// Ruta de inscripción para estudiantes mediante código
-	v1.POST("/classrooms/join", r.JoinClassroom, authRequired)
-}
-
-type CreateClassroomRequest struct {
-	Name            string   `json:"name"`
-	Level           string   `json:"level"`
-	CourseID        *string  `json:"course_id"`
-	CourseIDs       []string `json:"course_ids"`
-	GameIDs         []string `json:"game_ids"`
-	WeeklyGoalWords int      `json:"weekly_goal_words"`
-	Description     *string  `json:"description"`
-}
-
-type UpdateClassroomRequest struct {
-	Name            string   `json:"name"`
-	Level           string   `json:"level"`
-	CourseID        *string  `json:"course_id"`
-	CourseIDs       []string `json:"course_ids"`
-	GameIDs         []string `json:"game_ids"`
-	WeeklyGoalWords int      `json:"weekly_goal_words"`
-	Description     *string  `json:"description"`
 }
 
 func (r *ClassroomRouter) CreateClassroom(c *echo.Context) error {
@@ -91,6 +68,7 @@ func (r *ClassroomRouter) CreateClassroom(c *echo.Context) error {
 		Level:           req.Level,
 		CourseID:        req.CourseID,
 		CourseIDs:       req.CourseIDs,
+		LessonIDs:       req.LessonIDs,
 		GameIDs:         req.GameIDs,
 		WeeklyGoalWords: req.WeeklyGoalWords,
 		Description:     req.Description,
@@ -130,6 +108,7 @@ func (r *ClassroomRouter) UpdateClassroom(c *echo.Context) error {
 		Level:           req.Level,
 		CourseID:        req.CourseID,
 		CourseIDs:       req.CourseIDs,
+		LessonIDs:       req.LessonIDs,
 		GameIDs:         req.GameIDs,
 		WeeklyGoalWords: req.WeeklyGoalWords,
 		Description:     req.Description,
@@ -183,6 +162,7 @@ func formatClassroomDTO(classroom *entities.Classroom) map[string]any {
 		"courseId":        courseID,
 		"courseTitle":     courseTitle,
 		"assignedCourses": assignedCoursesList,
+		"assignedLessons": classroomLessonIDs(classroom),
 		"activeGames":     activeGamesList,
 		"weeklyGoalWords": classroom.WeeklyGoalWords,
 		"level":           classroom.Level,
@@ -257,20 +237,20 @@ func (r *ClassroomRouter) ListTeacherClassrooms(c *echo.Context) error {
 			accuracyStr := fmt.Sprintf("%d%%", enr.AccuracyPct)
 
 			studentsList = append(studentsList, map[string]any{
-				"id":           enr.ID,
-				"name":         name,
-				"email":        email,
-				"initials":     initials,
-				"avatarColor":  "emerald",
-				"level":        cls.Level,
-				"streak":       streakStr,
-				"words":        enr.WordsMastered,
-				"accuracy":     accuracyStr,
-				"enrolledAt":   enr.EnrolledAt.Format("02 Jan 2006"),
-				"lastActive":   "Hoy",
-				"payStatus":    payStatus,
-				"payLabel":     payLabel,
-				"renewDate":    "Renueva próx. mes",
+				"id":          enr.ID,
+				"name":        name,
+				"email":       email,
+				"initials":    initials,
+				"avatarColor": "emerald",
+				"level":       cls.Level,
+				"streak":      streakStr,
+				"words":       enr.WordsMastered,
+				"accuracy":    accuracyStr,
+				"enrolledAt":  enr.EnrolledAt.Format("02 Jan 2006"),
+				"lastActive":  "Hoy",
+				"payStatus":   payStatus,
+				"payLabel":    payLabel,
+				"renewDate":   "Renueva próx. mes",
 			})
 		}
 
@@ -329,6 +309,7 @@ func (r *ClassroomRouter) ListTeacherClassrooms(c *echo.Context) error {
 			"courseId":        courseID,
 			"courseTitle":     courseTitle,
 			"assignedCourses": assignedCoursesList,
+			"assignedLessons": classroomLessonIDs(&cls),
 			"activeGames":     activeGamesList,
 			"weeklyGoalWords": weeklyGoal,
 			"level":           cls.Level,
@@ -367,35 +348,5 @@ func (r *ClassroomRouter) GetClassroomStumbles(c *echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{
 		"success": true,
 		"data":    stumbles,
-	})
-}
-
-type JoinClassroomRequest struct {
-	Code string `json:"code"`
-}
-
-func (r *ClassroomRouter) JoinClassroom(c *echo.Context) error {
-	userID, ok := c.Get("user_id").(string)
-	if !ok || userID == "" {
-		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
-	}
-
-	var req JoinClassroomRequest
-	if err := c.Bind(&req); err != nil {
-		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
-	}
-
-	enrollment, err := r.enrollStudentHandler.Handle(c.Request().Context(), commands.EnrollStudentCommand{
-		Code:      req.Code,
-		StudentID: userID,
-	})
-	if err != nil {
-		return response.Error(c, http.StatusBadRequest, "No se pudo unir al aula.", err)
-	}
-
-	return c.JSON(http.StatusOK, map[string]any{
-		"success": true,
-		"data":    enrollment,
-		"message": "¡Te has unido al aula exitosamente!",
 	})
 }

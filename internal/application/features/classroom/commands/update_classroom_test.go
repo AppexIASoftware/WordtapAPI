@@ -13,6 +13,18 @@ type mockUpdateClassroomRepo struct {
 	updated   bool
 }
 
+type publishedCourseLookup struct{}
+
+type draftCourseLookup struct{}
+
+func (draftCourseLookup) FindByID(_ context.Context, id string) (*entities.Course, error) {
+	return &entities.Course{ID: id, Status: entities.ContentStatusDraft, OwnerType: entities.OwnerTypePlatform}, nil
+}
+
+func (publishedCourseLookup) FindByID(_ context.Context, id string) (*entities.Course, error) {
+	return &entities.Course{ID: id, Status: entities.ContentStatusPublished, OwnerType: entities.OwnerTypePlatform}, nil
+}
+
 func (m *mockUpdateClassroomRepo) Create(ctx context.Context, c *entities.Classroom) error {
 	return nil
 }
@@ -75,7 +87,7 @@ func TestUpdateClassroomHandler(t *testing.T) {
 			},
 		}
 
-		handler := commands.NewUpdateClassroomHandler(repo)
+		handler := commands.NewUpdateClassroomHandler(repo, publishedCourseLookup{})
 		desc := "Nueva descripción"
 		cmd := commands.UpdateClassroomCommand{
 			ClassroomID:     "cls-1",
@@ -187,7 +199,7 @@ func TestUpdateClassroomCourseAssignments(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			old, list := "old", "old,other"
 			repo := &mockUpdateClassroomRepo{classroom: &entities.Classroom{ID: "class", TeacherID: "teacher", CourseID: &old, AssignedCourses: &list}}
-			got, err := commands.NewUpdateClassroomHandler(repo).Handle(context.Background(), commands.UpdateClassroomCommand{ClassroomID: "class", TeacherID: "teacher", Name: "Class", CourseIDs: tc.ids, CourseID: tc.single})
+			got, err := commands.NewUpdateClassroomHandler(repo, publishedCourseLookup{}).Handle(context.Background(), commands.UpdateClassroomCommand{ClassroomID: "class", TeacherID: "teacher", Name: "Class", CourseIDs: tc.ids, CourseID: tc.single})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -201,5 +213,14 @@ func TestUpdateClassroomCourseAssignments(t *testing.T) {
 				t.Fatalf("course ID = %v, want %q", got.CourseID, tc.wantCourse)
 			}
 		})
+	}
+}
+
+func TestUpdateClassroomRejectsUnpublishedAssignmentWithoutChanges(t *testing.T) {
+	old := "existing"
+	repo := &mockUpdateClassroomRepo{classroom: &entities.Classroom{ID: "class", TeacherID: "teacher", Name: "Before", CourseID: &old}}
+	_, err := commands.NewUpdateClassroomHandler(repo, draftCourseLookup{}).Handle(context.Background(), commands.UpdateClassroomCommand{ClassroomID: "class", TeacherID: "teacher", Name: "After", CourseIDs: []string{"draft"}})
+	if err == nil || repo.updated || repo.classroom.Name != "Before" || *repo.classroom.CourseID != old {
+		t.Fatalf("rejected assignment changed classroom: err=%v classroom=%+v", err, repo.classroom)
 	}
 }

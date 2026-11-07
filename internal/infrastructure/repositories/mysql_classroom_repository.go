@@ -75,7 +75,7 @@ func (r *MySQLClassroomRepository) FindByTeacher(ctx context.Context, teacherID 
 	return classrooms, nil
 }
 
-// FindByStudent retrieves active classrooms where the student is enrolled.
+// FindByStudent retrieves active classrooms where the student is enrolled, including progress and stumbles.
 func (r *MySQLClassroomRepository) FindByStudent(ctx context.Context, studentID string) ([]entities.Classroom, error) {
 	classrooms := make([]entities.Classroom, 0)
 	err := r.db.WithContext(ctx).
@@ -83,9 +83,16 @@ func (r *MySQLClassroomRepository) FindByStudent(ctx context.Context, studentID 
 		Where("classroom_enrollments.student_id = ? AND classrooms.is_active = ?", studentID, true).
 		Preload("Teacher").
 		Preload("Course").
+		Preload("Enrollments", "student_id = ?", studentID).
+		Preload("Stumbles", func(db *gorm.DB) *gorm.DB {
+			return db.Order("fail_rate DESC").Limit(10)
+		}).
 		Order("classrooms.created_at DESC").
 		Find(&classrooms).Error
 	if err != nil {
+		return nil, err
+	}
+	if err := r.loadAssignedCourses(ctx, classrooms); err != nil {
 		return nil, err
 	}
 	return classrooms, nil

@@ -19,6 +19,7 @@ type UpdateClassroomCommand struct {
 	Level           string   `json:"level"`
 	CourseID        *string  `json:"course_id"`
 	CourseIDs       []string `json:"course_ids"`
+	LessonIDs       []string `json:"lesson_ids"`
 	GameIDs         []string `json:"game_ids"`
 	WeeklyGoalWords int      `json:"weekly_goal_words"`
 	Description     *string  `json:"description"`
@@ -27,11 +28,16 @@ type UpdateClassroomCommand struct {
 // UpdateClassroomHandler processes classroom updates with ownership validation.
 type UpdateClassroomHandler struct {
 	classroomRepo repositories.ClassroomRepository
+	courseRepo    CourseLookup
 }
 
-// NewUpdateClassroomHandler crea una instancia del handler para actualización de aulas.
-func NewUpdateClassroomHandler(classroomRepo repositories.ClassroomRepository) *UpdateClassroomHandler {
-	return &UpdateClassroomHandler{classroomRepo: classroomRepo}
+// NewUpdateClassroomHandler creates an instance of the handler for classroom updates.
+func NewUpdateClassroomHandler(classroomRepo repositories.ClassroomRepository, courses ...CourseLookup) *UpdateClassroomHandler {
+	var lookup CourseLookup
+	if len(courses) > 0 {
+		lookup = courses[0]
+	}
+	return &UpdateClassroomHandler{classroomRepo: classroomRepo, courseRepo: lookup}
 }
 
 // Handle validates data and applies modifications to the Classroom entity in the database.
@@ -56,6 +62,37 @@ func (h *UpdateClassroomHandler) Handle(ctx context.Context, cmd UpdateClassroom
 	}
 	if classroom.TeacherID != cmd.TeacherID {
 		return nil, apperrors.New("No tienes permisos para modificar esta aula.")
+	}
+	ids := cmd.CourseIDs
+	if ids == nil && cmd.CourseID != nil {
+		ids = []string{*cmd.CourseID}
+	}
+	if err := validateCourses(ctx, h.courseRepo, cmd.TeacherID, ids); err != nil {
+		return nil, err
+	}
+	if cmd.LessonIDs != nil {
+		if ids == nil {
+			if classroom.AssignedCourses != nil {
+				ids = strings.Split(*classroom.AssignedCourses, ",")
+			} else if classroom.CourseID != nil {
+				ids = []string{*classroom.CourseID}
+			}
+			if err := validateCourses(ctx, h.courseRepo, cmd.TeacherID, ids); err != nil {
+				return nil, err
+			}
+		}
+		selection, err := encodeLessonSelection(ctx, h.courseRepo, ids, cmd.LessonIDs)
+		if err != nil {
+			return nil, err
+		}
+		classroom.AssignedLessons = selection
+	} else if ids != nil && classroom.AssignedLessons != nil {
+		// An old client changing courses cannot leave lessons from removed courses behind.
+		selection, err := retainAssignedLessons(ctx, h.courseRepo, ids, classroom.AssignedLessons)
+		if err != nil {
+			return nil, err
+		}
+		classroom.AssignedLessons = selection
 	}
 
 	level := strings.TrimSpace(cmd.Level)
