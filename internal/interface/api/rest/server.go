@@ -25,10 +25,12 @@ import (
 	settingQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/platform_setting/queries"
 	teacherAppCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/commands"
 	teacherAppQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/queries"
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/notificationdispatch"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/commands"
 	vaultCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/vault/commands"
 	vaultQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/vault/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/push"
 	infraRepo "github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
 	restMiddleware "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/middleware"
@@ -36,13 +38,17 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/catalog"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/classroom"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/course"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/device"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/docs"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/gamification"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/health"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/lesson"
+	notificationRoute "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/notification"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/setting"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/teacher_application"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/vault"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/vocabulary"
+	vocabQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/vocabulary/queries"
 )
 
 type Server struct {
@@ -102,6 +108,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	settingRepo := infraRepo.NewMySQLPlatformSettingRepository(db)
 	contentBankRepo := infraRepo.NewMySQLContentBankRepository(db)
 	classroomRepo := infraRepo.NewMySQLClassroomRepository(db)
+	classroomNotifRepo := infraRepo.NewMySQLClassroomNotificationRepository(db)
 	teacherGameRepo := infraRepo.NewMySQLTeacherGameRepository(db)
 	lessonGameRepo := infraRepo.NewMySQLLessonGameRepository(db)
 	// Test mode keeps in-memory access to avoid writing simulated purchases
@@ -128,6 +135,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	enrollStudentHandler := classroomCmd.NewEnrollStudentHandler(classroomRepo)
 	listClassroomsHandler := classroomQuery.NewListTeacherClassroomsHandler(classroomRepo)
 	getStumbleListHandler := classroomQuery.NewGetStumbleListHandler(classroomRepo)
+	listClassroomNotificationsHandler := classroomQuery.NewListClassroomNotificationsHandler(classroomNotifRepo, classroomRepo)
 
 	// Teacher Game Command & Query handlers
 	createTeacherGameHandler := gameCmd.NewCreateTeacherGameHandler(teacherGameRepo, courseRepo).WithClassrooms(classroomRepo)
@@ -315,7 +323,53 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	gameStudentRouter.RegisterRoutes(v1, authRequired)
 	livesRouter.RegisterRoutes(v1, authRequired)
 	progressRouter.RegisterRoutes(v1, authRequired)
+	inboxRepo := infraRepo.NewMySQLNotificationInbox(db)
+	deviceRepo := infraRepo.NewMySQLDeviceRepository(db)
+
+	var pushSender push.PushSender
+	if fcmClient, err := push.NewFCMClient(); err == nil {
+		pushSender = fcmClient
+	} else {
+		pushSender = &push.NoOpPushSender{}
+	}
+	dispatchDailyWordHandler := notificationdispatch.NewDispatchDailyWordHandler(
+		contentBankRepo,
+		inboxRepo,
+		deviceRepo,
+		pushSender,
+	)
+	broadcastAnnouncementHandler := notificationdispatch.NewBroadcastAnnouncementHandler(
+		userRepo,
+		inboxRepo,
+		deviceRepo,
+		pushSender,
+	).WithClassroomNotifRepo(classroomNotifRepo)
+	broadcastClassroomHandler := classroomCmd.NewBroadcastClassroomHandler(
+		classroomRepo,
+		inboxRepo,
+		deviceRepo,
+		pushSender,
+	).WithClassroomNotifRepo(classroomNotifRepo)
+	dispatchVaultWordHandler := vaultCmd.NewDispatchVaultWordHandler(
+		contentBankRepo,
+		classroomRepo,
+		userRepo,
+		inboxRepo,
+		deviceRepo,
+		pushSender,
+	)
+
 	catalogUnlockRouter.RegisterRoutes(v1, authRequired)
+	notificationRoute.NewRouter(infraRepo.NewMySQLNotificationPreferences(db)).RegisterRoutes(v1, authRequired)
+	notificationRoute.NewInboxRouter(inboxRepo).RegisterRoutes(v1, authRequired)
+	notificationRoute.NewDispatchRouter(dispatchDailyWordHandler).RegisterRoutes(v1, authRequired)
+	notificationRoute.NewAnnouncementRouter(broadcastAnnouncementHandler, deviceRepo).RegisterRoutes(v1, authRequired, adminOrModerator)
+	notificationRoute.NewClassroomNotificationRouter(listClassroomNotificationsHandler).RegisterRoutes(v1, authRequired, adminOrModerator)
+	classroom.NewBroadcastRouter(broadcastClassroomHandler).RegisterRoutes(v1, authRequired, instructorOrAdmin)
+	classroom.NewNotificationRouter(listClassroomNotificationsHandler).RegisterRoutes(v1, authRequired, instructorOrAdmin)
+	vault.NewDispatchRouter(dispatchVaultWordHandler).RegisterRoutes(v1, authRequired, instructorOrAdmin)
+	vocabulary.NewVocabularyRouter(vocabQuery.NewSearchVocabularyHandler(contentBankRepo)).RegisterRoutes(v1, authRequired)
+	device.NewDeviceRouter(deviceRepo).RegisterRoutes(v1, authRequired)
 
 	return &Server{App: e}, nil
 }

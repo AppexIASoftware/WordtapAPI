@@ -11,7 +11,9 @@ tmp/
 odd/
 .atl/
 .test-cache/
-
+*firebase*.json
+*serviceAccount*.json
+service-account*.json
 
 # CocoIndex Code (ccc)
 /.cocoindex_code/
