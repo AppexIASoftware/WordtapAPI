@@ -6,7 +6,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 )
 
-// UserRepository define el contrato de persistencia para usuarios, cuentas OAuth y sesiones.
+// UserRepository defines the persistence contract for users, OAuth accounts, and sessions.
 type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*entities.User, error)
 	FindByEmail(ctx context.Context, email string) (*entities.User, error)
@@ -19,9 +19,10 @@ type UserRepository interface {
 	RevokeSession(ctx context.Context, tokenHash string) error
 	RevokeAllSessions(ctx context.Context, userID string) error
 	UpdateUser(ctx context.Context, user *entities.User) error
+	ListUserIDs(ctx context.Context, role *entities.UserRole, learningLevel *string) ([]string, error)
 }
 
-// RecordProgressParams contiene los parámetros para registrar la finalización exitosa de un juego.
+// RecordProgressParams defines the parameters for recording game completion progress.
 type RecordProgressParams struct {
 	UserID         string
 	LessonID       string
@@ -29,7 +30,7 @@ type RecordProgressParams struct {
 	WordsPracticed int
 }
 
-// RecordProgressResult contiene el estado actualizado de progreso tras completar un juego.
+// RecordProgressResult holds the updated progress state after game completion.
 type RecordProgressResult struct {
 	LessonCompleted   bool `json:"lesson_completed"`
 	StarsEarned       int  `json:"stars_earned"`
@@ -41,7 +42,7 @@ type RecordProgressResult struct {
 	GamesCompleted    int  `json:"games_completed"`
 }
 
-// UserLearningStatsRepository define las operaciones de persistencia para telemetría de aprendizaje, vidas y rachas.
+// UserLearningStatsRepository defines operations for student telemetry, lives, and streaks.
 type UserLearningStatsRepository interface {
 	GetLearningStats(ctx context.Context, userID string) (*entities.UserLearningStats, error)
 	DeductUserLife(ctx context.Context, userID string) (*entities.UserLearningStats, error)
