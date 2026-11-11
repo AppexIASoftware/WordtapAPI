@@ -93,7 +93,7 @@ func (r *MySQLContentBankRepository) ListItems(ctx context.Context, filter repos
 		term := strings.TrimSpace(*filter.Search)
 		if term != "" {
 			pattern := "%" + strings.ToLower(term) + "%"
-			query = query.Where("LOWER(content_bank_items.prompt_text) LIKE ? OR LOWER(content_bank_items.target_text) LIKE ? OR LOWER(COALESCE(content_bank_items.ipa, '')) LIKE ? OR LOWER(content_bank_items.metadata) LIKE ?", pattern, pattern, pattern, pattern)
+			query = query.Where("LOWER(content_bank_items.prompt_text) LIKE ? OR LOWER(content_bank_items.target_text) LIKE ? OR LOWER(COALESCE(content_bank_items.ip_a, '')) LIKE ? OR LOWER(content_bank_items.metadata) LIKE ?", pattern, pattern, pattern, pattern)
 		}
 	}
 
