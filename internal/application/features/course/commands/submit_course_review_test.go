@@ -69,6 +69,16 @@ func (r *submissionCourseRepo) FindPublished(context.Context) ([]entities.Course
 func (r *submissionCourseRepo) FindAll(context.Context) ([]entities.Course, error) {
 	return nil, nil
 }
+func (r *submissionCourseRepo) FindAllByStatus(_ context.Context, status entities.ContentStatus, ownerType entities.OwnerType) ([]entities.Course, error) {
+	var result []entities.Course
+	all, _ := r.FindAll(context.Background())
+	for _, c := range all {
+		if c.Status == status && (ownerType == "" || c.OwnerType == ownerType) {
+			result = append(result, c)
+		}
+	}
+	return result, nil
+}
 func (r *submissionCourseRepo) Update(context.Context, *entities.Course) error { return nil }
 func (r *submissionCourseRepo) Delete(context.Context, string) error           { return nil }
 

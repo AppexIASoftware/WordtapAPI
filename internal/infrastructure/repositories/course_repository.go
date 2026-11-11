@@ -64,6 +64,32 @@ func (r *MySQLCourseRepository) FindPublished(ctx context.Context) ([]entities.C
 	return courses, nil
 }
 
+// FindAllByStatus returns courses filtered by publication status (admin scope).
+// An empty status or ownerType leaves that dimension unfiltered.
+func (r *MySQLCourseRepository) FindAllByStatus(ctx context.Context, status entities.ContentStatus, ownerType entities.OwnerType) ([]entities.Course, error) {
+	courses := make([]entities.Course, 0)
+	query := r.db.WithContext(ctx)
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if ownerType != "" {
+		query = query.Where("owner_type = ?", ownerType)
+	}
+	err := query.
+		Preload("Author").
+		Preload("Category").
+		Preload("Lessons", func(db *gorm.DB) *gorm.DB {
+			return db.Where("status = ?", entities.ContentStatusPublished).
+				Order("lessons.sort_order ASC, lessons.created_at ASC")
+		}).
+		Order("created_at DESC").
+		Find(&courses).Error
+	if err != nil {
+		return nil, err
+	}
+	return courses, nil
+}
+
 // FindAll returns all courses regardless of author or status (for admin management).
 func (r *MySQLCourseRepository) FindAll(ctx context.Context) ([]entities.Course, error) {
 	courses := make([]entities.Course, 0)

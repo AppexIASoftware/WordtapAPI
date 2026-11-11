@@ -8,12 +8,12 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 )
 
-// AutoMigrate ejecuta la migración de tablas y vistas en MySQL.
+// AutoMigrate executes schema migrations and view definitions in MySQL.
 func AutoMigrate(db *gorm.DB) error {
 	fmt.Println("Running database migrations...")
 
 	err := db.AutoMigrate(
-		// Autenticación y Usuario
+		// Authentication & User
 		&entities.User{},
 		&entities.UserAuthAccount{},
 		&entities.UserSession{},
@@ -22,7 +22,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&entities.TeacherApplication{},
 		&entities.PlatformSetting{},
 
-		// Catálogo y Aprendizaje
+		// Catalog & Learning
 		&entities.ContentCategory{},
 		&entities.ContentBankType{},
 		&entities.ContentBankItem{},
@@ -60,6 +60,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&entities.Notification{},
 		&entities.NotificationPreference{},
 		&entities.NotificationSchedule{},
+		&entities.NotificationScheduleMode{},
 
 		// Productos y Facturación
 		&entities.Product{},
@@ -83,10 +84,9 @@ func AutoMigrate(db *gorm.DB) error {
 		return fmt.Errorf("failed to auto migrate database tables: %w", err)
 	}
 
-	// 1.b. Relleno de propiedad para datos existentes
-	// Las actividades globales pertenecen a la plataforma; el resto conserva
-	// la propiedad del docente. Los cursos creados por administradores son
-	// contenido de plataforma. Las sentencias son idempotentes.
+	// 1.b. Backfill ownership for existing records
+	// Global activities belong to the platform; remaining items preserve teacher
+	// ownership. Administrator-created courses are platform content. Statements are idempotent.
 	if err := db.Exec(
 		`UPDATE teacher_games SET owner_type = ? WHERE is_global = ? AND owner_type <> ?`,
 		entities.OwnerTypePlatform, true, entities.OwnerTypePlatform,
@@ -128,9 +128,9 @@ func AutoMigrate(db *gorm.DB) error {
 		return fmt.Errorf("failed to sync published lesson status: %w", err)
 	}
 
-	// 2. Vistas SQL de lectura optimizada
+	// 2. Read-optimized SQL Views
 	views := []string{
-		// v_user_dashboard: Unifica perfil y estadísticas del usuario para alimentar la pantalla Home en una sola lectura.
+		// v_user_dashboard: Unifies profile and student telemetry for single-read Home screen queries.
 		`CREATE OR REPLACE VIEW v_user_dashboard AS
 		SELECT
 			u.id AS user_id,
@@ -148,7 +148,7 @@ func AutoMigrate(db *gorm.DB) error {
 		LEFT JOIN user_learning_stats s ON s.user_id = u.id
 		WHERE u.is_active = TRUE;`,
 
-		// v_published_learning_content: Lista solo lecciones publicadas con el nombre de su categoría para el catálogo.
+		// v_published_learning_content: Lists published lessons with category metadata for catalog exploration.
 		`CREATE OR REPLACE VIEW v_published_learning_content AS
 		SELECT
 			l.id AS lesson_id,
@@ -161,7 +161,7 @@ func AutoMigrate(db *gorm.DB) error {
 		LEFT JOIN content_categories c ON c.id = l.category_id
 		WHERE l.status = 'published';`,
 
-		// v_active_premium_access: Verifica en tiempo real si el usuario tiene acceso premium o suscripción vigente.
+		// v_active_premium_access: Verifies active premium access and subscriptions in real time.
 		`CREATE OR REPLACE VIEW v_active_premium_access AS
 		SELECT
 			e.user_id,
@@ -181,7 +181,7 @@ func AutoMigrate(db *gorm.DB) error {
 		}
 	}
 
-	// 3. Índices compuestos de alto rendimiento para eliminar filesort y escaneo de tablas
+	// 3. High-performance composite indexes to eliminate filesort and full table scans
 	indexes := []string{
 		`CREATE INDEX idx_courses_author_created ON courses (created_by, created_at DESC)`,
 		`CREATE INDEX idx_teacher_apps_status_created ON teacher_applications (status, created_at DESC)`,

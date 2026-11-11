@@ -43,6 +43,9 @@ func (m *mockUserRepo) RevokeAllSessions(ctx context.Context, u string) error { 
 func (m *mockUserRepo) RotateSession(ctx context.Context, oldTokenHash string, newSession *entities.UserSession) (bool, error) {
 	return false, nil
 }
+func (m *mockUserRepo) ListUserIDs(ctx context.Context, role *entities.UserRole, learningLevel *string) ([]string, error) {
+	return []string{"usr-1"}, nil
+}
 
 type mockAppRepo struct {
 	created  *entities.TeacherApplication

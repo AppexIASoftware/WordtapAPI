@@ -156,6 +156,10 @@ func (r *fakeUserRepo) UpdateUser(context.Context, *entities.User) error {
 	return nil
 }
 
+func (r *fakeUserRepo) ListUserIDs(context.Context, *entities.UserRole, *string) ([]string, error) {
+	return []string{"user-1"}, nil
+}
+
 func newTestServer(t *testing.T, repo *fakeUserRepo, devLoginEnabled bool) *echo.Echo {
 	t.Helper()
 

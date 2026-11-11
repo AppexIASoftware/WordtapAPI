@@ -156,6 +156,20 @@ func (m *mockCourseRepository) FindPublished(ctx context.Context) ([]entities.Co
 func (m *mockCourseRepository) FindAll(ctx context.Context) ([]entities.Course, error) {
 	return m.courses, nil
 }
+func (m *mockCourseRepository) FindAllByStatus(_ context.Context, status entities.ContentStatus, ownerType entities.OwnerType) ([]entities.Course, error) {
+	var result []entities.Course
+	all, _ := m.FindAll(context.Background())
+	for _, c := range all {
+		owner := c.OwnerType
+		if owner == "" {
+			owner = entities.OwnerTypePlatform
+		}
+		if c.Status == status && (ownerType == "" || owner == ownerType) {
+			result = append(result, c)
+		}
+	}
+	return result, nil
+}
 
 func (m *mockCourseRepository) FindByID(ctx context.Context, id string) (*entities.Course, error) {
 	for _, c := range m.courses {
@@ -608,6 +622,50 @@ func TestCourseRoutesRBAC(t *testing.T) {
 		}
 		if len(list) == 0 {
 			t.Fatalf("expected courses in admin list, got empty")
+		}
+
+		// 3. status and owner_type filters narrow the list at the source
+		wantPublished := 0
+		for _, course := range list {
+			if course.Status == entities.ContentStatusPublished && course.OwnerType != entities.OwnerTypeTeacher {
+				wantPublished++
+			}
+		}
+		reqFiltered := httptest.NewRequest(http.MethodGet, "/api/v1/admin/courses?status=published&owner_type=platform", nil)
+		reqFiltered.Header.Set("Authorization", "Bearer "+adminToken)
+		recFiltered := httptest.NewRecorder()
+		e.ServeHTTP(recFiltered, reqFiltered)
+		if recFiltered.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK for status=published, got %d", recFiltered.Code)
+		}
+		var filtered []entities.Course
+		if err := json.Unmarshal(recFiltered.Body.Bytes(), &filtered); err != nil {
+			t.Fatalf("failed to decode filtered courses: %v", err)
+		}
+		if len(filtered) != wantPublished {
+			t.Fatalf("expected %d published courses, got %d", wantPublished, len(filtered))
+		}
+		for _, course := range filtered {
+			if course.Status != entities.ContentStatusPublished || course.OwnerType == entities.OwnerTypeTeacher {
+				t.Fatalf("course %s has status %q owner %q, want published platform course", course.ID, course.Status, course.OwnerType)
+			}
+		}
+
+		// 4. unknown status or owner type -> 400 Bad Request
+		reqBadOwner := httptest.NewRequest(http.MethodGet, "/api/v1/admin/courses?owner_type=bogus", nil)
+		reqBadOwner.Header.Set("Authorization", "Bearer "+adminToken)
+		recBadOwner := httptest.NewRecorder()
+		e.ServeHTTP(recBadOwner, reqBadOwner)
+		if recBadOwner.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for invalid owner_type, got %d", recBadOwner.Code)
+		}
+
+		reqInvalid := httptest.NewRequest(http.MethodGet, "/api/v1/admin/courses?status=bogus", nil)
+		reqInvalid.Header.Set("Authorization", "Bearer "+adminToken)
+		recInvalid := httptest.NewRecorder()
+		e.ServeHTTP(recInvalid, reqInvalid)
+		if recInvalid.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for invalid status, got %d", recInvalid.Code)
 		}
 	})
 }

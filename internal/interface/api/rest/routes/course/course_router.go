@@ -272,7 +272,7 @@ func (r *CourseRouter) GetCourseDetail(c *echo.Context) error {
 		return c.JSON(http.StatusOK, toPublicCourseDTO(course, true))
 	}
 
-	// Propietario/admin: también devolver DTO público para consistencia con la app móvil
+	// Owner or admin: return public course DTO for mobile client consistency
 	return c.JSON(http.StatusOK, toPublicCourseDTO(course, true))
 }
 
@@ -383,10 +383,22 @@ func (r *CourseRouter) ListPublicCourses(c *echo.Context) error {
 	return c.JSON(http.StatusOK, publicCourses)
 }
 
-// ListAdminCourses handles GET /api/v1/admin/courses (all courses across all authors and statuses)
+// ListAdminCourses handles GET /api/v1/admin/courses (all courses across all authors).
+// The optional "status" and "owner_type" query parameters narrow the result.
 func (r *CourseRouter) ListAdminCourses(c *echo.Context) error {
 	ctx := c.Request().Context()
-	courses, err := r.listAdminCoursesHandler.Handle(ctx, courseQuery.ListAdminCoursesQuery{})
+	status := entities.ContentStatus(c.QueryParam("status"))
+	switch status {
+	case "", entities.ContentStatusDraft, entities.ContentStatusInReview,
+		entities.ContentStatusPublished, entities.ContentStatusArchived:
+	default:
+		return response.Fail(c, http.StatusBadRequest, "El estado de curso solicitado no es válido.")
+	}
+	ownerType := entities.OwnerType(c.QueryParam("owner_type"))
+	if ownerType != "" && !ownerType.IsValid() {
+		return response.Fail(c, http.StatusBadRequest, "El tipo de propietario solicitado no es válido.")
+	}
+	courses, err := r.listAdminCoursesHandler.Handle(ctx, courseQuery.ListAdminCoursesQuery{Status: status, OwnerType: ownerType})
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "No se pudo cargar la lista administrativa de cursos.", err)
 	}

@@ -68,6 +68,10 @@ func (unusedUserRepo) UpdateUser(context.Context, *entities.User) error {
 	return errUnexpectedRepoCall
 }
 
+func (unusedUserRepo) ListUserIDs(context.Context, *entities.UserRole, *string) ([]string, error) {
+	return nil, errUnexpectedRepoCall
+}
+
 func TestLoginWithGoogleRejectsUnverifiedEmail(t *testing.T) {
 	verifier := &fakeGoogleVerifier{
 		claims: &security.GoogleTokenClaims{
@@ -85,8 +89,8 @@ func TestLoginWithGoogleRejectsUnverifiedEmail(t *testing.T) {
 	}
 }
 
-// existingUserRepo devuelve un usuario ya registrado por correo, como ocurre
-// cuando el mismo correo llega por un proveedor distinto a Google.
+// existingUserRepo returns a user already registered with the email,
+// simulating email matching across authentication providers.
 type existingUserRepo struct {
 	unusedUserRepo
 	user           *entities.User

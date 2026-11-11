@@ -50,6 +50,16 @@ func (f *FakeCourseRepo) FindPublished(context.Context) ([]entities.Course, erro
 func (f *FakeCourseRepo) FindAll(context.Context) ([]entities.Course, error) {
 	return nil, nil
 }
+func (f *FakeCourseRepo) FindAllByStatus(_ context.Context, status entities.ContentStatus, ownerType entities.OwnerType) ([]entities.Course, error) {
+	var result []entities.Course
+	all, _ := f.FindAll(context.Background())
+	for _, c := range all {
+		if c.Status == status && (ownerType == "" || c.OwnerType == ownerType) {
+			result = append(result, c)
+		}
+	}
+	return result, nil
+}
 func (f *FakeCourseRepo) FindByID(_ context.Context, id string) (*entities.Course, error) {
 	return f.Courses[id], nil
 }

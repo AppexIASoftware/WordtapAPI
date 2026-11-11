@@ -32,6 +32,16 @@ func (m *mockCourseRepo) FindPublished(ctx context.Context) ([]entities.Course, 
 func (m *mockCourseRepo) FindAll(ctx context.Context) ([]entities.Course, error) {
 	return nil, nil
 }
+func (m *mockCourseRepo) FindAllByStatus(_ context.Context, status entities.ContentStatus, ownerType entities.OwnerType) ([]entities.Course, error) {
+	var result []entities.Course
+	all, _ := m.FindAll(context.Background())
+	for _, c := range all {
+		if c.Status == status && (ownerType == "" || c.OwnerType == ownerType) {
+			result = append(result, c)
+		}
+	}
+	return result, nil
+}
 
 func (m *mockCourseRepo) FindByID(ctx context.Context, id string) (*entities.Course, error) {
 	return nil, nil
