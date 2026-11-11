@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// NotificationType clasifica el propósito del mensaje (daily_word, reminder, streak_risk, system, promotion).
+// NotificationType classifies the message category (daily_word, reminder, streak_risk, system, promotion).
 type NotificationType string
 
 const (
@@ -18,7 +18,7 @@ const (
 	NotificationTypePromotion   NotificationType = "promotion"
 )
 
-// TranslationEntry almacena pares de traducción normalizados en español e inglés.
+// TranslationEntry stores normalized Spanish-English translation pairs.
 type TranslationEntry struct {
 	ID             string    `gorm:"type:varchar(36);primaryKey" json:"id"`
 	SourceLanguage string    `gorm:"type:varchar(10);default:'es';not null;uniqueIndex:idx_trans_pair,priority:1" json:"source_language"`
@@ -36,7 +36,7 @@ func (te *TranslationEntry) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// UserSearchHistory guarda los términos consultados por el usuario en el diccionario.
+// UserSearchHistory stores dictionary search queries performed by users.
 type UserSearchHistory struct {
 	ID                 string    `gorm:"type:varchar(36);primaryKey" json:"id"`
 	UserID             string    `gorm:"type:varchar(36);not null;index:idx_hist_user,priority:1" json:"user_id"`
@@ -55,7 +55,7 @@ func (sh *UserSearchHistory) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// Notification representa la bandeja de entrada de notificaciones y recordatorios del usuario.
+// Notification represents an inbox item or reminder delivered to a user.
 type Notification struct {
 	ID               string           `gorm:"type:varchar(36);primaryKey" json:"id"`
 	UserID           string           `gorm:"type:varchar(36);not null;index:idx_notif_user,priority:1" json:"user_id"`
@@ -80,7 +80,7 @@ func (n *Notification) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// NotificationPreference guarda preferencias horarias y activación de recordatorios del usuario.
+// NotificationPreference stores user delivery schedules and reminder preferences.
 type NotificationPreference struct {
 	UserID           string    `gorm:"type:varchar(36);primaryKey" json:"user_id"`
 	Enabled          bool      `gorm:"default:true;not null" json:"enabled"`
@@ -93,7 +93,7 @@ type NotificationPreference struct {
 	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
 }
 
-// NotificationSchedule permite configurar múltiples horarios de recordatorio semanales.
+// NotificationSchedule enables configuring multiple weekly reminder times.
 type NotificationSchedule struct {
 	ID               string           `gorm:"type:varchar(36);primaryKey" json:"id"`
 	UserID           string           `gorm:"type:varchar(36);not null;index" json:"user_id"`
@@ -112,3 +112,59 @@ func (ns *NotificationSchedule) BeforeCreate(tx *gorm.DB) error {
 	}
 	return nil
 }
+
+// NotificationScheduleMode stores the scheduling mode (random or custom).
+type NotificationScheduleMode struct {
+	UserID    string    `gorm:"type:varchar(36);primaryKey" json:"user_id"`
+	Mode      string    `gorm:"type:varchar(20);not null;default:'random'" json:"mode"`
+	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"created_at"`
+	UpdatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP" json:"updated_at"`
+
+	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
+}
+
+// ClassroomNotificationStatus defines the delivery status of a broadcast notification.
+type ClassroomNotificationStatus string
+
+const (
+	ClassroomNotificationStatusSent    ClassroomNotificationStatus = "sent"
+	ClassroomNotificationStatusFailed  ClassroomNotificationStatus = "failed"
+	ClassroomNotificationStatusPartial ClassroomNotificationStatus = "partial"
+)
+
+// ClassroomNotification represents a broadcast sent by a teacher to a classroom.
+// It is a single record for history/audit purposes, distinct from per-student Notification inbox entries.
+type ClassroomNotification struct {
+	ID             string                      `gorm:"type:varchar(36);primaryKey" json:"id"`
+	ClassroomID    *string                     `gorm:"type:varchar(36);index:idx_classroom_notif_classroom_sent,priority:1" json:"classroom_id,omitempty"`
+	TeacherID      string                      `gorm:"type:varchar(36);not null;index:idx_classroom_notif_teacher_sent,priority:1" json:"teacher_id"`
+	Title          string                      `gorm:"type:varchar(180);not null" json:"title"`
+	Message        string                      `gorm:"type:text;not null" json:"message"`
+	ActionType     string                      `gorm:"type:varchar(30);not null" json:"action_type"` // open_classroom, open_content
+	TargetCourseID *string                     `gorm:"type:varchar(36);index:idx_classroom_notif_course_sent,priority:1" json:"target_course_id,omitempty"`
+	TargetLessonID *string                     `gorm:"type:varchar(36);index:idx_classroom_notif_lesson_sent,priority:1" json:"target_lesson_id,omitempty"`
+	SentAt         time.Time                   `gorm:"index:idx_classroom_notif_classroom_sent,priority:2;index:idx_classroom_notif_teacher_sent,priority:2;index:idx_classroom_notif_course_sent,priority:2;index:idx_classroom_notif_lesson_sent,priority:2" json:"sent_at"`
+	RecipientCount int                         `gorm:"default:0;not null" json:"recipient_count"`
+	ReadCount      int                         `gorm:"default:0;not null" json:"read_count"`
+	Status         ClassroomNotificationStatus `gorm:"type:varchar(20);default:'sent';not null;index:idx_classroom_notif_status_sent,priority:1" json:"status"`
+	CreatedAt      time.Time                   `json:"created_at"`
+
+	// Relaciones
+	Classroom    *Classroom `gorm:"foreignKey:ClassroomID;constraint:OnDelete:CASCADE" json:"classroom,omitempty"`
+	Teacher      *User      `gorm:"foreignKey:TeacherID;constraint:OnDelete:CASCADE" json:"teacher,omitempty"`
+	TargetCourse *Course    `gorm:"foreignKey:TargetCourseID;constraint:OnDelete:SET NULL" json:"target_course,omitempty"`
+	TargetLesson *Lesson    `gorm:"foreignKey:TargetLessonID;constraint:OnDelete:SET NULL" json:"target_lesson,omitempty"`
+}
+
+func (cn *ClassroomNotification) BeforeCreate(tx *gorm.DB) error {
+	if cn.ID == "" {
+		cn.ID = uuid.NewString()
+	}
+	if cn.SentAt.IsZero() {
+		cn.SentAt = time.Now().UTC()
+	}
+	return nil
+}
+
+
+
