@@ -37,7 +37,10 @@ func (h *SubmitCourseReviewHandler) Handle(ctx context.Context, cmd SubmitCourse
 		return nil, fmt.Errorf("course not found: %w", err)
 	}
 
-	if cmd.RequesterRole != entities.RoleInstructor || cmd.RequesterID == "" || course.CreatedBy == nil || *course.CreatedBy != cmd.RequesterID {
+	isStaffReviewer := cmd.RequesterRole == entities.RoleAdmin || cmd.RequesterRole == entities.RoleModerator
+	isAuthor := cmd.RequesterRole == entities.RoleInstructor && cmd.RequesterID != "" && course.CreatedBy != nil && *course.CreatedBy == cmd.RequesterID
+
+	if !isAuthor && !(isStaffReviewer && course.Status == entities.ContentStatusPublished) {
 		return nil, apperrors.New("Solo el docente autor puede enviar el curso a revisión.")
 	}
 
@@ -49,9 +52,14 @@ func (h *SubmitCourseReviewHandler) Handle(ctx context.Context, cmd SubmitCourse
 		return nil, fmt.Errorf("cannot submit course with status '%s' for review", course.Status)
 	}
 
+	instructorID := cmd.RequesterID
+	if course.CreatedBy != nil && *course.CreatedBy != "" {
+		instructorID = *course.CreatedBy
+	}
+
 	request := &entities.CourseReviewRequest{
 		CourseID:      course.ID,
-		InstructorID:  cmd.RequesterID,
+		InstructorID:  instructorID,
 		Status:        entities.CourseReviewStatusPending,
 		ChangeSummary: cmd.ChangeSummary,
 		DiffSummary:   "{}",

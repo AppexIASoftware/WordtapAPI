@@ -90,6 +90,13 @@ func (r *MySQLCourseReviewRepository) Decide(ctx context.Context, id, adminID st
 		if course.RowsAffected != 1 {
 			return errors.New("course not found")
 		}
+		if status == entities.CourseReviewStatusApproved {
+			if err := tx.Model(&entities.Lesson{}).
+				Where("course_id = ? AND status = ?", request.CourseID, entities.ContentStatusDraft).
+				Update("status", entities.ContentStatusPublished).Error; err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if err != nil {

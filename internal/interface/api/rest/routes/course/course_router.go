@@ -264,8 +264,9 @@ func (r *CourseRouter) GetCourseDetail(c *echo.Context) error {
 	isOwner := userID != "" && course.CreatedBy != nil && *course.CreatedBy == userID
 	isAdmin := entities.UserRole(roleStr) == entities.RoleAdmin
 	isModerator := entities.UserRole(roleStr) == entities.RoleModerator
+	auditMode := c.QueryParam("audit") == "1" || c.QueryParam("audit") == "true"
 
-	if course.Status != entities.ContentStatusPublished && (isOwner || isAdmin || isModerator) {
+	if (course.Status != entities.ContentStatusPublished || auditMode) && (isOwner || isAdmin || isModerator) {
 		return c.JSON(http.StatusOK, toAuditCourseDTO(course))
 	}
 

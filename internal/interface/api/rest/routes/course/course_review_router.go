@@ -32,6 +32,24 @@ func (r *CourseReviewRouter) RegisterRoutes(v1 *echo.Group, auth echo.Middleware
 	v1.GET("/admin/course-reviews", r.Pending, auth, admin)
 	v1.GET("/admin/course-reviews/history", r.AdminHistory, auth, admin)
 	v1.POST("/admin/course-reviews/:id/decision", r.Decide, auth, admin)
+	v1.POST("/admin/courses/:id/suspend-review", r.SuspendToReview, auth, admin)
+}
+
+func (r *CourseReviewRouter) SuspendToReview(c *echo.Context) error {
+	userID, _ := c.Get("user_id").(string)
+	role, _ := c.Get("user_role").(string)
+	var body SubmitCourseReviewRequestBody
+	_ = c.Bind(&body)
+	result, err := r.submit.Handle(c.Request().Context(), commands.SubmitCourseReviewCommand{
+		CourseID:      c.Param("id"),
+		RequesterID:   userID,
+		RequesterRole: entities.UserRole(role),
+		ChangeSummary: body.ChangeSummary,
+	})
+	if err != nil {
+		return response.Fail(c, http.StatusBadRequest, err.Error())
+	}
+	return c.JSON(http.StatusOK, result)
 }
 
 func (r *CourseReviewRouter) AdminHistory(c *echo.Context) error {
