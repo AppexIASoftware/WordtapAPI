@@ -12,6 +12,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
+	auditCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/audit/commands"
+	auditQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/audit/queries"
 	catalogQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/catalog/queries"
 	classroomCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/commands"
 	classroomQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/queries"
@@ -37,6 +39,7 @@ import (
 	infraRepo "github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
 	restMiddleware "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/middleware"
+	auditRoute "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/audit"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/auth"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/catalog"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/classroom"
@@ -327,8 +330,15 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	courseRouter.RegisterRoutes(v1, authRequired, catalogRoles, studentOrStaff, canCreateDrafts, instructorOrAdmin, adminOrModerator)
 	simulatedPurchaseHandler := courseCmd.NewSimulatePurchaseHandler(simulatedPurchaseStore, simulationEnabled)
 	course.NewSimulatedPurchaseRouter(simulatedPurchaseHandler).RegisterRoutes(v1, authRequired, studentOnly)
-	courseReviewRouter := course.NewCourseReviewRouter(submitCourseReviewHandler, withdrawCourseReviewHandler, reviewCourseHandler, listCourseReviewsHandler, listTeacherCourseReviewsHandler, courseQuery.NewListReviewHistoryHandler(courseReviewRepo))
+	auditRepo := infraRepo.NewMySQLAuditRepository(db)
+	courseReviewRouter := course.NewCourseReviewRouter(submitCourseReviewHandler, withdrawCourseReviewHandler, reviewCourseHandler, listCourseReviewsHandler, listTeacherCourseReviewsHandler, courseQuery.NewListReviewHistoryHandler(courseReviewRepo)).WithAuditRepo(auditRepo)
 	courseReviewRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, canReviewCourses)
+	auditRoute.NewAuditRouter(
+		auditQuery.NewListAuditLogsHandler(auditRepo),
+		auditQuery.NewListContentReportsHandler(auditRepo),
+		auditCmd.NewDecideContentReportHandler(auditRepo),
+		auditCmd.NewCreateContentReportHandler(auditRepo),
+	).RegisterRoutes(v1, authRequired, adminOrModerator)
 	teacherAppRouter.RegisterRoutes(v1, authRequired, canManageTeacherApps)
 	staffRepo := infraRepo.NewMySQLStaffRepository(db)
 	staffRouter := userRoute.NewStaffRouter(
@@ -336,11 +346,11 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		commands.NewProvisionStaffHandler(staffRepo),
 		commands.NewUpdateStaffStatusHandler(staffRepo),
 		commands.NewDeleteStaffHandler(staffRepo),
-	)
+	).WithAuditRepo(auditRepo)
 	staffRouter.RegisterRoutes(v1, authRequired, adminOrModerator, adminOnly)
-	settingRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
+	settingRouter.WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, adminOrModerator)
 	dashboardRoute.NewDashboardRouter(dashQuery.NewGetAdminDashboardHandler(infraRepo.NewMySQLDashboardRepository(db))).RegisterRoutes(v1, authRequired, adminOrModerator)
-	vaultRouter.RegisterRoutes(v1, authRequired, staffRoles, canAuthorVault, instructorOrAdmin)
+	vaultRouter.WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, staffRoles, canAuthorVault, instructorOrAdmin)
 	classroomRouter.RegisterRoutes(v1, authRequired, canCreateClassrooms)
 	studentClassroomRouter.RegisterRoutes(v1, authRequired)
 	gameRouter.RegisterRoutes(v1, authRequired, canTuneGames, canTuneGames)

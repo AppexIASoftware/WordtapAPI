@@ -7,6 +7,8 @@ import (
 
 	settingCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/platform_setting/commands"
 	settingQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/platform_setting/queries"
+	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/auditlog"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
@@ -14,6 +16,7 @@ type SettingRouter struct {
 	getPublicHandler *settingQuery.GetPublicSettingsHandler
 	getAllHandler    *settingQuery.GetAllSettingsHandler
 	setHandler       *settingCmd.SetPlatformSettingHandler
+	auditRepo        domainRepo.AuditRepository
 }
 
 func NewSettingRouter(
@@ -26,6 +29,12 @@ func NewSettingRouter(
 		getAllHandler:    getAllHandler,
 		setHandler:       setHandler,
 	}
+}
+
+// WithAuditRepo attaches an optional AuditRepository for platform setting updates.
+func (r *SettingRouter) WithAuditRepo(repo domainRepo.AuditRepository) *SettingRouter {
+	r.auditRepo = repo
+	return r
 }
 
 func (r *SettingRouter) RegisterRoutes(
@@ -80,6 +89,11 @@ func (r *SettingRouter) UpdateSetting(c *echo.Context) error {
 		return response.Error(c, http.StatusBadRequest, "No se pudo actualizar la configuración.", err)
 	}
 
+	auditlog.Record(c, r.auditRepo, "SETTING_UPDATE", "platform_setting", req.Key, map[string]any{
+		"summary": "Actualizó configuración de plataforma / monetización",
+		"key":     req.Key,
+		"value":   req.Value,
+	})
 	return c.JSON(http.StatusOK, map[string]any{
 		"status": "success",
 		"key":    req.Key,

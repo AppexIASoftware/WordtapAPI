@@ -1,13 +1,17 @@
 package course
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
@@ -18,10 +22,42 @@ type CourseReviewRouter struct {
 	pending      *queries.ListCourseReviewsHandler
 	history      *queries.ListTeacherCourseReviewsHandler
 	adminHistory *queries.ListReviewHistoryHandler
+	auditRepo    domainRepo.AuditRepository
 }
 
 func NewCourseReviewRouter(submit *commands.SubmitCourseReviewHandler, withdraw *commands.WithdrawCourseReviewHandler, review *commands.ReviewCourseHandler, pending *queries.ListCourseReviewsHandler, history *queries.ListTeacherCourseReviewsHandler, adminHistory *queries.ListReviewHistoryHandler) *CourseReviewRouter {
 	return &CourseReviewRouter{submit: submit, withdraw: withdraw, review: review, pending: pending, history: history, adminHistory: adminHistory}
+}
+
+// WithAuditRepo attaches an optional AuditRepository to persist review decisions in audit_logs.
+func (r *CourseReviewRouter) WithAuditRepo(repo domainRepo.AuditRepository) *CourseReviewRouter {
+	r.auditRepo = repo
+	return r
+}
+
+func (r *CourseReviewRouter) recordAudit(ctx context.Context, actorID, ip, action, entityID string, payload map[string]any) {
+	if r.auditRepo == nil {
+		return
+	}
+	raw, _ := json.Marshal(payload)
+	var actorPtr, idPtr, ipPtr *string
+	if strings.TrimSpace(actorID) != "" {
+		actorPtr = &actorID
+	}
+	if strings.TrimSpace(entityID) != "" {
+		idPtr = &entityID
+	}
+	if strings.TrimSpace(ip) != "" {
+		ipPtr = &ip
+	}
+	_ = r.auditRepo.CreateAuditLog(ctx, &entities.AuditLog{
+		ActorUserID: actorPtr,
+		Action:      action,
+		EntityType:  "course",
+		EntityID:    idPtr,
+		Changes:     string(raw),
+		IPAddress:   ipPtr,
+	})
 }
 
 func (r *CourseReviewRouter) RegisterRoutes(v1 *echo.Group, auth echo.MiddlewareFunc, teacher echo.MiddlewareFunc, admin echo.MiddlewareFunc) {
@@ -49,6 +85,10 @@ func (r *CourseReviewRouter) SuspendToReview(c *echo.Context) error {
 	if err != nil {
 		return response.Fail(c, http.StatusBadRequest, err.Error())
 	}
+	r.recordAudit(c.Request().Context(), userID, c.RealIP(), "COURSE_SUSPEND_REVIEW", c.Param("id"), map[string]any{
+		"summary":        "Suspendió publicación del curso y lo devolvió a revisión",
+		"change_summary": body.ChangeSummary,
+	})
 	return c.JSON(http.StatusOK, result)
 }
 
@@ -136,5 +176,10 @@ func (r *CourseReviewRouter) Decide(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "No se pudo registrar la decisión de revisión.", err)
 	}
+	r.recordAudit(c.Request().Context(), userID, c.RealIP(), "COURSE_"+strings.ToUpper(string(body.Status)), c.Param("id"), map[string]any{
+		"summary":        "Emitió dictamen de revisión curricular",
+		"status":         body.Status,
+		"feedback_notes": body.FeedbackNotes,
+	})
 	return c.JSON(http.StatusOK, result)
 }

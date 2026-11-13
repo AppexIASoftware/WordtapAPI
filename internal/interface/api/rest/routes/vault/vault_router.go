@@ -9,6 +9,8 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/vault/commands"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/vault/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/auditlog"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
@@ -20,6 +22,7 @@ type VaultRouter struct {
 	createItemHandler     *commands.CreateVaultItemHandler
 	updateItemHandler     *commands.UpdateVaultItemHandler
 	deleteItemHandler     *commands.DeleteVaultItemHandler
+	auditRepo             domainRepo.AuditRepository
 }
 
 func NewVaultRouter(
@@ -40,6 +43,12 @@ func NewVaultRouter(
 		updateItemHandler:     updateItemHandler,
 		deleteItemHandler:     deleteItemHandler,
 	}
+}
+
+// WithAuditRepo attaches an optional AuditRepository for official vault mutations.
+func (r *VaultRouter) WithAuditRepo(repo domainRepo.AuditRepository) *VaultRouter {
+	r.auditRepo = repo
+	return r
 }
 
 func (r *VaultRouter) RegisterRoutes(
@@ -214,6 +223,11 @@ func (r *VaultRouter) CreateOfficialItem(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "No se pudo crear el ítem.", err)
 	}
+	auditlog.Record(c, r.auditRepo, "VAULT_ITEM_CREATE", "vault_item", item.ID, map[string]any{
+		"summary":     "Creó ítem oficial en Content Vault",
+		"target_text": item.TargetText,
+		"bank_type":   item.BankType,
+	})
 	return c.JSON(http.StatusCreated, item)
 }
 
@@ -246,6 +260,10 @@ func (r *VaultRouter) UpdateOfficialItem(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "No se pudo actualizar el ítem.", err)
 	}
+	auditlog.Record(c, r.auditRepo, "VAULT_ITEM_UPDATE", "vault_item", item.ID, map[string]any{
+		"summary":     "Actualizó ítem oficial en Content Vault",
+		"target_text": item.TargetText,
+	})
 	return c.JSON(http.StatusOK, item)
 }
 
@@ -262,6 +280,9 @@ func (r *VaultRouter) DeleteOfficialItem(c *echo.Context) error {
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "No se pudo eliminar el ítem.", err)
 	}
+	auditlog.Record(c, r.auditRepo, "VAULT_ITEM_DELETE", "vault_item", id, map[string]any{
+		"summary": "Eliminó ítem oficial del Content Vault",
+	})
 	return c.JSON(http.StatusOK, map[string]any{"deleted": true, "id": id})
 }
 

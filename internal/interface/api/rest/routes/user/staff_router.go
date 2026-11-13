@@ -10,6 +10,8 @@ import (
 	userCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/commands"
 	userQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
+	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/auditlog"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
@@ -18,6 +20,7 @@ type StaffRouter struct {
 	provisionHandler *userCmd.ProvisionStaffHandler
 	statusHandler    *userCmd.UpdateStaffStatusHandler
 	deleteHandler    *userCmd.DeleteStaffHandler
+	auditRepo        domainRepo.AuditRepository
 }
 
 func NewStaffRouter(
@@ -32,6 +35,12 @@ func NewStaffRouter(
 		statusHandler:    statusHandler,
 		deleteHandler:    deleteHandler,
 	}
+}
+
+// WithAuditRepo attaches an optional AuditRepository for staff mutations.
+func (r *StaffRouter) WithAuditRepo(repo domainRepo.AuditRepository) *StaffRouter {
+	r.auditRepo = repo
+	return r
 }
 
 func (r *StaffRouter) RegisterRoutes(
@@ -92,6 +101,12 @@ func (r *StaffRouter) ProvisionStaff(c *echo.Context) error {
 	if result.Created {
 		status = http.StatusCreated
 	}
+	auditlog.Record(c, r.auditRepo, "STAFF_PROVISION", "staff", result.User.ID, map[string]any{
+		"summary": "Provisionó o actualizó miembro del equipo",
+		"email":   req.Email,
+		"role":    req.Role,
+		"created": result.Created,
+	})
 	return c.JSON(status, result)
 }
 
@@ -119,6 +134,10 @@ func (r *StaffRouter) UpdateStatus(c *echo.Context) error {
 		return response.Error(c, http.StatusInternalServerError, "No se pudo actualizar el estado del usuario.", err)
 	}
 
+	auditlog.Record(c, r.auditRepo, "STAFF_STATUS_UPDATE", "staff", targetID, map[string]any{
+		"summary":   "Actualizó estado de acceso del miembro",
+		"is_active": req.IsActive,
+	})
 	return c.JSON(http.StatusOK, map[string]any{
 		"user": updated,
 	})
@@ -145,6 +164,9 @@ func (r *StaffRouter) DeleteStaff(c *echo.Context) error {
 		return response.Error(c, http.StatusInternalServerError, "No se pudo eliminar el usuario.", err)
 	}
 
+	auditlog.Record(c, r.auditRepo, "STAFF_DELETE", "staff", targetID, map[string]any{
+		"summary": "Eliminó miembro del directorio de staff",
+	})
 	return c.JSON(http.StatusOK, map[string]any{
 		"deleted": true,
 	})
