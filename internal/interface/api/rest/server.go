@@ -349,7 +349,11 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	).WithAuditRepo(auditRepo)
 	staffRouter.RegisterRoutes(v1, authRequired, adminOrModerator, adminOnly)
 	settingRouter.WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, adminOrModerator)
-	dashboardRoute.NewDashboardRouter(dashQuery.NewGetAdminDashboardHandler(infraRepo.NewMySQLDashboardRepository(db))).RegisterRoutes(v1, authRequired, adminOrModerator)
+	dashRepo := infraRepo.NewMySQLDashboardRepository(db)
+	dashRouter := dashboardRoute.NewDashboardRouter(dashQuery.NewGetAdminDashboardHandler(dashRepo)).
+		WithTeacherHandler(dashQuery.NewGetTeacherDashboardHandler(dashRepo))
+	dashRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
+	dashRouter.RegisterTeacherRoutes(v1, authRequired, instructorOrAdmin)
 	vaultRouter.WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, staffRoles, canAuthorVault, instructorOrAdmin)
 	classroomRouter.RegisterRoutes(v1, authRequired, canCreateClassrooms)
 	studentClassroomRouter.RegisterRoutes(v1, authRequired)

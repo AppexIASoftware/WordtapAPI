@@ -231,3 +231,85 @@ func (r *MySQLDashboardRepository) loadRecentEvents(ctx context.Context) ([]dash
 	}
 	return events, nil
 }
+
+func teacherPeriodStart(period string, now time.Time) time.Time {
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	switch period {
+	case "today":
+		return today
+	case "30d":
+		return today.AddDate(0, 0, -29)
+	case "year":
+		return today.AddDate(-1, 0, 0)
+	default:
+		return today.AddDate(0, 0, -6)
+	}
+}
+
+// GetTeacherDashboard aggregates real student, vault, and revenue metrics from MySQL.
+func (r *MySQLDashboardRepository) GetTeacherDashboard(ctx context.Context, instructorID, period string) (*dashQuery.TeacherDashboardResponse, error) {
+	now := time.Now().UTC()
+	since := teacherPeriodStart(period, now)
+
+	res := &dashQuery.TeacherDashboardResponse{
+		Period:      period,
+		GeneratedAt: now,
+	}
+
+	r.db.WithContext(ctx).
+		Model(&entities.UserDailyActivity{}).
+		Where("activity_date >= ?", since).
+		Distinct("user_id").
+		Count(&res.ActiveStudents)
+
+	var avgStreak struct {
+		Avg float64
+	}
+	r.db.WithContext(ctx).
+		Model(&entities.UserLearningStats{}).
+		Select("COALESCE(AVG(current_streak_days), 0) as avg").
+		Scan(&avgStreak)
+	res.AvgStreakDays = avgStreak.Avg
+
+	r.db.WithContext(ctx).
+		Model(&entities.User{}).
+		Where("role = ?", entities.RoleStudent).
+		Count(&res.TotalStudents)
+
+	if res.TotalStudents > 0 {
+		var retained int64
+		r.db.WithContext(ctx).
+			Model(&entities.UserLearningStats{}).
+			Where("last_activity_date >= ?", since).
+			Count(&retained)
+		res.RetentionPercent = float64(retained) * 100 / float64(res.TotalStudents)
+	}
+
+	vaultQuery := r.db.WithContext(ctx).Model(&entities.ContentBankItem{})
+	if instructorID != "" {
+		vaultQuery = vaultQuery.Where("is_official = ? OR created_by = ?", true, instructorID)
+	} else {
+		vaultQuery = vaultQuery.Where("is_official = ?", true)
+	}
+	vaultQuery.Count(&res.VaultItems)
+	r.db.WithContext(ctx).Model(&entities.ContentBankType{}).Count(&res.VaultBanks)
+
+	var rev struct {
+		TotalCents int64
+		Count      int64
+	}
+	r.db.WithContext(ctx).
+		Model(&entities.Order{}).
+		Where("status = ? AND created_at >= ?", entities.PaymentStatusApproved, since).
+		Select("COALESCE(SUM(amount_cents), 0) as total_cents, COUNT(*) as count").
+		Scan(&rev)
+	res.RevenueCents = rev.TotalCents
+	res.PaidOrders = rev.Count
+
+	r.db.WithContext(ctx).
+		Model(&entities.Subscription{}).
+		Where("status = ?", "active").
+		Count(&res.ActiveSubscriptions)
+
+	return res, nil
+}
