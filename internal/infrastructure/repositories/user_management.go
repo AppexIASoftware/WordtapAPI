@@ -22,3 +22,23 @@ func (r *MySQLUserRepository) ListUserIDs(ctx context.Context, role *entities.Us
 	err := q.Pluck("id", &ids).Error
 	return ids, err
 }
+
+func (r *MySQLUserRepository) ListStaff(ctx context.Context) ([]entities.User, error) {
+	var users []entities.User
+	err := r.db.WithContext(ctx).
+		Where("role IN ?", []entities.UserRole{
+			entities.RoleAdmin,
+			entities.RoleModerator,
+			entities.RoleInstructor,
+		}).
+		Order("created_at DESC").
+		Find(&users).Error
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+func (r *MySQLUserRepository) DeleteUser(ctx context.Context, userID string) error {
+	return r.db.WithContext(ctx).Delete(&entities.User{}, "id = ?", userID).Error
+}

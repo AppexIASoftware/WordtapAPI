@@ -22,6 +22,17 @@ type UserRepository interface {
 	ListUserIDs(ctx context.Context, role *entities.UserRole, learningLevel *string) ([]string, error)
 }
 
+// StaffRepository defines persistence operations for staff directory & role management.
+type StaffRepository interface {
+	FindByID(ctx context.Context, id string) (*entities.User, error)
+	FindByEmail(ctx context.Context, email string) (*entities.User, error)
+	CreateWithInitialState(ctx context.Context, user *entities.User, authAccount *entities.UserAuthAccount) error
+	UpdateUser(ctx context.Context, user *entities.User) error
+	RevokeAllSessions(ctx context.Context, userID string) error
+	ListStaff(ctx context.Context) ([]entities.User, error)
+	DeleteUser(ctx context.Context, userID string) error
+}
+
 // RecordProgressParams defines the parameters for recording game completion progress.
 type RecordProgressParams struct {
 	UserID         string

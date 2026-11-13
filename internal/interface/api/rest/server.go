@@ -27,6 +27,7 @@ import (
 	teacherAppQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/notificationdispatch"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/commands"
+	userQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/queries"
 	vaultCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/vault/commands"
 	vaultQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/vault/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
@@ -46,6 +47,7 @@ import (
 	notificationRoute "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/notification"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/setting"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/teacher_application"
+	userRoute "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/user"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/vault"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/vocabulary"
 	vocabQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/vocabulary/queries"
@@ -287,6 +289,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	studentOrStaff := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)
 	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
 	adminOrModerator := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
+	adminOnly := restMiddleware.RequireRole(entities.RoleAdmin)
 	studentOnly := restMiddleware.RequireRole(entities.RoleStudent)
 
 	// --- Root Status Probe (Render / Uptime monitors) ---
@@ -315,6 +318,14 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	courseReviewRouter := course.NewCourseReviewRouter(submitCourseReviewHandler, withdrawCourseReviewHandler, reviewCourseHandler, listCourseReviewsHandler, listTeacherCourseReviewsHandler, courseQuery.NewListReviewHistoryHandler(courseReviewRepo))
 	courseReviewRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)
 	teacherAppRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
+	staffRepo := infraRepo.NewMySQLStaffRepository(db)
+	staffRouter := userRoute.NewStaffRouter(
+		userQuery.NewListStaffHandler(staffRepo),
+		commands.NewProvisionStaffHandler(staffRepo),
+		commands.NewUpdateStaffStatusHandler(staffRepo),
+		commands.NewDeleteStaffHandler(staffRepo),
+	)
+	staffRouter.RegisterRoutes(v1, authRequired, adminOrModerator, adminOnly)
 	settingRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
 	vaultRouter.RegisterRoutes(v1, authRequired, staffRoles, adminOrModerator, instructorOrAdmin)
 	classroomRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)

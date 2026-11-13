@@ -22,6 +22,10 @@ func NewMySQLUserLearningStatsRepository(db *gorm.DB) domainRepo.UserLearningSta
 	return &MySQLUserRepository{db: db}
 }
 
+func NewMySQLStaffRepository(db *gorm.DB) domainRepo.StaffRepository {
+	return &MySQLUserRepository{db: db}
+}
+
 func (r *MySQLUserRepository) FindAuthAccount(ctx context.Context, provider, providerAccountID string) (*entities.UserAuthAccount, error) {
 	var account entities.UserAuthAccount
 	err := r.db.WithContext(ctx).
