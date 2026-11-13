@@ -6,6 +6,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
@@ -83,6 +84,23 @@ func RequireRole(allowedRoles ...entities.UserRole) echo.MiddlewareFunc {
 				if strings.EqualFold(roleStr, string(allowed)) {
 					return next(c)
 				}
+			}
+
+			return response.Fail(c, http.StatusForbidden, "No tienes permisos para realizar esta acción.")
+		}
+	}
+}
+
+// RequirePermission restringe el acceso evaluando dinámicamente la política RBAC para el rol autenticado.
+func RequirePermission(evaluator *access.RBACPolicyEvaluator, perm access.RBACPermission) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			roleVal := c.Get("user_role")
+			roleStr, _ := roleVal.(string)
+			role := entities.UserRole(strings.ToLower(strings.TrimSpace(roleStr)))
+
+			if evaluator != nil && evaluator.IsAllowed(c.Request().Context(), role, perm) {
+				return next(c)
 			}
 
 			return response.Fail(c, http.StatusForbidden, "No tienes permisos para realizar esta acción.")

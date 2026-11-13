@@ -21,15 +21,16 @@ import (
 	gameQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/gamification/queries"
 	lessonCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/commands"
 	lessonQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/queries"
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/notificationdispatch"
 	settingCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/platform_setting/commands"
 	settingQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/platform_setting/queries"
 	teacherAppCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/commands"
 	teacherAppQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/teacher_application/queries"
-	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/notificationdispatch"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/commands"
 	userQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/user/queries"
 	vaultCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/vault/commands"
 	vaultQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/vault/queries"
+	vocabQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/vocabulary/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/push"
 	infraRepo "github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/repositories"
@@ -50,7 +51,6 @@ import (
 	userRoute "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/user"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/vault"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/vocabulary"
-	vocabQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/vocabulary/queries"
 )
 
 type Server struct {
@@ -292,6 +292,16 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	adminOnly := restMiddleware.RequireRole(entities.RoleAdmin)
 	studentOnly := restMiddleware.RequireRole(entities.RoleStudent)
 
+	rbacEvaluator := access.NewRBACPolicyEvaluator(settingRepo)
+	canCreateDrafts := restMiddleware.RequirePermission(rbacEvaluator, access.PermCoursesCreateDrafts)
+	canTuneGames := restMiddleware.RequirePermission(rbacEvaluator, access.PermGamesTuneLevels)
+	canAuthorVault := restMiddleware.RequirePermission(rbacEvaluator, access.PermVaultAuthorItems)
+	canReviewCourses := restMiddleware.RequirePermission(rbacEvaluator, access.PermModerationReviewCourses)
+	canManageTeacherApps := restMiddleware.RequirePermission(rbacEvaluator, access.PermModerationManageTeacherApps)
+	canCreateClassrooms := restMiddleware.RequirePermission(rbacEvaluator, access.PermCohortsCreateClassrooms)
+	canBroadcastClassroom := restMiddleware.RequirePermission(rbacEvaluator, access.PermNotificationsClassroomBroadcast)
+	canGlobalAnnouncements := restMiddleware.RequirePermission(rbacEvaluator, access.PermNotificationsGlobalAnnouncements)
+
 	// --- Root Status Probe (Render / Uptime monitors) ---
 	rootHandler := func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]any{
@@ -310,14 +320,14 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	healthRouter.RegisterRoutes(e, v1)
 	swaggerRouter.RegisterRoutes(e)
 	authRouter.RegisterRoutes(v1, authRequired)
-	lessonRouter.RegisterRoutes(v1, authRequired, studentOrStaff, instructorOrAdmin)
-	lessonGameRouter.RegisterRoutes(v1, authRequired, staffRoles, instructorOrAdmin)
-	courseRouter.RegisterRoutes(v1, authRequired, catalogRoles, studentOrStaff, staffRoles, instructorOrAdmin, adminOrModerator)
+	lessonRouter.RegisterRoutes(v1, authRequired, studentOrStaff, canCreateDrafts)
+	lessonGameRouter.RegisterRoutes(v1, authRequired, staffRoles, canTuneGames)
+	courseRouter.RegisterRoutes(v1, authRequired, catalogRoles, studentOrStaff, canCreateDrafts, instructorOrAdmin, adminOrModerator)
 	simulatedPurchaseHandler := courseCmd.NewSimulatePurchaseHandler(simulatedPurchaseStore, simulationEnabled)
 	course.NewSimulatedPurchaseRouter(simulatedPurchaseHandler).RegisterRoutes(v1, authRequired, studentOnly)
 	courseReviewRouter := course.NewCourseReviewRouter(submitCourseReviewHandler, withdrawCourseReviewHandler, reviewCourseHandler, listCourseReviewsHandler, listTeacherCourseReviewsHandler, courseQuery.NewListReviewHistoryHandler(courseReviewRepo))
-	courseReviewRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)
-	teacherAppRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
+	courseReviewRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, canReviewCourses)
+	teacherAppRouter.RegisterRoutes(v1, authRequired, canManageTeacherApps)
 	staffRepo := infraRepo.NewMySQLStaffRepository(db)
 	staffRouter := userRoute.NewStaffRouter(
 		userQuery.NewListStaffHandler(staffRepo),
@@ -327,10 +337,10 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	)
 	staffRouter.RegisterRoutes(v1, authRequired, adminOrModerator, adminOnly)
 	settingRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
-	vaultRouter.RegisterRoutes(v1, authRequired, staffRoles, adminOrModerator, instructorOrAdmin)
-	classroomRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin)
+	vaultRouter.RegisterRoutes(v1, authRequired, staffRoles, canAuthorVault, instructorOrAdmin)
+	classroomRouter.RegisterRoutes(v1, authRequired, canCreateClassrooms)
 	studentClassroomRouter.RegisterRoutes(v1, authRequired)
-	gameRouter.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)
+	gameRouter.RegisterRoutes(v1, authRequired, canTuneGames, canTuneGames)
 	gameStudentRouter.RegisterRoutes(v1, authRequired)
 	livesRouter.RegisterRoutes(v1, authRequired)
 	progressRouter.RegisterRoutes(v1, authRequired)
@@ -374,11 +384,11 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	notificationRoute.NewRouter(infraRepo.NewMySQLNotificationPreferences(db)).RegisterRoutes(v1, authRequired)
 	notificationRoute.NewInboxRouter(inboxRepo).RegisterRoutes(v1, authRequired)
 	notificationRoute.NewDispatchRouter(dispatchDailyWordHandler).RegisterRoutes(v1, authRequired)
-	notificationRoute.NewAnnouncementRouter(broadcastAnnouncementHandler, deviceRepo).RegisterRoutes(v1, authRequired, adminOrModerator)
-	notificationRoute.NewClassroomNotificationRouter(listClassroomNotificationsHandler).RegisterRoutes(v1, authRequired, adminOrModerator)
-	classroom.NewBroadcastRouter(broadcastClassroomHandler).RegisterRoutes(v1, authRequired, instructorOrAdmin)
-	classroom.NewNotificationRouter(listClassroomNotificationsHandler).RegisterRoutes(v1, authRequired, instructorOrAdmin)
-	vault.NewDispatchRouter(dispatchVaultWordHandler).RegisterRoutes(v1, authRequired, instructorOrAdmin)
+	notificationRoute.NewAnnouncementRouter(broadcastAnnouncementHandler, deviceRepo).RegisterRoutes(v1, authRequired, canGlobalAnnouncements)
+	notificationRoute.NewClassroomNotificationRouter(listClassroomNotificationsHandler).RegisterRoutes(v1, authRequired, canGlobalAnnouncements)
+	classroom.NewBroadcastRouter(broadcastClassroomHandler).RegisterRoutes(v1, authRequired, canBroadcastClassroom)
+	classroom.NewNotificationRouter(listClassroomNotificationsHandler).RegisterRoutes(v1, authRequired, canBroadcastClassroom)
+	vault.NewDispatchRouter(dispatchVaultWordHandler).RegisterRoutes(v1, authRequired, canBroadcastClassroom)
 	vocabulary.NewVocabularyRouter(vocabQuery.NewSearchVocabularyHandler(contentBankRepo)).RegisterRoutes(v1, authRequired)
 	device.NewDeviceRouter(deviceRepo).RegisterRoutes(v1, authRequired)
 
