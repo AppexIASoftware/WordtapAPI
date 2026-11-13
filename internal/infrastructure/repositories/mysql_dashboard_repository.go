@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -312,4 +313,101 @@ func (r *MySQLDashboardRepository) GetTeacherDashboard(ctx context.Context, inst
 		Count(&res.ActiveSubscriptions)
 
 	return res, nil
+}
+
+// ListGlobalStudents returns paginated students with learning stats, plan tier, and latest course progress.
+func (r *MySQLDashboardRepository) ListGlobalStudents(ctx context.Context, filter dashQuery.GlobalStudentFilter) (*dashQuery.GlobalStudentsResponse, error) {
+	q := r.db.WithContext(ctx).Model(&entities.User{}).Where("users.role = ?", entities.RoleStudent)
+
+	if plan := strings.TrimSpace(filter.Plan); plan != "" && plan != "all" {
+		q = q.Where("users.access_tier = ?", plan)
+	}
+	if level := strings.TrimSpace(filter.Level); level != "" && level != "all" {
+		q = q.Where("LOWER(users.learning_level) LIKE ?", "%"+strings.ToLower(level)+"%")
+	}
+	if search := strings.TrimSpace(filter.Query); search != "" {
+		like := "%" + strings.ToLower(search) + "%"
+		q = q.Where("LOWER(users.name) LIKE ? OR LOWER(users.email) LIKE ?", like, like)
+	}
+	if courseID := strings.TrimSpace(filter.CourseID); courseID != "" && courseID != "all" {
+		q = q.Where(
+			"EXISTS (SELECT 1 FROM user_lesson_progresses ulp INNER JOIN lessons l ON l.id = ulp.lesson_id WHERE ulp.user_id = users.id AND l.course_id = ?) OR EXISTS (SELECT 1 FROM classroom_enrollments ce INNER JOIN classrooms c ON c.id = ce.classroom_id WHERE ce.student_id = users.id AND c.course_id = ?)",
+			courseID, courseID,
+		)
+	}
+
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, err
+	}
+
+	var users []entities.User
+	if err := q.Preload("LearningStats").
+		Order("users.created_at DESC").
+		Limit(filter.Limit).
+		Offset(filter.Offset).
+		Find(&users).Error; err != nil {
+		return nil, err
+	}
+
+	var courseRows []dashQuery.GlobalCourseOption
+	r.db.WithContext(ctx).
+		Model(&entities.Course{}).
+		Select("id, title").
+		Where("status = ?", entities.ContentStatusPublished).
+		Order("title ASC").
+		Scan(&courseRows)
+
+	items := make([]dashQuery.GlobalStudentItem, 0, len(users))
+	for _, u := range users {
+		streak := 0
+		var lastAct *time.Time
+		lessonsDone := 0
+		if u.LearningStats != nil {
+			streak = u.LearningStats.CurrentStreakDays
+			lastAct = u.LearningStats.LastActivityDate
+			lessonsDone = u.LearningStats.LessonsCompleted
+		}
+
+		var courseInfo struct {
+			ID    string
+			Title string
+		}
+		r.db.WithContext(ctx).
+			Table("user_lesson_progresses ulp").
+			Select("c.id as id, c.title as title").
+			Joins("INNER JOIN lessons l ON l.id = ulp.lesson_id").
+			Joins("INNER JOIN courses c ON c.id = l.course_id").
+			Where("ulp.user_id = ?", u.ID).
+			Order("ulp.updated_at DESC").
+			Limit(1).
+			Scan(&courseInfo)
+
+		if courseInfo.Title == "" {
+			courseInfo.Title = "Catálogo General"
+		}
+		progress := lessonsDone * 15
+		if progress > 100 {
+			progress = 100
+		}
+
+		items = append(items, dashQuery.GlobalStudentItem{
+			ID:                u.ID,
+			Name:              u.Name,
+			Email:             u.Email,
+			LearningLevel:     u.LearningLevel,
+			CourseID:          courseInfo.ID,
+			CourseTitle:       courseInfo.Title,
+			CurrentStreakDays: streak,
+			ProgressPercent:   progress,
+			AccessTier:        string(u.AccessTier),
+			LastActivityDate:  lastAct,
+		})
+	}
+
+	return &dashQuery.GlobalStudentsResponse{
+		Items:   items,
+		Total:   total,
+		Courses: courseRows,
+	}, nil
 }
