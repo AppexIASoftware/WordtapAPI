@@ -17,6 +17,7 @@ type PublicLessonDTO struct {
 	Status           entities.ContentStatus `json:"status"`
 	SortOrder        int                    `json:"sort_order"`
 	EstimatedMinutes *int                   `json:"estimated_minutes,omitempty"`
+	Items            []entities.LessonItem  `json:"items,omitempty"`
 	CreatedAt        time.Time              `json:"created_at"`
 	UpdatedAt        time.Time              `json:"updated_at"`
 }
@@ -60,11 +61,19 @@ func ToPublicCourseDTO(c *entities.Course) PublicCourseDTO {
 }
 
 func toPublicCourseDTO(c *entities.Course, includeLessons bool) PublicCourseDTO {
+	return toCourseDetailDTO(c, includeLessons, false)
+}
+
+func toAuditCourseDTO(c *entities.Course) PublicCourseDTO {
+	return toCourseDetailDTO(c, true, true)
+}
+
+func toCourseDetailDTO(c *entities.Course, includeLessons bool, includeDraftsAndItems bool) PublicCourseDTO {
 	publicLessons := make([]PublicLessonDTO, 0)
 	totalMinutes := 0
 	lessonCount := 0
 	for _, l := range c.Lessons {
-		if l.Status == entities.ContentStatusPublished {
+		if includeDraftsAndItems || l.Status == entities.ContentStatusPublished {
 			lessonCount++
 			mins := 15
 			if l.EstimatedMinutes != nil && *l.EstimatedMinutes > 0 {
@@ -72,7 +81,7 @@ func toPublicCourseDTO(c *entities.Course, includeLessons bool) PublicCourseDTO 
 			}
 			totalMinutes += mins
 			if includeLessons {
-				publicLessons = append(publicLessons, PublicLessonDTO{
+				lessonDTO := PublicLessonDTO{
 					ID:               l.ID,
 					CourseID:         l.CourseID,
 					Title:            l.Title,
@@ -84,7 +93,11 @@ func toPublicCourseDTO(c *entities.Course, includeLessons bool) PublicCourseDTO 
 					EstimatedMinutes: l.EstimatedMinutes,
 					CreatedAt:        l.CreatedAt,
 					UpdatedAt:        l.UpdatedAt,
-				})
+				}
+				if includeDraftsAndItems {
+					lessonDTO.Items = l.Items
+				}
+				publicLessons = append(publicLessons, lessonDTO)
 			}
 		}
 	}

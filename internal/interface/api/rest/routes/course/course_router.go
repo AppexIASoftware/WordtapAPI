@@ -263,6 +263,11 @@ func (r *CourseRouter) GetCourseDetail(c *echo.Context) error {
 
 	isOwner := userID != "" && course.CreatedBy != nil && *course.CreatedBy == userID
 	isAdmin := entities.UserRole(roleStr) == entities.RoleAdmin
+	isModerator := entities.UserRole(roleStr) == entities.RoleModerator
+
+	if course.Status != entities.ContentStatusPublished && (isOwner || isAdmin || isModerator) {
+		return c.JSON(http.StatusOK, toAuditCourseDTO(course))
+	}
 
 	if !isOwner && !isAdmin {
 		err := r.contentPolicy.Authorize(ctx, course, nil, userID, entities.UserRole(roleStr))
@@ -272,7 +277,7 @@ func (r *CourseRouter) GetCourseDetail(c *echo.Context) error {
 		return c.JSON(http.StatusOK, toPublicCourseDTO(course, true))
 	}
 
-	// Owner or admin: return public course DTO for mobile client consistency
+	// Owner or admin on published course: return public course DTO for mobile client consistency
 	return c.JSON(http.StatusOK, toPublicCourseDTO(course, true))
 }
 
