@@ -17,6 +17,7 @@ import (
 	classroomQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/queries"
 	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
 	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
+	dashQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/dashboard/queries"
 	gameCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/gamification/commands"
 	gameQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/gamification/queries"
 	lessonCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/lesson/commands"
@@ -40,6 +41,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/catalog"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/classroom"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/course"
+	dashboardRoute "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/dashboard"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/device"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/docs"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/gamification"
@@ -337,6 +339,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	)
 	staffRouter.RegisterRoutes(v1, authRequired, adminOrModerator, adminOnly)
 	settingRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
+	dashboardRoute.NewDashboardRouter(dashQuery.NewGetAdminDashboardHandler(infraRepo.NewMySQLDashboardRepository(db))).RegisterRoutes(v1, authRequired, adminOrModerator)
 	vaultRouter.RegisterRoutes(v1, authRequired, staffRoles, canAuthorVault, instructorOrAdmin)
 	classroomRouter.RegisterRoutes(v1, authRequired, canCreateClassrooms)
 	studentClassroomRouter.RegisterRoutes(v1, authRequired)
