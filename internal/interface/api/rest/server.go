@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -288,7 +290,23 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	swaggerRouter := docs.NewSwaggerRouter()
 
 	// Specific middleware
-	authRequired := restMiddleware.RequireAuth(jwtService)
+	authRequired := restMiddleware.RequireAuth(jwtService, func(ctx context.Context, userID string) (bool, error) {
+		var row struct {
+			IsActive bool
+		}
+		err := db.WithContext(ctx).
+			Table("users").
+			Select("is_active").
+			Where("id = ?", userID).
+			Take(&row).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return false, nil
+			}
+			return false, err
+		}
+		return row.IsActive, nil
+	})
 	catalogRoles := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)
 	staffRoles := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator)
 	studentOrStaff := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)
@@ -348,6 +366,11 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		commands.NewDeleteStaffHandler(staffRepo),
 	).WithAuditRepo(auditRepo)
 	staffRouter.RegisterRoutes(v1, authRequired, adminOrModerator, adminOnly)
+	adminStudentsRepo := infraRepo.NewMySQLAdminStudentRepository(db)
+	userRoute.NewAdminStudentsRouter(
+		userQuery.NewGetStudentDetailHandler(adminStudentsRepo),
+		commands.NewUpdateStudentStatusHandler(adminStudentsRepo),
+	).WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, adminOnly)
 	settingRouter.WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, adminOrModerator)
 	dashRepo := infraRepo.NewMySQLDashboardRepository(db)
 	dashRouter := dashboardRoute.NewDashboardRouter(dashQuery.NewGetAdminDashboardHandler(dashRepo)).

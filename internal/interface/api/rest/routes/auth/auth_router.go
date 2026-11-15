@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -111,7 +110,7 @@ func (r *AuthRouter) LoginWithGoogle(c *echo.Context) error {
 			reason := strings.TrimSpace(strings.TrimPrefix(err.Error(), "account_suspended:"))
 			return c.JSON(http.StatusForbidden, map[string]any{
 				"error":   "account_suspended",
-				"message": fmt.Sprintf("Tu cuenta docente está suspendida. Motivo: %s", reason),
+				"message": suspendedAccountMessage("", reason),
 				"reason":  reason,
 			})
 		}
@@ -165,7 +164,7 @@ func (r *AuthRouter) GetMe(c *echo.Context) error {
 		}
 		return c.JSON(http.StatusForbidden, map[string]any{
 			"error":   "account_suspended",
-			"message": fmt.Sprintf("Tu cuenta docente está suspendida. Motivo: %s", reason),
+			"message": suspendedAccountMessage(user.Role, reason),
 			"reason":  reason,
 		})
 	}
@@ -263,7 +262,7 @@ func (r *AuthRouter) DevLogin(c *echo.Context) error {
 		}
 		return c.JSON(http.StatusForbidden, map[string]any{
 			"error":   "account_suspended",
-			"message": fmt.Sprintf("Tu cuenta docente está suspendida. Motivo: %s", reason),
+			"message": suspendedAccountMessage(user.Role, reason),
 			"reason":  reason,
 		})
 	}

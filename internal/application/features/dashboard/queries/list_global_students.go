@@ -11,6 +11,7 @@ type GlobalStudentFilter struct {
 	Plan     string
 	Level    string
 	CourseID string
+	Status   string
 	Limit    int
 	Offset   int
 }
@@ -32,6 +33,8 @@ type GlobalStudentItem struct {
 	CurrentStreakDays int        `json:"current_streak_days"`
 	ProgressPercent   int        `json:"progress_percent"`
 	AccessTier        string     `json:"access_tier"`
+	IsActive          bool       `json:"is_active"`
+	CreatedAt         time.Time  `json:"created_at"`
 	LastActivityDate  *time.Time `json:"last_activity_date,omitempty"`
 }
 

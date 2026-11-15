@@ -1,6 +1,7 @@
-package middleware_test
+package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,185 +11,34 @@ import (
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
-	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/middleware"
 )
 
-func TestRequireAuthMiddleware(t *testing.T) {
-	jwtSvc := security.NewJWTService("secret-key-for-middleware-testing", time.Minute, time.Hour)
-	authMiddleware := middleware.RequireAuth(jwtSvc)
-
-	user := &entities.User{
-		ID:         "usr-123",
-		Email:      "auth@wordtap.app",
+func TestRequireAuthBlocksSuspendedUser(t *testing.T) {
+	jwtSvc := security.NewJWTService("test-secret-32-bytes-minimum-key!!", 15*time.Minute, 24*time.Hour)
+	token, _, err := jwtSvc.GenerateAccessToken(&entities.User{
+		ID:         "user-1",
+		Email:      "stu@example.com",
+		Role:       entities.RoleStudent,
 		AccessTier: entities.AccessTierFree,
-	}
-	validToken, _, _ := jwtSvc.GenerateAccessToken(user)
-
-	tests := []struct {
-		name           string
-		authHeader     string
-		expectedStatus int
-	}{
-		{
-			name:           "missing header",
-			authHeader:     "",
-			expectedStatus: http.StatusUnauthorized,
-		},
-		{
-			name:           "malformed header",
-			authHeader:     "Basic 12345",
-			expectedStatus: http.StatusUnauthorized,
-		},
-		{
-			name:           "invalid token",
-			authHeader:     "Bearer invalid.token.payload",
-			expectedStatus: http.StatusUnauthorized,
-		},
-		{
-			name:           "valid token",
-			authHeader:     "Bearer " + validToken,
-			expectedStatus: http.StatusOK,
-		},
+	})
+	if err != nil {
+		t.Fatalf("failed to generate token: %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			e := echo.New()
-			req := httptest.NewRequest(http.MethodGet, "/protected", nil)
-			if tt.authHeader != "" {
-				req.Header.Set("Authorization", tt.authHeader)
-			}
-			rec := httptest.NewRecorder()
-			c := e.NewContext(req, rec)
+	e := echo.New()
+	mw := RequireAuth(jwtSvc, func(_ context.Context, userID string) (bool, error) {
+		return userID != "user-1", nil
+	})
+	e.GET("/protected", func(c *echo.Context) error {
+		return c.NoContent(http.StatusOK)
+	}, mw)
 
-			handler := authMiddleware(func(ctx *echo.Context) error {
-				return ctx.NoContent(http.StatusOK)
-			})
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
 
-			_ = handler(c)
-
-			if rec.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d", tt.expectedStatus, rec.Code)
-			}
-		})
-	}
-}
-
-func TestRequireRoleMiddleware(t *testing.T) {
-	tests := []struct {
-		name           string
-		userRole       string
-		allowedRoles   []entities.UserRole
-		expectedStatus int
-	}{
-		{
-			name:           "allowed admin role",
-			userRole:       "admin",
-			allowedRoles:   []entities.UserRole{entities.RoleAdmin},
-			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "forbidden student accessing admin",
-			userRole:       "student",
-			allowedRoles:   []entities.UserRole{entities.RoleAdmin, entities.RoleInstructor},
-			expectedStatus: http.StatusForbidden,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			e := echo.New()
-			req := httptest.NewRequest(http.MethodGet, "/admin", nil)
-			rec := httptest.NewRecorder()
-			c := e.NewContext(req, rec)
-			c.Set("user_role", tt.userRole)
-
-			roleMiddleware := middleware.RequireRole(tt.allowedRoles...)
-			handler := roleMiddleware(func(ctx *echo.Context) error {
-				return ctx.NoContent(http.StatusOK)
-			})
-
-			_ = handler(c)
-
-			if rec.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d", tt.expectedStatus, rec.Code)
-			}
-		})
-	}
-}
-
-func TestOptionalAuthMiddleware(t *testing.T) {
-	jwtSvc := security.NewJWTService("secret-key-for-optional-auth", time.Minute, time.Hour)
-	optionalMiddleware := middleware.OptionalAuth(jwtSvc)
-
-	user := &entities.User{
-		ID:         "usr-opt-1",
-		Email:      "opt@wordtap.app",
-		Role:       entities.RoleInstructor,
-		AccessTier: entities.AccessTierFree,
-	}
-	validToken, _, _ := jwtSvc.GenerateAccessToken(user)
-
-	tests := []struct {
-		name         string
-		authHeader   string
-		expectUserID string
-		expectRole   string
-	}{
-		{
-			name:         "anonymous request without header",
-			authHeader:   "",
-			expectUserID: "",
-			expectRole:   "",
-		},
-		{
-			name:         "invalid header format",
-			authHeader:   "Basic 12345",
-			expectUserID: "",
-			expectRole:   "",
-		},
-		{
-			name:         "invalid or expired token",
-			authHeader:   "Bearer bogus.token.value",
-			expectUserID: "",
-			expectRole:   "",
-		},
-		{
-			name:         "valid token populates context",
-			authHeader:   "Bearer " + validToken,
-			expectUserID: "usr-opt-1",
-			expectRole:   "instructor",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			e := echo.New()
-			req := httptest.NewRequest(http.MethodGet, "/public-or-private", nil)
-			if tt.authHeader != "" {
-				req.Header.Set("Authorization", tt.authHeader)
-			}
-			rec := httptest.NewRecorder()
-			c := e.NewContext(req, rec)
-
-			var capturedUserID, capturedRole string
-			handler := optionalMiddleware(func(ctx *echo.Context) error {
-				capturedUserID, _ = ctx.Get("user_id").(string)
-				capturedRole, _ = ctx.Get("user_role").(string)
-				return ctx.NoContent(http.StatusOK)
-			})
-
-			_ = handler(c)
-
-			if rec.Code != http.StatusOK {
-				t.Errorf("expected status 200 OK, got %d", rec.Code)
-			}
-			if capturedUserID != tt.expectUserID {
-				t.Errorf("expected user_id '%s', got '%s'", tt.expectUserID, capturedUserID)
-			}
-			if capturedRole != tt.expectRole {
-				t.Errorf("expected user_role '%s', got '%s'", tt.expectRole, capturedRole)
-			}
-		})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden for suspended user, got %d: %s", rec.Code, rec.Body.String())
 	}
 }

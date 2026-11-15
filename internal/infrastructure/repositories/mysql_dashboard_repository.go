@@ -322,6 +322,11 @@ func (r *MySQLDashboardRepository) ListGlobalStudents(ctx context.Context, filte
 	if plan := strings.TrimSpace(filter.Plan); plan != "" && plan != "all" {
 		q = q.Where("users.access_tier = ?", plan)
 	}
+	if status := strings.TrimSpace(filter.Status); status == "active" {
+		q = q.Where("users.is_active = ?", true)
+	} else if status == "suspended" {
+		q = q.Where("users.is_active = ?", false)
+	}
 	if level := strings.TrimSpace(filter.Level); level != "" && level != "all" {
 		q = q.Where("LOWER(users.learning_level) LIKE ?", "%"+strings.ToLower(level)+"%")
 	}
@@ -358,6 +363,64 @@ func (r *MySQLDashboardRepository) ListGlobalStudents(ctx context.Context, filte
 		Order("title ASC").
 		Scan(&courseRows)
 
+	userIDs := make([]string, 0, len(users))
+	for _, u := range users {
+		userIDs = append(userIDs, u.ID)
+	}
+
+	latestCourseByUser := make(map[string]dashQuery.GlobalCourseOption, len(userIDs))
+	completedByUserCourse := make(map[string]int)
+	totalLessonsByCourse := make(map[string]int)
+
+	if len(userIDs) > 0 {
+		var progressRows []struct {
+			UserID      string
+			CourseID    string
+			CourseTitle string
+			UpdatedAt   time.Time
+		}
+		r.db.WithContext(ctx).
+			Table("user_lesson_progresses ulp").
+			Select("ulp.user_id, c.id as course_id, c.title as course_title, ulp.updated_at").
+			Joins("INNER JOIN lessons l ON l.id = ulp.lesson_id").
+			Joins("INNER JOIN courses c ON c.id = l.course_id").
+			Where("ulp.user_id IN ?", userIDs).
+			Order("ulp.updated_at DESC").
+			Scan(&progressRows)
+
+		courseIDSet := make(map[string]struct{})
+		for _, pr := range progressRows {
+			if _, ok := latestCourseByUser[pr.UserID]; !ok {
+				latestCourseByUser[pr.UserID] = dashQuery.GlobalCourseOption{
+					ID:    pr.CourseID,
+					Title: pr.CourseTitle,
+				}
+			}
+			completedByUserCourse[pr.UserID+":"+pr.CourseID]++
+			courseIDSet[pr.CourseID] = struct{}{}
+		}
+
+		if len(courseIDSet) > 0 {
+			courseIDs := make([]string, 0, len(courseIDSet))
+			for cid := range courseIDSet {
+				courseIDs = append(courseIDs, cid)
+			}
+			var lessonCounts []struct {
+				CourseID string
+				Total    int
+			}
+			r.db.WithContext(ctx).
+				Table("lessons").
+				Select("course_id, COUNT(*) as total").
+				Where("course_id IN ? AND status = ?", courseIDs, entities.ContentStatusPublished).
+				Group("course_id").
+				Scan(&lessonCounts)
+			for _, lc := range lessonCounts {
+				totalLessonsByCourse[lc.CourseID] = lc.Total
+			}
+		}
+	}
+
 	items := make([]dashQuery.GlobalStudentItem, 0, len(users))
 	for _, u := range users {
 		streak := 0
@@ -369,24 +432,18 @@ func (r *MySQLDashboardRepository) ListGlobalStudents(ctx context.Context, filte
 			lessonsDone = u.LearningStats.LessonsCompleted
 		}
 
-		var courseInfo struct {
-			ID    string
-			Title string
-		}
-		r.db.WithContext(ctx).
-			Table("user_lesson_progresses ulp").
-			Select("c.id as id, c.title as title").
-			Joins("INNER JOIN lessons l ON l.id = ulp.lesson_id").
-			Joins("INNER JOIN courses c ON c.id = l.course_id").
-			Where("ulp.user_id = ?", u.ID).
-			Order("ulp.updated_at DESC").
-			Limit(1).
-			Scan(&courseInfo)
-
+		courseInfo := latestCourseByUser[u.ID]
 		if courseInfo.Title == "" {
 			courseInfo.Title = "Catálogo General"
 		}
-		progress := lessonsDone * 15
+
+		progress := 0
+		if courseInfo.ID != "" && totalLessonsByCourse[courseInfo.ID] > 0 {
+			done := completedByUserCourse[u.ID+":"+courseInfo.ID]
+			progress = (done * 100) / totalLessonsByCourse[courseInfo.ID]
+		} else {
+			progress = lessonsDone * 15
+		}
 		if progress > 100 {
 			progress = 100
 		}
@@ -401,6 +458,8 @@ func (r *MySQLDashboardRepository) ListGlobalStudents(ctx context.Context, filte
 			CurrentStreakDays: streak,
 			ProgressPercent:   progress,
 			AccessTier:        string(u.AccessTier),
+			IsActive:          u.IsActive,
+			CreatedAt:         u.CreatedAt,
 			LastActivityDate:  lastAct,
 		})
 	}

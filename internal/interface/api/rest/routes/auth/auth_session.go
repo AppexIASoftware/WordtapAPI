@@ -15,6 +15,13 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
+func suspendedAccountMessage(role entities.UserRole, reason string) string {
+	if role == entities.RoleInstructor {
+		return fmt.Sprintf("Tu cuenta docente está suspendida. Motivo: %s", reason)
+	}
+	return fmt.Sprintf("Tu cuenta está suspendida. Motivo: %s", reason)
+}
+
 type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
@@ -54,7 +61,7 @@ func (r *AuthRouter) Refresh(c *echo.Context) error {
 		}
 		return c.JSON(http.StatusForbidden, map[string]any{
 			"error":   "account_suspended",
-			"message": fmt.Sprintf("Tu cuenta docente está suspendida. Motivo: %s", reason),
+			"message": suspendedAccountMessage(session.User.Role, reason),
 			"reason":  reason,
 		})
 	}

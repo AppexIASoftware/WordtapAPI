@@ -58,6 +58,7 @@ func (r *DashboardRouter) ListGlobalStudents(c *echo.Context) error {
 		Plan:     c.QueryParam("plan"),
 		Level:    c.QueryParam("level"),
 		CourseID: c.QueryParam("course_id"),
+		Status:   c.QueryParam("status"),
 		Limit:    limit,
 		Offset:   offset,
 	})

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -12,8 +13,16 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
+// ActiveUserChecker verifies whether an authenticated user ID is still active.
+type ActiveUserChecker func(ctx context.Context, userID string) (bool, error)
+
 // RequireAuth valida el token Bearer JWT en el encabezado Authorization e inyecta la identidad en el contexto.
-func RequireAuth(jwtService *security.JWTService) echo.MiddlewareFunc {
+func RequireAuth(jwtService *security.JWTService, checkers ...ActiveUserChecker) echo.MiddlewareFunc {
+	var checkActive ActiveUserChecker
+	if len(checkers) > 0 {
+		checkActive = checkers[0]
+	}
+
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			authHeader := c.Request().Header.Get("Authorization")
@@ -30,6 +39,19 @@ func RequireAuth(jwtService *security.JWTService) echo.MiddlewareFunc {
 			claims, err := jwtService.ValidateAccessToken(tokenString)
 			if err != nil {
 				return response.Fail(c, http.StatusUnauthorized, "Tu sesión expiró. Inicia sesión nuevamente.")
+			}
+
+			if checkActive != nil {
+				active, err := checkActive(c.Request().Context(), claims.Subject)
+				if err != nil {
+					return response.Error(c, http.StatusInternalServerError, "No se pudo validar el estado de tu cuenta.", err)
+				}
+				if !active {
+					return c.JSON(http.StatusForbidden, map[string]any{
+						"error":   "account_suspended",
+						"message": "Tu cuenta está suspendida.",
+					})
+				}
 			}
 
 			// Inyectar datos del usuario autenticado en el contexto de la petición
