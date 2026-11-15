@@ -354,7 +354,7 @@ func (r *MySQLDashboardRepository) ListGlobalStudents(ctx context.Context, filte
 	r.db.WithContext(ctx).
 		Model(&entities.Course{}).
 		Select("id, title").
-		Where("status = ?", entities.ContentStatusPublished).
+		Where("status = ? AND owner_type = ?", entities.ContentStatusPublished, entities.OwnerTypePlatform).
 		Order("title ASC").
 		Scan(&courseRows)
 
