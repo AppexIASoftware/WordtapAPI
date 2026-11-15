@@ -123,8 +123,9 @@ func (r *CourseRouter) CreateCourse(c *echo.Context) error {
 	}
 
 	roleStr, _ := c.Get("user_role").(string)
+	role := entities.UserRole(roleStr)
 	ownerType := entities.OwnerTypeTeacher
-	if entities.UserRole(roleStr) == entities.RoleAdmin {
+	if role == entities.RoleAdmin || role == entities.RoleModerator {
 		ownerType = entities.OwnerTypePlatform
 	}
 

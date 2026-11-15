@@ -302,6 +302,34 @@ func TestCourseRoutesRBAC(t *testing.T) {
 		}
 	})
 
+	t.Run("moderator can create platform course (201 Created)", func(t *testing.T) {
+		modToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+			ID:         "mod-101",
+			Email:      "mod@wordtap.app",
+			Role:       entities.RoleModerator,
+			AccessTier: entities.AccessTierFree,
+		})
+		body := `{"title":"Curso Oficial Moderador","level":"B1","access_tier":"free"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/courses", bytes.NewBufferString(body))
+		req.Header.Set("Authorization", "Bearer "+modToken)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected status 201 Created, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		var created entities.Course
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+		if created.OwnerType != entities.OwnerTypePlatform {
+			t.Errorf("expected owner_type %q, got %q", entities.OwnerTypePlatform, created.OwnerType)
+		}
+	})
+
 	t.Run("get course detail (200 OK)", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/courses/"+createdID, nil)
 		req.Header.Set("Authorization", "Bearer "+teacherToken)
