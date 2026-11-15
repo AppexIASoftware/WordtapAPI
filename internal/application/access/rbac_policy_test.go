@@ -47,8 +47,11 @@ func TestRBACPolicyEvaluator_DefaultsAndOverrides(t *testing.T) {
 		if eval.IsAllowed(ctx, entities.RoleStudent, PermCoursesCreateDrafts) {
 			t.Fatal("student should never be allowed")
 		}
-		if eval.IsAllowed(ctx, entities.RoleModerator, PermCoursesCreateDrafts) {
-			t.Fatal("moderator courses:create_drafts should default to false")
+		if !eval.IsAllowed(ctx, entities.RoleModerator, PermCoursesCreateDrafts) {
+			t.Fatal("moderator courses:create_drafts should default to true")
+		}
+		if eval.IsAllowed(ctx, entities.RoleModerator, PermCoursesAuthorFreeCourses) {
+			t.Fatal("moderator courses:author_free_courses should default to false")
 		}
 		if !eval.IsAllowed(ctx, entities.RoleModerator, PermModerationReviewCourses) {
 			t.Fatal("moderator moderation:review_courses should default to true")

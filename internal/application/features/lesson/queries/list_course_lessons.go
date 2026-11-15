@@ -48,7 +48,8 @@ func (h *ListCourseLessonsHandler) Handle(ctx context.Context, query ListCourseL
 		}
 		isOwner := query.RequesterID != "" && course.CreatedBy != nil && *course.CreatedBy == query.RequesterID
 		isAdmin := query.RequesterRole == entities.RoleAdmin
-		isModerator := query.RequesterRole == entities.RoleModerator && course.Status == entities.ContentStatusInReview
+		isModerator := query.RequesterRole == entities.RoleModerator &&
+			(course.Status == entities.ContentStatusInReview || access.EffectiveOwnerType(course) == entities.OwnerTypePlatform)
 
 		if course.Status != entities.ContentStatusPublished && !isOwner && !isAdmin && !isModerator {
 			if h.policy != nil {

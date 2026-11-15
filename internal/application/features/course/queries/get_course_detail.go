@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
@@ -41,7 +42,8 @@ func (h *GetCourseDetailHandler) Handle(ctx context.Context, query GetCourseDeta
 	if course.Status != entities.ContentStatusPublished {
 		isOwner := query.RequesterID != "" && course.CreatedBy != nil && *course.CreatedBy == query.RequesterID
 		isAdmin := query.RequesterRole == entities.RoleAdmin
-		isModerator := query.RequesterRole == entities.RoleModerator && course.Status == entities.ContentStatusInReview
+		isModerator := query.RequesterRole == entities.RoleModerator &&
+			(course.Status == entities.ContentStatusInReview || access.EffectiveOwnerType(course) == entities.OwnerTypePlatform)
 		if !isOwner && !isAdmin && !isModerator {
 			return nil, ErrCourseAccessDenied
 		}

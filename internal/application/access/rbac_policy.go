@@ -45,7 +45,7 @@ var defaultRBACMatrix = map[RBACPermission]rbacRow{
 	},
 	PermCoursesCreateDrafts: {
 		instructor: rbacCell{val: true, locked: true},
-		moderator:  rbacCell{val: false, locked: false},
+		moderator:  rbacCell{val: true, locked: false},
 	},
 	PermCoursesAuthorFreeCourses: {
 		instructor: rbacCell{val: false, locked: false},

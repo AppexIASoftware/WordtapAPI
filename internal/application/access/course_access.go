@@ -38,7 +38,7 @@ func CanEditCourseContent(course *entities.Course, requesterID string, role enti
 		return false
 	}
 	switch role {
-	case entities.RoleAdmin:
+	case entities.RoleAdmin, entities.RoleModerator:
 		return EffectiveOwnerType(course) == entities.OwnerTypePlatform
 	case entities.RoleInstructor:
 		return EffectiveOwnerType(course) == entities.OwnerTypeTeacher &&
@@ -54,7 +54,7 @@ func CanLinkGameToCourse(course *entities.Course, requesterID string, role entit
 		return false
 	}
 	switch role {
-	case entities.RoleAdmin:
+	case entities.RoleAdmin, entities.RoleModerator:
 		return EffectiveOwnerType(course) == entities.OwnerTypePlatform
 	case entities.RoleInstructor:
 		return EffectiveOwnerType(course) == entities.OwnerTypeTeacher &&
