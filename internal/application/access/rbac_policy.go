@@ -79,12 +79,12 @@ var defaultRBACMatrix = map[RBACPermission]rbacRow{
 	},
 	PermNotificationsClassroomBroadcast: {
 		student:    rbacCell{val: false, locked: true},
-		instructor: rbacCell{val: true, locked: true},
+		instructor: rbacCell{val: true, locked: false},
 		moderator:  rbacCell{val: false, locked: false},
 	},
 	PermNotificationsGlobalAnnouncements: {
 		student:    rbacCell{val: false, locked: true},
-		instructor: rbacCell{val: false, locked: true},
+		instructor: rbacCell{val: false, locked: false},
 		moderator:  rbacCell{val: true, locked: false},
 	},
 	PermMonetizationCustomCoursePrice: {

@@ -153,4 +153,28 @@ func TestRBACPolicyEvaluator_DefaultsAndOverrides(t *testing.T) {
 			t.Fatalf("expected PermissionsForRole to reflect moderator overrides, got %+v", perms)
 		}
 	})
+
+	t.Run("supports configurable notification permissions for instructor and moderator", func(t *testing.T) {
+		repo := &stubSettingRepo{
+			values: map[string]string{
+				RBACSettingKey: `{
+					"notifications:classroom_broadcast": {"instructor": false, "moderator": true},
+					"notifications:global_announcements": {"instructor": true, "moderator": false}
+				}`,
+			},
+		}
+		eval := NewRBACPolicyEvaluator(repo)
+		if eval.IsAllowed(ctx, entities.RoleInstructor, PermNotificationsClassroomBroadcast) {
+			t.Fatal("expected instructor notifications:classroom_broadcast override to be false")
+		}
+		if !eval.IsAllowed(ctx, entities.RoleModerator, PermNotificationsClassroomBroadcast) {
+			t.Fatal("expected moderator notifications:classroom_broadcast override to be true")
+		}
+		if !eval.IsAllowed(ctx, entities.RoleInstructor, PermNotificationsGlobalAnnouncements) {
+			t.Fatal("expected instructor notifications:global_announcements override to be true")
+		}
+		if eval.IsAllowed(ctx, entities.RoleModerator, PermNotificationsGlobalAnnouncements) {
+			t.Fatal("expected moderator notifications:global_announcements override to be false")
+		}
+	})
 }
