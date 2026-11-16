@@ -26,6 +26,8 @@ const (
 	PermNotificationsClassroomBroadcast  RBACPermission = "notifications:classroom_broadcast"
 	PermNotificationsGlobalAnnouncements RBACPermission = "notifications:global_announcements"
 	PermMonetizationCustomCoursePrice    RBACPermission = "monetization:custom_course_price"
+	PermStudentsViewDirectory            RBACPermission = "students:view_directory"
+	PermStudentsManageStatus             RBACPermission = "students:manage_status"
 )
 
 type rbacCell struct {
@@ -34,50 +36,71 @@ type rbacCell struct {
 }
 
 type rbacRow struct {
+	student    rbacCell
 	instructor rbacCell
 	moderator  rbacCell
 }
 
 var defaultRBACMatrix = map[RBACPermission]rbacRow{
 	PermVaultAuthorItems: {
+		student:    rbacCell{val: false, locked: true},
 		instructor: rbacCell{val: true, locked: true},
 		moderator:  rbacCell{val: true, locked: false},
 	},
 	PermCoursesCreateDrafts: {
+		student:    rbacCell{val: false, locked: true},
 		instructor: rbacCell{val: true, locked: true},
 		moderator:  rbacCell{val: true, locked: false},
 	},
 	PermCoursesAuthorFreeCourses: {
+		student:    rbacCell{val: false, locked: true},
 		instructor: rbacCell{val: false, locked: false},
 		moderator:  rbacCell{val: false, locked: false},
 	},
 	PermGamesTuneLevels: {
+		student:    rbacCell{val: false, locked: true},
 		instructor: rbacCell{val: true, locked: false},
 		moderator:  rbacCell{val: true, locked: false},
 	},
 	PermModerationReviewCourses: {
+		student:    rbacCell{val: false, locked: true},
 		instructor: rbacCell{val: false, locked: true},
 		moderator:  rbacCell{val: true, locked: false},
 	},
 	PermModerationManageTeacherApps: {
+		student:    rbacCell{val: false, locked: true},
 		instructor: rbacCell{val: false, locked: true},
 		moderator:  rbacCell{val: true, locked: false},
 	},
 	PermCohortsCreateClassrooms: {
+		student:    rbacCell{val: false, locked: true},
 		instructor: rbacCell{val: true, locked: true},
 		moderator:  rbacCell{val: false, locked: false},
 	},
 	PermNotificationsClassroomBroadcast: {
+		student:    rbacCell{val: false, locked: true},
 		instructor: rbacCell{val: true, locked: true},
 		moderator:  rbacCell{val: false, locked: false},
 	},
 	PermNotificationsGlobalAnnouncements: {
+		student:    rbacCell{val: false, locked: true},
 		instructor: rbacCell{val: false, locked: true},
 		moderator:  rbacCell{val: true, locked: false},
 	},
 	PermMonetizationCustomCoursePrice: {
+		student:    rbacCell{val: false, locked: true},
 		instructor: rbacCell{val: true, locked: false},
 		moderator:  rbacCell{val: false, locked: true},
+	},
+	PermStudentsViewDirectory: {
+		student:    rbacCell{val: false, locked: true},
+		instructor: rbacCell{val: false, locked: true},
+		moderator:  rbacCell{val: false, locked: false},
+	},
+	PermStudentsManageStatus: {
+		student:    rbacCell{val: false, locked: true},
+		instructor: rbacCell{val: false, locked: true},
+		moderator:  rbacCell{val: false, locked: false},
 	},
 }
 
@@ -94,11 +117,8 @@ func NewRBACPolicyEvaluator(settings repositories.PlatformSettingRepository) *RB
 // IsAllowed evaluates whether role holds perm, respecting locked structural invariants
 // and falling back to safe defaults if settings are absent or malformed.
 func (e *RBACPolicyEvaluator) IsAllowed(ctx context.Context, role entities.UserRole, perm RBACPermission) bool {
-	switch role {
-	case entities.RoleAdmin:
+	if role == entities.RoleAdmin {
 		return true
-	case entities.RoleStudent:
-		return false
 	}
 
 	row, exists := defaultRBACMatrix[perm]
@@ -109,6 +129,9 @@ func (e *RBACPolicyEvaluator) IsAllowed(ctx context.Context, role entities.UserR
 	var cell rbacCell
 	var roleKey string
 	switch role {
+	case entities.RoleStudent:
+		cell = row.student
+		roleKey = "student"
 	case entities.RoleInstructor:
 		cell = row.instructor
 		roleKey = "instructor"
@@ -140,4 +163,13 @@ func (e *RBACPolicyEvaluator) IsAllowed(ctx context.Context, role entities.UserR
 	}
 
 	return cell.val
+}
+
+// PermissionsForRole returns a map of all RBAC permission keys evaluated for the given role.
+func (e *RBACPolicyEvaluator) PermissionsForRole(ctx context.Context, role entities.UserRole) map[string]bool {
+	result := make(map[string]bool, len(defaultRBACMatrix))
+	for perm := range defaultRBACMatrix {
+		result[string(perm)] = e.IsAllowed(ctx, role, perm)
+	}
+	return result
 }

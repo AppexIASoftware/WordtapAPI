@@ -65,7 +65,7 @@ func TestAdminStudentsRouter(t *testing.T) {
 		userQuery.NewGetStudentDetailHandler(repo),
 		userCmd.NewUpdateStudentStatusHandler(repo),
 	)
-	router.RegisterRoutes(v1, passthrough, passthrough)
+	router.RegisterRoutes(v1, passthrough, passthrough, passthrough)
 
 	t.Run("GET detail returns student", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/students/stu-1", nil)

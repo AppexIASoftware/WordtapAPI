@@ -129,3 +129,26 @@ func RequirePermission(evaluator *access.RBACPolicyEvaluator, perm access.RBACPe
 		}
 	}
 }
+
+// RequirePermissionOrRole permite el acceso si el rol está en allowedRoles o si posee el permiso dinámico RBAC.
+func RequirePermissionOrRole(evaluator *access.RBACPolicyEvaluator, perm access.RBACPermission, allowedRoles ...entities.UserRole) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			roleVal := c.Get("user_role")
+			roleStr, _ := roleVal.(string)
+			role := entities.UserRole(strings.ToLower(strings.TrimSpace(roleStr)))
+
+			for _, allowed := range allowedRoles {
+				if role == allowed {
+					return next(c)
+				}
+			}
+
+			if evaluator != nil && evaluator.IsAllowed(c.Request().Context(), role, perm) {
+				return next(c)
+			}
+
+			return response.Fail(c, http.StatusForbidden, "No tienes permisos para realizar esta acción.")
+		}
+	}
+}

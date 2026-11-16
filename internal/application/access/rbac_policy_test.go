@@ -106,5 +106,51 @@ func TestRBACPolicyEvaluator_DefaultsAndOverrides(t *testing.T) {
 		if eval.IsAllowed(ctx, entities.RoleModerator, PermMonetizationCustomCoursePrice) {
 			t.Fatal("locked invariant moderator monetization:custom_course_price must remain false")
 		}
+		if eval.IsAllowed(ctx, entities.RoleStudent, PermCoursesCreateDrafts) {
+			t.Fatal("locked invariant student courses:create_drafts must remain false")
+		}
+	})
+
+	t.Run("supports configurable moderator directory/status permissions and locks student", func(t *testing.T) {
+		evalDefaults := NewRBACPolicyEvaluator(nil)
+		if evalDefaults.IsAllowed(ctx, entities.RoleStudent, PermStudentsViewDirectory) {
+			t.Fatal("student students:view_directory should default to false")
+		}
+		if evalDefaults.IsAllowed(ctx, entities.RoleModerator, PermStudentsViewDirectory) {
+			t.Fatal("moderator students:view_directory should default to false")
+		}
+		if evalDefaults.IsAllowed(ctx, entities.RoleStudent, PermStudentsManageStatus) {
+			t.Fatal("student students:manage_status should default to false")
+		}
+
+		repo := &stubSettingRepo{
+			values: map[string]string{
+				RBACSettingKey: `{
+					"students:view_directory": {"student": true, "moderator": true, "instructor": true},
+					"students:manage_status": {"student": true, "moderator": false}
+				}`,
+			},
+		}
+		eval := NewRBACPolicyEvaluator(repo)
+		if eval.IsAllowed(ctx, entities.RoleStudent, PermStudentsViewDirectory) {
+			t.Fatal("locked invariant student students:view_directory must remain false")
+		}
+		if !eval.IsAllowed(ctx, entities.RoleModerator, PermStudentsViewDirectory) {
+			t.Fatal("expected moderator students:view_directory override to be true")
+		}
+		if eval.IsAllowed(ctx, entities.RoleInstructor, PermStudentsViewDirectory) {
+			t.Fatal("locked invariant instructor students:view_directory must remain false")
+		}
+		if eval.IsAllowed(ctx, entities.RoleStudent, PermStudentsManageStatus) {
+			t.Fatal("locked invariant student students:manage_status must remain false")
+		}
+		if eval.IsAllowed(ctx, entities.RoleModerator, PermStudentsManageStatus) {
+			t.Fatal("expected moderator students:manage_status override to be false")
+		}
+
+		perms := eval.PermissionsForRole(ctx, entities.RoleModerator)
+		if !perms[string(PermStudentsViewDirectory)] || perms[string(PermStudentsManageStatus)] {
+			t.Fatalf("expected PermissionsForRole to reflect moderator overrides, got %+v", perms)
+		}
 	})
 }

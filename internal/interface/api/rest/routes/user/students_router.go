@@ -41,12 +41,13 @@ func (r *AdminStudentsRouter) WithAuditRepo(repo domainRepo.AuditRepository) *Ad
 func (r *AdminStudentsRouter) RegisterRoutes(
 	v1 *echo.Group,
 	authRequired echo.MiddlewareFunc,
-	adminOnly echo.MiddlewareFunc,
+	canViewStudents echo.MiddlewareFunc,
+	canManageStatus echo.MiddlewareFunc,
 ) {
 	group := v1.Group("/admin/students")
-	group.Use(authRequired, adminOnly)
-	group.GET("/:id", r.GetDetail)
-	group.PATCH("/:id/status", r.UpdateStatus)
+	group.Use(authRequired)
+	group.GET("/:id", r.GetDetail, canViewStudents)
+	group.PATCH("/:id/status", r.UpdateStatus, canManageStatus)
 }
 
 type updateStudentStatusRequest struct {

@@ -2,11 +2,14 @@ package setting
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	settingCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/platform_setting/commands"
 	settingQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/platform_setting/queries"
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/auditlog"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
@@ -17,6 +20,7 @@ type SettingRouter struct {
 	getAllHandler    *settingQuery.GetAllSettingsHandler
 	setHandler       *settingCmd.SetPlatformSettingHandler
 	auditRepo        domainRepo.AuditRepository
+	rbacEvaluator    *access.RBACPolicyEvaluator
 }
 
 func NewSettingRouter(
@@ -37,6 +41,12 @@ func (r *SettingRouter) WithAuditRepo(repo domainRepo.AuditRepository) *SettingR
 	return r
 }
 
+// WithRBACEvaluator attaches the dynamic RBAC policy evaluator for /rbac/me lookups.
+func (r *SettingRouter) WithRBACEvaluator(eval *access.RBACPolicyEvaluator) *SettingRouter {
+	r.rbacEvaluator = eval
+	return r
+}
+
 func (r *SettingRouter) RegisterRoutes(
 	v1 *echo.Group,
 	authMiddleware echo.MiddlewareFunc,
@@ -45,11 +55,30 @@ func (r *SettingRouter) RegisterRoutes(
 	// Endpoint público
 	v1.GET("/public-settings", r.GetPublicSettings)
 
+	// Permisos efectivos del usuario autenticado
+	v1.GET("/rbac/me", r.GetMyRBACPermissions, authMiddleware)
+
 	// Endpoints administrativos
 	adminGroup := v1.Group("/admin/settings")
 	adminGroup.Use(authMiddleware, adminOrModerator)
 	adminGroup.GET("", r.GetAllSettings)
 	adminGroup.PUT("", r.UpdateSetting)
+}
+
+// GetMyRBACPermissions returns the evaluated RBAC permission map for the authenticated user's role.
+func (r *SettingRouter) GetMyRBACPermissions(c *echo.Context) error {
+	roleStr, _ := c.Get("user_role").(string)
+	role := entities.UserRole(strings.ToLower(strings.TrimSpace(roleStr)))
+	var perms map[string]bool
+	if r.rbacEvaluator != nil {
+		perms = r.rbacEvaluator.PermissionsForRole(c.Request().Context(), role)
+	} else {
+		perms = map[string]bool{}
+	}
+	return c.JSON(http.StatusOK, map[string]any{
+		"role":        string(role),
+		"permissions": perms,
+	})
 }
 
 func (r *SettingRouter) GetPublicSettings(c *echo.Context) error {

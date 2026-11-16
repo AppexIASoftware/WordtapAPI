@@ -324,6 +324,10 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	canCreateClassrooms := restMiddleware.RequirePermission(rbacEvaluator, access.PermCohortsCreateClassrooms)
 	canBroadcastClassroom := restMiddleware.RequirePermission(rbacEvaluator, access.PermNotificationsClassroomBroadcast)
 	canGlobalAnnouncements := restMiddleware.RequirePermission(rbacEvaluator, access.PermNotificationsGlobalAnnouncements)
+	canViewStudents := restMiddleware.RequirePermission(rbacEvaluator, access.PermStudentsViewDirectory)
+	canManageStudentStatus := restMiddleware.RequirePermission(rbacEvaluator, access.PermStudentsManageStatus)
+	adminDashboardAccess := restMiddleware.RequirePermissionOrRole(rbacEvaluator, access.PermStudentsViewDirectory, entities.RoleAdmin, entities.RoleModerator)
+	globalStudentsAccess := restMiddleware.RequirePermissionOrRole(rbacEvaluator, access.PermStudentsViewDirectory, entities.RoleInstructor)
 
 	// --- Root Status Probe (Render / Uptime monitors) ---
 	rootHandler := func(c *echo.Context) error {
@@ -370,14 +374,14 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	userRoute.NewAdminStudentsRouter(
 		userQuery.NewGetStudentDetailHandler(adminStudentsRepo),
 		commands.NewUpdateStudentStatusHandler(adminStudentsRepo),
-	).WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, adminOnly)
-	settingRouter.WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, adminOrModerator)
+	).WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, canViewStudents, canManageStudentStatus)
+	settingRouter.WithAuditRepo(auditRepo).WithRBACEvaluator(rbacEvaluator).RegisterRoutes(v1, authRequired, adminOrModerator)
 	dashRepo := infraRepo.NewMySQLDashboardRepository(db)
 	dashRouter := dashboardRoute.NewDashboardRouter(dashQuery.NewGetAdminDashboardHandler(dashRepo)).
 		WithTeacherHandler(dashQuery.NewGetTeacherDashboardHandler(dashRepo)).
 		WithGlobalStudentsHandler(dashQuery.NewListGlobalStudentsHandler(dashRepo))
-	dashRouter.RegisterRoutes(v1, authRequired, adminOrModerator)
-	dashRouter.RegisterTeacherRoutes(v1, authRequired, instructorOrAdmin)
+	dashRouter.RegisterRoutes(v1, authRequired, adminDashboardAccess)
+	dashRouter.RegisterTeacherRoutes(v1, authRequired, instructorOrAdmin, globalStudentsAccess)
 	vaultRouter.WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, staffRoles, canAuthorVault, instructorOrAdmin)
 	classroomRouter.RegisterRoutes(v1, authRequired, canCreateClassrooms)
 	studentClassroomRouter.RegisterRoutes(v1, authRequired)

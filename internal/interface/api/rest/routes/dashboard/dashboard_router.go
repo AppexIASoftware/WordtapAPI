@@ -35,17 +35,17 @@ func (r *DashboardRouter) WithGlobalStudentsHandler(h *dashQuery.ListGlobalStude
 }
 
 // RegisterRoutes registers dashboard routes on v1.
-func (r *DashboardRouter) RegisterRoutes(v1 *echo.Group, authRequired, adminOrModerator echo.MiddlewareFunc) {
-	v1.GET("/admin/dashboard", r.GetAdminDashboard, authRequired, adminOrModerator)
+func (r *DashboardRouter) RegisterRoutes(v1 *echo.Group, authRequired, adminDashboardAccess echo.MiddlewareFunc) {
+	v1.GET("/admin/dashboard", r.GetAdminDashboard, authRequired, adminDashboardAccess)
 }
 
 // RegisterTeacherRoutes registers teacher dashboard metrics route on v1.
-func (r *DashboardRouter) RegisterTeacherRoutes(v1 *echo.Group, authRequired, instructorOrAdmin echo.MiddlewareFunc) {
+func (r *DashboardRouter) RegisterTeacherRoutes(v1 *echo.Group, authRequired, instructorOrAdmin, globalStudentsAccess echo.MiddlewareFunc) {
 	if r.getTeacherDashboard != nil {
 		v1.GET("/teacher/dashboard", r.GetTeacherDashboard, authRequired, instructorOrAdmin)
 	}
 	if r.listGlobalStudents != nil {
-		v1.GET("/teacher/global-students", r.ListGlobalStudents, authRequired, instructorOrAdmin)
+		v1.GET("/teacher/global-students", r.ListGlobalStudents, authRequired, globalStudentsAccess)
 	}
 }
 
