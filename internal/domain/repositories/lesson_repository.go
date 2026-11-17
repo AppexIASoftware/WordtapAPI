@@ -15,5 +15,5 @@ type LessonRepository interface {
 	Update(ctx context.Context, lesson *entities.Lesson) error
 	Delete(ctx context.Context, id string) error
 	SaveItem(ctx context.Context, item *entities.LessonItem) error
-	DeleteItem(ctx context.Context, itemID string) error
+	DeleteItem(ctx context.Context, lessonID, itemID string) error
 }

@@ -2,9 +2,12 @@ package repositories
 
 import (
 	"context"
+	"errors"
+	"strings"
 
 	"gorm.io/gorm"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
@@ -93,12 +96,34 @@ func (r *MySQLLessonRepository) Delete(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&entities.Lesson{}).Error
 }
 
-// SaveItem saves a lesson item.
+// SaveItem saves a lesson item while rejecting cross-lesson overwrites by ID.
 func (r *MySQLLessonRepository) SaveItem(ctx context.Context, item *entities.LessonItem) error {
+	if item == nil {
+		return apperrors.New("Tarjeta inválida.")
+	}
+	if strings.TrimSpace(item.ID) != "" && strings.TrimSpace(item.LessonID) != "" {
+		var existing entities.LessonItem
+		err := r.db.WithContext(ctx).Select("id, lesson_id").Where("id = ?", item.ID).Take(&existing).Error
+		if err == nil && existing.LessonID != item.LessonID {
+			return apperrors.New("La tarjeta pertenece a otra lección.")
+		}
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+	}
 	return r.db.WithContext(ctx).Save(item).Error
 }
 
-// DeleteItem removes a lesson item by ID.
-func (r *MySQLLessonRepository) DeleteItem(ctx context.Context, itemID string) error {
-	return r.db.WithContext(ctx).Where("id = ?", itemID).Delete(&entities.LessonItem{}).Error
+// DeleteItem removes a lesson item scoped to its owning lesson.
+func (r *MySQLLessonRepository) DeleteItem(ctx context.Context, lessonID, itemID string) error {
+	res := r.db.WithContext(ctx).
+		Where("id = ? AND lesson_id = ?", itemID, lessonID).
+		Delete(&entities.LessonItem{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return apperrors.New("No se encontró la tarjeta en esta lección.")
+	}
+	return nil
 }

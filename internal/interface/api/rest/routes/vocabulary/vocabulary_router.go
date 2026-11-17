@@ -20,9 +20,9 @@ func NewVocabularyRouter(searchHandler *queries.SearchVocabularyHandler) *Vocabu
 	}
 }
 
-func (r *VocabularyRouter) RegisterRoutes(v1 *echo.Group, authRequired echo.MiddlewareFunc) {
+func (r *VocabularyRouter) RegisterRoutes(v1 *echo.Group, authRequired echo.MiddlewareFunc, extraMiddleware ...echo.MiddlewareFunc) {
 	vocab := v1.Group("/vocabulary")
-	vocab.Use(authRequired)
+	vocab.Use(append([]echo.MiddlewareFunc{authRequired}, extraMiddleware...)...)
 	vocab.GET("/search", r.Search)
 }
 

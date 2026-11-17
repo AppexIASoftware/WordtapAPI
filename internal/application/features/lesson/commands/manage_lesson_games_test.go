@@ -342,4 +342,33 @@ func TestUpdateAndUnlinkLessonGameHandlers(t *testing.T) {
 			t.Errorf("expected no links, got %d", len(fixture.Links.Links))
 		}
 	})
+
+	t.Run("blocks link, update, and unlink while course is in_review", func(t *testing.T) {
+		fixture := lessontest.NewFixture()
+		fixture.Links.Links = append(fixture.Links.Links, entities.LessonGame{
+			ID: "lg-1", LessonID: "lesson-teacher", TeacherGameID: "game-teacher",
+		})
+		fixture.Courses.Courses["course-teacher"].Status = entities.ContentStatusInReview
+
+		if _, err := fixture.LinkHandler().Handle(ctx, lessonCmd.LinkLessonGameCommand{
+			LessonID: "lesson-teacher", GameID: "game-basic",
+			RequesterID: "teacher-1", RequesterRole: entities.RoleInstructor,
+		}); !errors.Is(err, lessonCmd.ErrLessonGameCourseInReview) {
+			t.Fatalf("link in_review: expected ErrLessonGameCourseInReview, got %v", err)
+		}
+
+		if _, err := fixture.UpdateHandler().Handle(ctx, lessonCmd.UpdateLessonGameCommand{
+			LessonID: "lesson-teacher", GameID: "game-teacher", IsRequired: lessontest.BoolPtr(false),
+			RequesterID: "teacher-1", RequesterRole: entities.RoleInstructor,
+		}); !errors.Is(err, lessonCmd.ErrLessonGameCourseInReview) {
+			t.Fatalf("update in_review: expected ErrLessonGameCourseInReview, got %v", err)
+		}
+
+		if err := fixture.UnlinkHandler().Handle(ctx, lessonCmd.UnlinkLessonGameCommand{
+			LessonID: "lesson-teacher", GameID: "game-teacher",
+			RequesterID: "teacher-1", RequesterRole: entities.RoleInstructor,
+		}); !errors.Is(err, lessonCmd.ErrLessonGameCourseInReview) {
+			t.Fatalf("unlink in_review: expected ErrLessonGameCourseInReview, got %v", err)
+		}
+	})
 }

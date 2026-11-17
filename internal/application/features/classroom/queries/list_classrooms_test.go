@@ -2,6 +2,7 @@ package queries_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/queries"
@@ -18,6 +19,12 @@ func (m *mockClassroomQueryRepo) Create(ctx context.Context, classroom *entities
 }
 
 func (m *mockClassroomQueryRepo) FindByID(ctx context.Context, id string) (*entities.Classroom, error) {
+	for _, c := range m.classrooms {
+		if c.ID == id {
+			cls := c
+			return &cls, nil
+		}
+	}
 	return nil, nil
 }
 
@@ -86,6 +93,9 @@ func TestListTeacherClassroomsHandler(t *testing.T) {
 
 func TestGetStumbleListHandler(t *testing.T) {
 	repo := &mockClassroomQueryRepo{
+		classrooms: []entities.Classroom{
+			{ID: "c-1", TeacherID: "teacher-1", Name: "Aula B1"},
+		},
 		stumbles: []entities.StudentStumble{
 			{ID: "s-1", Term: "thought", FailRate: 68},
 			{ID: "s-2", Term: "easy word", FailRate: 15}, // menos del 40%, no debe incluirse
@@ -95,12 +105,38 @@ func TestGetStumbleListHandler(t *testing.T) {
 	handler := queries.NewGetStumbleListHandler(repo)
 
 	t.Run("filtra solo términos con tasa de fallo >= 40%", func(t *testing.T) {
-		res, err := handler.Handle(context.Background(), queries.GetStumbleListQuery{ClassroomID: "c-1"})
+		res, err := handler.Handle(context.Background(), queries.GetStumbleListQuery{
+			ClassroomID:   "c-1",
+			RequesterID:   "teacher-1",
+			RequesterRole: entities.RoleInstructor,
+		})
 		if err != nil {
 			t.Fatalf("error inesperado: %v", err)
 		}
 		if len(res) != 2 {
 			t.Fatalf("se esperaban 2 items críticos con tasa >= 40%%, obtenidos %d", len(res))
+		}
+	})
+
+	t.Run("rechaza docente ajeno con ErrClassroomForbidden", func(t *testing.T) {
+		_, err := handler.Handle(context.Background(), queries.GetStumbleListQuery{
+			ClassroomID:   "c-1",
+			RequesterID:   "teacher-2",
+			RequesterRole: entities.RoleInstructor,
+		})
+		if !errors.Is(err, queries.ErrClassroomForbidden) {
+			t.Fatalf("expected ErrClassroomForbidden, got %v", err)
+		}
+	})
+
+	t.Run("devuelve ErrClassroomNotFound para aula inexistente", func(t *testing.T) {
+		_, err := handler.Handle(context.Background(), queries.GetStumbleListQuery{
+			ClassroomID:   "c-missing",
+			RequesterID:   "teacher-1",
+			RequesterRole: entities.RoleInstructor,
+		})
+		if !errors.Is(err, queries.ErrClassroomNotFound) {
+			t.Fatalf("expected ErrClassroomNotFound, got %v", err)
 		}
 	})
 }

@@ -110,6 +110,7 @@ func setupClassroomRouter() (*echo.Echo, *mockClassroomRepo) {
 	passMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			c.Set("user_id", "teacher-uuid-1")
+			c.Set("user_role", "instructor")
 			return next(c)
 		}
 	}
@@ -175,6 +176,40 @@ func TestClassroomRouter_CreateAndList(t *testing.T) {
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("código de estado esperado %d, obtenido %d. Body: %s", http.StatusOK, rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("GET /api/v1/teacher/classrooms/:id/stumbles enforces classroom ownership", func(t *testing.T) {
+		_ = repo.Create(context.Background(), &entities.Classroom{
+			ID:        "cls-foreign",
+			TeacherID: "teacher-uuid-2",
+			Name:      "Aula Ajena",
+			Code:      "WT-B2-0002",
+		})
+		_ = repo.CreateStumble(context.Background(), &entities.StudentStumble{
+			ID:          "st-1",
+			ClassroomID: "cls-100",
+			Term:        "through",
+			Translation: "a través",
+			FailRate:    60,
+		})
+
+		recOwn := httptest.NewRecorder()
+		e.ServeHTTP(recOwn, httptest.NewRequest(http.MethodGet, "/api/v1/teacher/classrooms/cls-100/stumbles", nil))
+		if recOwn.Code != http.StatusOK {
+			t.Fatalf("own classroom stumbles: expected 200, got %d: %s", recOwn.Code, recOwn.Body.String())
+		}
+
+		recForeign := httptest.NewRecorder()
+		e.ServeHTTP(recForeign, httptest.NewRequest(http.MethodGet, "/api/v1/teacher/classrooms/cls-foreign/stumbles", nil))
+		if recForeign.Code != http.StatusForbidden {
+			t.Fatalf("foreign classroom stumbles: expected 403, got %d: %s", recForeign.Code, recForeign.Body.String())
+		}
+
+		recMissing := httptest.NewRecorder()
+		e.ServeHTTP(recMissing, httptest.NewRequest(http.MethodGet, "/api/v1/teacher/classrooms/cls-missing/stumbles", nil))
+		if recMissing.Code != http.StatusNotFound {
+			t.Fatalf("missing classroom stumbles: expected 404, got %d: %s", recMissing.Code, recMissing.Body.String())
 		}
 	})
 }

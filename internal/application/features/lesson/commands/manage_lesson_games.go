@@ -16,6 +16,7 @@ var (
 	ErrLessonGameGameNotFound   = fmt.Errorf("%w", apperrors.New("No se encontró la actividad."))
 	ErrLessonGameLinkNotFound   = fmt.Errorf("%w", apperrors.New("No se encontró el vínculo."))
 	ErrLessonGameAccessDenied   = fmt.Errorf("%w", apperrors.New("No tienes permisos para modificar los juegos de esta lección."))
+	ErrLessonGameCourseInReview = fmt.Errorf("%w", apperrors.New("No puedes modificar los juegos mientras el curso está en revisión."))
 	ErrLessonGameDuplicate      = fmt.Errorf("%w", apperrors.New("La actividad ya está vinculada a esta lección."))
 	ErrLessonGameLevelTooHigh   = fmt.Errorf("%w", apperrors.New("El nivel de la actividad supera el nivel del curso."))
 )
@@ -98,6 +99,9 @@ func (h *LinkLessonGameHandler) Handle(ctx context.Context, cmd LinkLessonGameCo
 	}
 	if !lessonAccess.CanLinkGameToCourse(course, cmd.RequesterID, cmd.RequesterRole) {
 		return nil, ErrLessonGameAccessDenied
+	}
+	if course.Status == entities.ContentStatusInReview {
+		return nil, ErrLessonGameCourseInReview
 	}
 
 	game, err := h.gameRepo.FindByID(ctx, cmd.GameID)
@@ -194,6 +198,9 @@ func (h *UpdateLessonGameHandler) Handle(ctx context.Context, cmd UpdateLessonGa
 	if !lessonAccess.CanLinkGameToCourse(course, cmd.RequesterID, cmd.RequesterRole) {
 		return nil, ErrLessonGameAccessDenied
 	}
+	if course.Status == entities.ContentStatusInReview {
+		return nil, ErrLessonGameCourseInReview
+	}
 
 	link, err := h.linkRepo.FindByLessonAndGame(ctx, cmd.LessonID, cmd.GameID)
 	if err != nil {
@@ -253,6 +260,9 @@ func (h *UnlinkLessonGameHandler) Handle(ctx context.Context, cmd UnlinkLessonGa
 	}
 	if !lessonAccess.CanLinkGameToCourse(course, cmd.RequesterID, cmd.RequesterRole) {
 		return ErrLessonGameAccessDenied
+	}
+	if course.Status == entities.ContentStatusInReview {
+		return ErrLessonGameCourseInReview
 	}
 
 	link, err := h.linkRepo.FindByLessonAndGame(ctx, cmd.LessonID, cmd.GameID)

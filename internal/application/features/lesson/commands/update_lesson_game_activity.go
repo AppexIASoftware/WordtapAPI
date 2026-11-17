@@ -28,6 +28,7 @@ type UpdateLessonGameActivityHandler struct {
 	lessons  repositories.LessonRepository
 	courses  repositories.CourseRepository
 	gameRepo repositories.TeacherGameRepository
+	links    repositories.LessonGameRepository
 }
 
 func NewUpdateLessonGameActivityHandler(
@@ -42,6 +43,12 @@ func NewUpdateLessonGameActivityHandler(
 	}
 }
 
+// WithLinkRepo attaches LessonGameRepository to verify the game is linked to the lesson before mutating.
+func (h *UpdateLessonGameActivityHandler) WithLinkRepo(links repositories.LessonGameRepository) *UpdateLessonGameActivityHandler {
+	h.links = links
+	return h
+}
+
 func (h *UpdateLessonGameActivityHandler) Handle(
 	ctx context.Context,
 	cmd UpdateLessonGameActivityCommand,
@@ -53,10 +60,33 @@ func (h *UpdateLessonGameActivityHandler) Handle(
 	if !lessonaccess.CanLinkGameToCourse(course, cmd.RequesterID, cmd.RequesterRole) {
 		return nil, ErrLessonGameAccessDenied
 	}
+	if course.Status == entities.ContentStatusInReview {
+		return nil, ErrLessonGameCourseInReview
+	}
+
+	if h.links != nil {
+		link, err := h.links.FindByLessonAndGame(ctx, cmd.LessonID, cmd.GameID)
+		if err != nil {
+			return nil, err
+		}
+		if link == nil {
+			return nil, ErrLessonGameLinkNotFound
+		}
+	}
 
 	game, err := h.gameRepo.FindByID(ctx, cmd.GameID)
 	if err != nil || game == nil {
 		return nil, ErrLessonGameGameNotFound
+	}
+	if game.IsGlobal || game.OwnerType == entities.OwnerTypePlatform {
+		if cmd.RequesterRole != entities.RoleAdmin {
+			return nil, ErrLessonGameAccessDenied
+		}
+	} else if cmd.RequesterRole != entities.RoleInstructor || game.TeacherID != cmd.RequesterID {
+		return nil, ErrLessonGameAccessDenied
+	}
+	if game.SourceType == "course_lesson" && game.SourceID != nil && strings.TrimSpace(*game.SourceID) != "" && *game.SourceID != cmd.LessonID {
+		return nil, ErrLessonGameAccessDenied
 	}
 
 	archetype := strings.ToLower(strings.TrimSpace(cmd.BaseArchetype))

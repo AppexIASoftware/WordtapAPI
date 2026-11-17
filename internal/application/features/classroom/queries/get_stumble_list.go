@@ -3,13 +3,21 @@ package queries
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
+var (
+	ErrClassroomNotFound  = errors.New("aula no encontrada")
+	ErrClassroomForbidden = errors.New("no tienes permisos para consultar los tropiezos de esta aula")
+)
+
 type GetStumbleListQuery struct {
-	ClassroomID string
+	ClassroomID   string
+	RequesterID   string
+	RequesterRole entities.UserRole
 }
 
 type GetStumbleListHandler struct {
@@ -21,11 +29,24 @@ func NewGetStumbleListHandler(classroomRepo repositories.ClassroomRepository) *G
 }
 
 func (h *GetStumbleListHandler) Handle(ctx context.Context, query GetStumbleListQuery) ([]entities.StudentStumble, error) {
-	if query.ClassroomID == "" {
+	clsID := strings.TrimSpace(query.ClassroomID)
+	if clsID == "" {
 		return nil, errors.New("el identificador del aula es obligatorio")
 	}
 
-	stumbles, err := h.classroomRepo.ListStumbles(ctx, query.ClassroomID)
+	cls, err := h.classroomRepo.FindByID(ctx, clsID)
+	if err != nil || cls == nil {
+		return nil, ErrClassroomNotFound
+	}
+
+	role := entities.UserRole(strings.ToLower(strings.TrimSpace(string(query.RequesterRole))))
+	if role != entities.RoleAdmin && role != entities.RoleModerator {
+		if strings.TrimSpace(query.RequesterID) == "" || cls.TeacherID != strings.TrimSpace(query.RequesterID) {
+			return nil, ErrClassroomForbidden
+		}
+	}
+
+	stumbles, err := h.classroomRepo.ListStumbles(ctx, clsID)
 	if err != nil {
 		return nil, err
 	}

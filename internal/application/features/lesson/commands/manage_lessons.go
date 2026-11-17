@@ -32,6 +32,16 @@ func slugifyLesson(text string) string {
 	return fmt.Sprintf("%s-%s", clean, hex.EncodeToString(suffix))
 }
 
+func ensureCourseEditable(course *entities.Course, requesterID string, role entities.UserRole, deniedMsg string) error {
+	if !courseAccess.CanEditCourseContent(course, requesterID, role) {
+		return apperrors.New(deniedMsg)
+	}
+	if course.Status == entities.ContentStatusInReview {
+		return apperrors.New("No puedes modificar las lecciones mientras el curso está en revisión.")
+	}
+	return nil
+}
+
 // --- Create Lesson ---
 
 type CreateLessonCommand struct {
@@ -73,12 +83,13 @@ func (h *CreateLessonHandler) Handle(ctx context.Context, cmd CreateLessonComman
 		return nil, fmt.Errorf("course not found: %w", err)
 	}
 
-	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
-		return nil, apperrors.New("No tienes permisos para crear lecciones en este curso.")
+	if err := ensureCourseEditable(course, cmd.RequesterID, cmd.RequesterRole, "No tienes permisos para crear lecciones en este curso."); err != nil {
+		return nil, err
 	}
 
 	lessonStatus := entities.ContentStatusDraft
-	if course.Status == entities.ContentStatusPublished {
+	if course.Status == entities.ContentStatusPublished &&
+		courseAccess.EffectiveOwnerType(course) == entities.OwnerTypePlatform {
 		lessonStatus = entities.ContentStatusPublished
 	}
 
@@ -141,8 +152,8 @@ func (h *UpdateLessonHandler) Handle(ctx context.Context, cmd UpdateLessonComman
 		return nil, fmt.Errorf("associated course not found: %w", err)
 	}
 
-	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
-		return nil, apperrors.New("No tienes permisos para actualizar esta lección.")
+	if err := ensureCourseEditable(course, cmd.RequesterID, cmd.RequesterRole, "No tienes permisos para actualizar esta lección."); err != nil {
+		return nil, err
 	}
 
 	if cmd.Title != nil {
@@ -203,8 +214,8 @@ func (h *DeleteLessonHandler) Handle(ctx context.Context, cmd DeleteLessonComman
 		return fmt.Errorf("associated course not found: %w", err)
 	}
 
-	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
-		return apperrors.New("No tienes permisos para eliminar esta lección.")
+	if err := ensureCourseEditable(course, cmd.RequesterID, cmd.RequesterRole, "No tienes permisos para eliminar esta lección."); err != nil {
+		return err
 	}
 
 	return h.lessonRepo.Delete(ctx, cmd.LessonID)
@@ -227,6 +238,7 @@ type SaveLessonItemCommand struct {
 type SaveLessonItemHandler struct {
 	lessonRepo repositories.LessonRepository
 	courseRepo repositories.CourseRepository
+	bankRepo   repositories.ContentBankRepository
 }
 
 func NewSaveLessonItemHandler(
@@ -237,6 +249,12 @@ func NewSaveLessonItemHandler(
 		lessonRepo: lessonRepo,
 		courseRepo: courseRepo,
 	}
+}
+
+// WithContentBankRepo attaches ContentBankRepository to prevent cross-tenant linking of private vault items.
+func (h *SaveLessonItemHandler) WithContentBankRepo(bankRepo repositories.ContentBankRepository) *SaveLessonItemHandler {
+	h.bankRepo = bankRepo
+	return h
 }
 
 func (h *SaveLessonItemHandler) Handle(ctx context.Context, cmd SaveLessonItemCommand) (*entities.LessonItem, error) {
@@ -250,8 +268,20 @@ func (h *SaveLessonItemHandler) Handle(ctx context.Context, cmd SaveLessonItemCo
 		return nil, fmt.Errorf("associated course not found: %w", err)
 	}
 
-	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
-		return nil, apperrors.New("No tienes permisos para modificar las tarjetas de esta lección.")
+	if err := ensureCourseEditable(course, cmd.RequesterID, cmd.RequesterRole, "No tienes permisos para modificar las tarjetas de esta lección."); err != nil {
+		return nil, err
+	}
+
+	if h.bankRepo != nil && cmd.ContentBankItemID != nil && strings.TrimSpace(*cmd.ContentBankItemID) != "" {
+		bankItem, err := h.bankRepo.FindItemByID(ctx, strings.TrimSpace(*cmd.ContentBankItemID))
+		if err != nil || bankItem == nil {
+			return nil, apperrors.New("El elemento del banco de contenido no existe.")
+		}
+		if bankItem.CreatedBy != nil && strings.TrimSpace(*bankItem.CreatedBy) != "" &&
+			strings.TrimSpace(*bankItem.CreatedBy) != strings.TrimSpace(cmd.RequesterID) &&
+			cmd.RequesterRole != entities.RoleAdmin && cmd.RequesterRole != entities.RoleModerator {
+			return nil, apperrors.New("No tienes permisos para vincular este elemento privado.")
+		}
 	}
 
 	itemID := cmd.ItemID
@@ -316,9 +346,9 @@ func (h *DeleteLessonItemHandler) Handle(ctx context.Context, cmd DeleteLessonIt
 		return fmt.Errorf("associated course not found: %w", err)
 	}
 
-	if !courseAccess.CanEditCourseContent(course, cmd.RequesterID, cmd.RequesterRole) {
-		return apperrors.New("No tienes permisos para eliminar tarjetas de esta lección.")
+	if err := ensureCourseEditable(course, cmd.RequesterID, cmd.RequesterRole, "No tienes permisos para eliminar tarjetas de esta lección."); err != nil {
+		return err
 	}
 
-	return h.lessonRepo.DeleteItem(ctx, cmd.ItemID)
+	return h.lessonRepo.DeleteItem(ctx, cmd.LessonID, cmd.ItemID)
 }

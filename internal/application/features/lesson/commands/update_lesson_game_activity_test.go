@@ -58,4 +58,59 @@ func TestUpdateLessonGameActivityAuthorizationAndFields(t *testing.T) {
 			t.Errorf("unexpected game rules: %+v", game)
 		}
 	})
+
+	t.Run("teacher cannot mutate foreign or global game through own lesson", func(t *testing.T) {
+		_, err := h.Handle(context.Background(), lessoncommands.UpdateLessonGameActivityCommand{
+			LessonID:      "lesson-teacher",
+			GameID:        "game-other",
+			RequesterID:   "teacher-1",
+			RequesterRole: entities.RoleInstructor,
+			Title:         "Hijacked",
+		})
+		if !errors.Is(err, lessoncommands.ErrLessonGameAccessDenied) {
+			t.Fatalf("expected ErrLessonGameAccessDenied for foreign game, got %v", err)
+		}
+
+		_, err = h.Handle(context.Background(), lessoncommands.UpdateLessonGameActivityCommand{
+			LessonID:      "lesson-teacher",
+			GameID:        "game-global",
+			RequesterID:   "teacher-1",
+			RequesterRole: entities.RoleInstructor,
+			Title:         "Global Hijacked",
+		})
+		if !errors.Is(err, lessoncommands.ErrLessonGameAccessDenied) {
+			t.Fatalf("expected ErrLessonGameAccessDenied for global game, got %v", err)
+		}
+	})
+
+	t.Run("requires active lesson-game link when LinkRepo is attached", func(t *testing.T) {
+		hLinked := lessoncommands.NewUpdateLessonGameActivityHandler(fixture.Lessons, fixture.Courses, fixture.Games).
+			WithLinkRepo(fixture.Links)
+
+		_, err := hLinked.Handle(context.Background(), lessoncommands.UpdateLessonGameActivityCommand{
+			LessonID:      "lesson-teacher",
+			GameID:        "game-teacher",
+			RequesterID:   "teacher-1",
+			RequesterRole: entities.RoleInstructor,
+			Title:         "Not Linked Yet",
+		})
+		if !errors.Is(err, lessoncommands.ErrLessonGameLinkNotFound) {
+			t.Fatalf("expected ErrLessonGameLinkNotFound when unlinked, got %v", err)
+		}
+
+		_ = fixture.Links.Create(context.Background(), &entities.LessonGame{
+			LessonID:      "lesson-teacher",
+			TeacherGameID: "game-teacher",
+		})
+		game, err := hLinked.Handle(context.Background(), lessoncommands.UpdateLessonGameActivityCommand{
+			LessonID:      "lesson-teacher",
+			GameID:        "game-teacher",
+			RequesterID:   "teacher-1",
+			RequesterRole: entities.RoleInstructor,
+			Title:         "Linked Update OK",
+		})
+		if err != nil || game == nil || game.Title != "Linked Update OK" {
+			t.Fatalf("expected linked update success, got %+v, err=%v", game, err)
+		}
+	})
 }

@@ -49,8 +49,11 @@ func NewAuthRouter(
 }
 
 // RegisterRoutes registra los endpoints del dominio de autenticación y usuarios.
-func (r *AuthRouter) RegisterRoutes(v1 *echo.Group, authRequired echo.MiddlewareFunc) {
+func (r *AuthRouter) RegisterRoutes(v1 *echo.Group, authRequired echo.MiddlewareFunc, authRateLimit ...echo.MiddlewareFunc) {
 	authGroup := v1.Group("/auth")
+	if len(authRateLimit) > 0 {
+		authGroup.Use(authRateLimit...)
+	}
 	authGroup.POST("/google", r.LoginWithGoogle)
 	authGroup.POST("/refresh", r.Refresh)
 	authGroup.POST("/logout", r.Logout)

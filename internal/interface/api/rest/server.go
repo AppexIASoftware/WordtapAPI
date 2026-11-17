@@ -1,8 +1,6 @@
 package rest
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -93,6 +91,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	// Global middleware
 	e.Use(middleware.RequestLogger())
 	e.Use(middleware.Recover())
+	e.Use(restMiddleware.BodyLimit(restMiddleware.DefaultBodyLimitBytes))
 
 	var origins []string
 	for _, o := range strings.Split(corsOrigins, ",") {
@@ -188,7 +187,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	createLessonHandler := lessonCmd.NewCreateLessonHandler(lessonRepo, courseRepo)
 	updateLessonHandler := lessonCmd.NewUpdateLessonHandler(lessonRepo, courseRepo)
 	deleteLessonHandler := lessonCmd.NewDeleteLessonHandler(lessonRepo, courseRepo)
-	saveLessonItemHandler := lessonCmd.NewSaveLessonItemHandler(lessonRepo, courseRepo)
+	saveLessonItemHandler := lessonCmd.NewSaveLessonItemHandler(lessonRepo, courseRepo).WithContentBankRepo(contentBankRepo)
 	deleteLessonItemHandler := lessonCmd.NewDeleteLessonItemHandler(lessonRepo, courseRepo)
 	linkLessonGameHandler := lessonCmd.NewLinkLessonGameHandler(lessonRepo, courseRepo, teacherGameRepo, lessonGameRepo)
 	updateLessonGameHandler := lessonCmd.NewUpdateLessonGameHandler(lessonRepo, courseRepo, lessonGameRepo)
@@ -215,7 +214,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		saveLessonItemHandler,
 		deleteLessonItemHandler,
 	).WithContentPolicy(contentPolicy)
-	updateLessonGameActivityHandler := lessonCmd.NewUpdateLessonGameActivityHandler(lessonRepo, courseRepo, teacherGameRepo)
+	updateLessonGameActivityHandler := lessonCmd.NewUpdateLessonGameActivityHandler(lessonRepo, courseRepo, teacherGameRepo).WithLinkRepo(lessonGameRepo)
 	lessonGameRouter := lesson.NewLessonGameRouter(
 		listLessonGamesHandler,
 		linkLessonGameHandler,
@@ -291,23 +290,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	swaggerRouter := docs.NewSwaggerRouter()
 
 	// Specific middleware
-	authRequired := restMiddleware.RequireAuth(jwtService, func(ctx context.Context, userID string) (bool, error) {
-		var row struct {
-			IsActive bool
-		}
-		err := db.WithContext(ctx).
-			Table("users").
-			Select("is_active").
-			Where("id = ?", userID).
-			Take(&row).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return false, nil
-			}
-			return false, err
-		}
-		return row.IsActive, nil
-	})
+	authRequired := restMiddleware.RequireAuth(jwtService, restMiddleware.NewGormActiveUserChecker(db))
 	catalogRoles := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)
 	staffRoles := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator)
 	studentOrStaff := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)
@@ -343,11 +326,12 @@ func NewServer(db *gorm.DB) (*Server, error) {
 
 	// --- Route groups ---
 	v1 := e.Group("/api/v1")
+	v1.Use(restMiddleware.IPRateLimiter(30, 60))
 
 	// --- Modular route registration by domain ---
 	healthRouter.RegisterRoutes(e, v1)
 	swaggerRouter.RegisterRoutes(e)
-	authRouter.RegisterRoutes(v1, authRequired)
+	authRouter.RegisterRoutes(v1, authRequired, restMiddleware.IPRateLimiter(5, 15))
 	lessonRouter.RegisterRoutes(v1, authRequired, studentOrStaff, canCreateDrafts)
 	lessonGameRouter.RegisterRoutes(v1, authRequired, staffRoles, canTuneGames)
 	courseRouter.RegisterRoutes(v1, authRequired, catalogRoles, studentOrStaff, canCreateDrafts, instructorOrAdmin, adminOrModerator)
@@ -437,7 +421,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	classroom.NewNotificationRouter(listClassroomNotificationsHandler).RegisterRoutes(v1, authRequired, canBroadcastClassroom)
 	vault.NewDispatchRouter(dispatchVaultWordHandler).RegisterRoutes(v1, authRequired, restMiddleware.RequireAnyPermission(rbacEvaluator, access.PermNotificationsClassroomBroadcast, access.PermNotificationsGlobalAnnouncements))
 	myMemoryClient := translationInfra.NewMyMemoryClient(os.Getenv("MYMEMORY_EMAIL"))
-	vocabulary.NewVocabularyRouter(vocabQuery.NewSearchVocabularyHandler(myMemoryClient)).RegisterRoutes(v1, authRequired)
+	vocabulary.NewVocabularyRouter(vocabQuery.NewSearchVocabularyHandler(myMemoryClient)).RegisterRoutes(v1, authRequired, restMiddleware.IPRateLimiter(10, 20))
 	device.NewDeviceRouter(deviceRepo).RegisterRoutes(v1, authRequired)
 
 	return &Server{App: e}, nil

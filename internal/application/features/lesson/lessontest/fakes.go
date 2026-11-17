@@ -34,7 +34,7 @@ func (f *FakeLessonRepo) Delete(context.Context, string) error           { retur
 func (f *FakeLessonRepo) SaveItem(context.Context, *entities.LessonItem) error {
 	return nil
 }
-func (f *FakeLessonRepo) DeleteItem(context.Context, string) error { return nil }
+func (f *FakeLessonRepo) DeleteItem(context.Context, string, string) error { return nil }
 
 type FakeCourseRepo struct {
 	Courses map[string]*entities.Course
