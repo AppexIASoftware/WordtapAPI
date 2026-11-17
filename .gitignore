@@ -10,7 +10,10 @@ tmp/
 .codegraph/
 odd/
 .atl/
+.agents/
+.opencode/
 .test-cache/
+.test-tmp/
 *firebase*.json
 *serviceAccount*.json
 service-account*.json

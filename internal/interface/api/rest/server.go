@@ -40,6 +40,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/push"
 	infraRepo "github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/repositories"
 	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
+	translationInfra "github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/translation"
 	restMiddleware "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/middleware"
 	auditRoute "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/audit"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/auth"
@@ -434,7 +435,8 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	classroom.NewBroadcastRouter(broadcastClassroomHandler).RegisterRoutes(v1, authRequired, canBroadcastClassroom)
 	classroom.NewNotificationRouter(listClassroomNotificationsHandler).RegisterRoutes(v1, authRequired, canBroadcastClassroom)
 	vault.NewDispatchRouter(dispatchVaultWordHandler).RegisterRoutes(v1, authRequired, canBroadcastClassroom)
-	vocabulary.NewVocabularyRouter(vocabQuery.NewSearchVocabularyHandler(contentBankRepo)).RegisterRoutes(v1, authRequired)
+	myMemoryClient := translationInfra.NewMyMemoryClient(os.Getenv("MYMEMORY_EMAIL"))
+	vocabulary.NewVocabularyRouter(vocabQuery.NewSearchVocabularyHandler(myMemoryClient)).RegisterRoutes(v1, authRequired)
 	device.NewDeviceRouter(deviceRepo).RegisterRoutes(v1, authRequired)
 
 	return &Server{App: e}, nil

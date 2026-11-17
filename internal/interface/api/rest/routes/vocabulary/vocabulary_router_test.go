@@ -10,61 +10,31 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/vocabulary/queries"
-	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
-	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
+	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/translation"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/vocabulary"
 )
 
-type mockContentBankRepo struct {
-	items []entities.ContentBankItem
-	total int64
+type mockTranslator struct {
+	entries []translation.Entry
 }
 
-func (m *mockContentBankRepo) ListTypes(ctx context.Context) ([]entities.ContentBankType, error) {
-	return nil, nil
-}
-func (m *mockContentBankRepo) FindTypeBySlug(ctx context.Context, slug string) (*entities.ContentBankType, error) {
-	return nil, nil
-}
-func (m *mockContentBankRepo) ListCategories(ctx context.Context) ([]entities.ContentCategory, error) {
-	return nil, nil
-}
-func (m *mockContentBankRepo) CreateCategory(ctx context.Context, category *entities.ContentCategory) error {
-	return nil
-}
-func (m *mockContentBankRepo) ListItems(ctx context.Context, filter repositories.ContentBankFilter) ([]entities.ContentBankItem, int64, error) {
-	return m.items, m.total, nil
-}
-func (m *mockContentBankRepo) FindItemByID(ctx context.Context, id string) (*entities.ContentBankItem, error) {
-	return nil, nil
-}
-func (m *mockContentBankRepo) CreateItem(ctx context.Context, item *entities.ContentBankItem) error {
-	return nil
-}
-func (m *mockContentBankRepo) UpdateItem(ctx context.Context, item *entities.ContentBankItem) error {
-	return nil
-}
-func (m *mockContentBankRepo) DeleteItem(ctx context.Context, id string) error {
-	return nil
+func (m *mockTranslator) Translate(_ context.Context, _, _ string) ([]translation.Entry, error) {
+	return m.entries, nil
 }
 
 func TestVocabularyRouter_Search(t *testing.T) {
-	ipa := "/kæt/"
-	repo := &mockContentBankRepo{
-		items: []entities.ContentBankItem{
+	translator := &mockTranslator{
+		entries: []translation.Entry{
 			{
-				ID:         "v-1",
-				PromptText: "gato",
-				TargetText: "cat",
-				IPA:        &ipa,
-				CEFRLevel:  "A1",
-				Difficulty: 1,
+				ID:          "primary",
+				Source:      "cat",
+				Translation: "gato",
+				Quality:     100,
 			},
 		},
-		total: 1,
 	}
 
-	handler := queries.NewSearchVocabularyHandler(repo)
+	handler := queries.NewSearchVocabularyHandler(translator)
 	router := vocabulary.NewVocabularyRouter(handler)
 
 	e := echo.New()
@@ -78,7 +48,7 @@ func TestVocabularyRouter_Search(t *testing.T) {
 	}
 	router.RegisterRoutes(v1, authMiddleware)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/vocabulary/search?q=cat", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/vocabulary/search?q=cat&langpair=en|es", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

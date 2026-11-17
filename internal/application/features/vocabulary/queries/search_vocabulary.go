@@ -2,28 +2,38 @@ package queries
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
-	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
-	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
+	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/translation"
 )
 
+const (
+	LangPairEnToEs = "en|es"
+	LangPairEsToEn = "es|en"
+	maxTermBytes   = 500
+)
+
+// TranslationProvider abstracts external translation services (e.g. MyMemory).
+type TranslationProvider interface {
+	Translate(ctx context.Context, term, langPair string) ([]translation.Entry, error)
+}
+
 type SearchVocabularyQuery struct {
-	Term   string
-	Limit  int
-	Offset int
+	Term     string
+	LangPair string
+	Limit    int
+	Offset   int
 }
 
 type VocabularySearchResultItem struct {
 	ID          string  `json:"id"`
 	Word        string  `json:"word"`
 	Translation string  `json:"translation"`
-	IPA         *string `json:"ipa,omitempty"`
-	CEFRLevel   string  `json:"cefr_level"`
-	Difficulty  int     `json:"difficulty"`
+	LangPair    string  `json:"lang_pair"`
+	Quality     int     `json:"quality,omitempty"`
 	Explanation *string `json:"explanation,omitempty"`
-	AudioURL    *string `json:"audio_url,omitempty"`
 }
 
 type VocabularySearchResult struct {
@@ -32,11 +42,11 @@ type VocabularySearchResult struct {
 }
 
 type SearchVocabularyHandler struct {
-	repo repositories.ContentBankRepository
+	translator TranslationProvider
 }
 
-func NewSearchVocabularyHandler(repo repositories.ContentBankRepository) *SearchVocabularyHandler {
-	return &SearchVocabularyHandler{repo: repo}
+func NewSearchVocabularyHandler(translator TranslationProvider) *SearchVocabularyHandler {
+	return &SearchVocabularyHandler{translator: translator}
 }
 
 func (h *SearchVocabularyHandler) Handle(ctx context.Context, q SearchVocabularyQuery) (*VocabularySearchResult, error) {
@@ -48,8 +58,16 @@ func (h *SearchVocabularyHandler) Handle(ctx context.Context, q SearchVocabulary
 		}, nil
 	}
 
-	if len(term) > 100 {
-		return nil, apperrors.New("El término de búsqueda no puede superar los 100 caracteres.")
+	if len([]byte(term)) > maxTermBytes {
+		return nil, apperrors.New("El término de búsqueda no puede superar los 500 bytes.")
+	}
+
+	langPair := strings.TrimSpace(q.LangPair)
+	if langPair == "" {
+		langPair = LangPairEsToEn
+	}
+	if langPair != LangPairEnToEs && langPair != LangPairEsToEn {
+		return nil, apperrors.New("El par de idiomas debe ser 'en|es' o 'es|en'.")
 	}
 
 	limit := q.Limit
@@ -62,36 +80,43 @@ func (h *SearchVocabularyHandler) Handle(ctx context.Context, q SearchVocabulary
 		offset = 0
 	}
 
-	published := entities.ContentStatusPublished
-	filter := repositories.ContentBankFilter{
-		Search:    &term,
-		CreatedBy: nil,
-		OnlyMine:  false,
-		Status:    &published,
-		Limit:     limit,
-		Offset:    offset,
-	}
-
-	items, total, err := h.repo.ListItems(ctx, filter)
+	entries, err := h.translator.Translate(ctx, term, langPair)
 	if err != nil {
 		return nil, err
 	}
 
+	total := int64(len(entries))
+	if offset >= len(entries) {
+		return &VocabularySearchResult{
+			Items: make([]VocabularySearchResultItem, 0),
+			Total: total,
+		}, nil
+	}
+
+	end := offset + limit
+	if end > len(entries) {
+		end = len(entries)
+	}
+	page := entries[offset:end]
+
 	res := &VocabularySearchResult{
-		Items: make([]VocabularySearchResultItem, 0, len(items)),
+		Items: make([]VocabularySearchResultItem, 0, len(page)),
 		Total: total,
 	}
 
-	for _, item := range items {
+	for _, entry := range page {
+		var explanation *string
+		if entry.Quality > 0 {
+			note := fmt.Sprintf("Precisión de traducción: %d%%", entry.Quality)
+			explanation = &note
+		}
 		res.Items = append(res.Items, VocabularySearchResultItem{
-			ID:          item.ID,
-			Word:        item.TargetText,
-			Translation: item.PromptText,
-			IPA:         item.IPA,
-			CEFRLevel:   item.CEFRLevel,
-			Difficulty:  item.Difficulty,
-			Explanation: item.Explanation,
-			AudioURL:    item.AudioURL,
+			ID:          entry.ID,
+			Word:        entry.Source,
+			Translation: entry.Translation,
+			LangPair:    langPair,
+			Quality:     entry.Quality,
+			Explanation: explanation,
 		})
 	}
 

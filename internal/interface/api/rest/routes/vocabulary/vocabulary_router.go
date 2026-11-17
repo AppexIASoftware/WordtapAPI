@@ -28,13 +28,15 @@ func (r *VocabularyRouter) RegisterRoutes(v1 *echo.Group, authRequired echo.Midd
 
 func (r *VocabularyRouter) Search(c *echo.Context) error {
 	term := c.QueryParam("q")
+	langPair := c.QueryParam("langpair")
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	offset, _ := strconv.Atoi(c.QueryParam("offset"))
 
 	res, err := r.searchHandler.Handle(c.Request().Context(), queries.SearchVocabularyQuery{
-		Term:   term,
-		Limit:  limit,
-		Offset: offset,
+		Term:     term,
+		LangPair: langPair,
+		Limit:    limit,
+		Offset:   offset,
 	})
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "No se pudo realizar la búsqueda de vocabulario.", err)
