@@ -1,7 +1,9 @@
 package vault
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 
@@ -18,9 +20,9 @@ func NewDispatchRouter(handler *vaultCmd.DispatchVaultWordHandler) *DispatchRout
 	return &DispatchRouter{handler: handler}
 }
 
-func (r *DispatchRouter) RegisterRoutes(v1 *echo.Group, authRequired, instructorOrAdmin echo.MiddlewareFunc) {
+func (r *DispatchRouter) RegisterRoutes(v1 *echo.Group, authRequired, dispatchAccess echo.MiddlewareFunc) {
 	group := v1.Group("/vault/items")
-	group.Use(authRequired, instructorOrAdmin)
+	group.Use(authRequired, dispatchAccess)
 	group.POST("/:id/dispatch", r.Dispatch)
 }
 
@@ -30,8 +32,8 @@ func (r *DispatchRouter) Dispatch(c *echo.Context) error {
 		return response.Fail(c, http.StatusUnauthorized, "Autenticación requerida.")
 	}
 
-	roleStr, _ := c.Get("role").(string)
-	userRole := entities.UserRole(roleStr)
+	roleStr, _ := c.Get("user_role").(string)
+	userRole := entities.UserRole(strings.ToLower(strings.TrimSpace(roleStr)))
 
 	itemID := c.Param("id")
 	var body struct {
@@ -54,10 +56,10 @@ func (r *DispatchRouter) Dispatch(c *echo.Context) error {
 
 	res, err := r.handler.Handle(c.Request().Context(), cmd)
 	if err != nil {
-		if err == vaultCmd.ErrVaultItemNotFound {
+		if errors.Is(err, vaultCmd.ErrVaultItemNotFound) {
 			return response.Fail(c, http.StatusNotFound, err.Error())
 		}
-		if err == vaultCmd.ErrClassroomForbidden {
+		if errors.Is(err, vaultCmd.ErrClassroomForbidden) || errors.Is(err, vaultCmd.ErrGlobalDispatchForbidden) {
 			return response.Fail(c, http.StatusForbidden, err.Error())
 		}
 		return response.Fail(c, http.StatusBadRequest, err.Error())

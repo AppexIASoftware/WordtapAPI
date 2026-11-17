@@ -152,3 +152,25 @@ func RequirePermissionOrRole(evaluator *access.RBACPolicyEvaluator, perm access.
 		}
 	}
 }
+
+// RequireAnyPermission permite el acceso si el rol autenticado posee al menos uno de los permisos dinámicos RBAC indicados.
+func RequireAnyPermission(evaluator *access.RBACPolicyEvaluator, perms ...access.RBACPermission) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			roleVal := c.Get("user_role")
+			roleStr, _ := roleVal.(string)
+			role := entities.UserRole(strings.ToLower(strings.TrimSpace(roleStr)))
+
+			if evaluator != nil {
+				ctx := c.Request().Context()
+				for _, perm := range perms {
+					if evaluator.IsAllowed(ctx, role, perm) {
+						return next(c)
+					}
+				}
+			}
+
+			return response.Fail(c, http.StatusForbidden, "No tienes permisos para realizar esta acción.")
+		}
+	}
+}

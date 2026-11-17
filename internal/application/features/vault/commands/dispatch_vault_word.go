@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/inbox"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
@@ -15,9 +16,11 @@ import (
 )
 
 var (
-	ErrEmptyVaultItemID   = errors.New("el id del item de vocabulario es requerido")
-	ErrVaultItemNotFound  = errors.New("item de vocabulario no encontrado")
-	ErrClassroomForbidden = errors.New("no tienes permisos sobre esta aula")
+	ErrEmptyVaultItemID        = errors.New("el id del item de vocabulario es requerido")
+	ErrVaultItemNotFound       = errors.New("item de vocabulario no encontrado")
+	ErrClassroomForbidden      = errors.New("no tienes permisos sobre esta aula")
+	ErrGlobalDispatchForbidden = errors.New("no tienes permisos para enviar retos globales")
+	ErrInvalidTargetAudience   = errors.New("audiencia de destino no válida")
 )
 
 type DispatchVaultWordCommand struct {
@@ -43,6 +46,7 @@ type DispatchVaultWordHandler struct {
 	inboxRepo     inbox.Repository
 	deviceRepo    repositories.DeviceRepository
 	pushSender    push.PushSender
+	rbacEvaluator *access.RBACPolicyEvaluator
 }
 
 func NewDispatchVaultWordHandler(
@@ -63,6 +67,12 @@ func NewDispatchVaultWordHandler(
 	}
 }
 
+// WithRBACEvaluator attaches the dynamic RBAC policy evaluator for dispatch audience checks.
+func (h *DispatchVaultWordHandler) WithRBACEvaluator(eval *access.RBACPolicyEvaluator) *DispatchVaultWordHandler {
+	h.rbacEvaluator = eval
+	return h
+}
+
 func (h *DispatchVaultWordHandler) Handle(ctx context.Context, cmd DispatchVaultWordCommand) (*DispatchVaultWordResult, error) {
 	cmd.ItemVaultID = strings.TrimSpace(cmd.ItemVaultID)
 	if cmd.ItemVaultID == "" {
@@ -74,9 +84,29 @@ func (h *DispatchVaultWordHandler) Handle(ctx context.Context, cmd DispatchVault
 		return nil, ErrVaultItemNotFound
 	}
 
+	senderRole := entities.UserRole(strings.ToLower(strings.TrimSpace(string(cmd.SenderRole))))
+	if senderRole == "" {
+		return nil, ErrClassroomForbidden
+	}
+
+	senderUserID := strings.TrimSpace(cmd.SenderUserID)
+	if item.CreatedBy != nil && strings.TrimSpace(*item.CreatedBy) != "" &&
+		strings.TrimSpace(*item.CreatedBy) != senderUserID &&
+		senderRole != entities.RoleAdmin && senderRole != entities.RoleModerator {
+		return nil, ErrVaultItemNotFound
+	}
+
+	eval := h.rbacEvaluator
+	if eval == nil {
+		eval = access.NewRBACPolicyEvaluator(nil)
+	}
+
 	var userIDs []string
 	switch strings.ToLower(strings.TrimSpace(cmd.TargetAudience)) {
 	case "classroom":
+		if !eval.IsAllowed(ctx, senderRole, access.PermNotificationsClassroomBroadcast) {
+			return nil, ErrClassroomForbidden
+		}
 		if cmd.TargetClassroomID == nil || strings.TrimSpace(*cmd.TargetClassroomID) == "" {
 			return nil, errors.New("id del aula requerido para envío por aula")
 		}
@@ -85,7 +115,7 @@ func (h *DispatchVaultWordHandler) Handle(ctx context.Context, cmd DispatchVault
 		if err != nil || cls == nil {
 			return nil, errors.New("aula no encontrada")
 		}
-		if cmd.SenderRole == entities.RoleInstructor && cls.TeacherID != cmd.SenderUserID {
+		if senderRole != entities.RoleAdmin && senderRole != entities.RoleModerator && cls.TeacherID != senderUserID {
 			return nil, ErrClassroomForbidden
 		}
 		enrollments, err := h.classroomRepo.ListEnrollments(ctx, clsID)
@@ -99,6 +129,9 @@ func (h *DispatchVaultWordHandler) Handle(ctx context.Context, cmd DispatchVault
 		}
 
 	case "cefr":
+		if !eval.IsAllowed(ctx, senderRole, access.PermNotificationsGlobalAnnouncements) {
+			return nil, ErrGlobalDispatchForbidden
+		}
 		level := item.CEFRLevel
 		if cmd.TargetCEFRLevel != nil && strings.TrimSpace(*cmd.TargetCEFRLevel) != "" {
 			level = strings.ToUpper(strings.TrimSpace(*cmd.TargetCEFRLevel))
@@ -110,13 +143,19 @@ func (h *DispatchVaultWordHandler) Handle(ctx context.Context, cmd DispatchVault
 		}
 		userIDs = uIDs
 
-	default: // "all"
+	case "all":
+		if !eval.IsAllowed(ctx, senderRole, access.PermNotificationsGlobalAnnouncements) {
+			return nil, ErrGlobalDispatchForbidden
+		}
 		studentRole := entities.RoleStudent
 		uIDs, err := h.userRepo.ListUserIDs(ctx, &studentRole, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list users: %w", err)
 		}
 		userIDs = uIDs
+
+	default:
+		return nil, ErrInvalidTargetAudience
 	}
 
 	if len(userIDs) == 0 {

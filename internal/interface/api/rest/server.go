@@ -376,17 +376,18 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		userQuery.NewGetStudentDetailHandler(adminStudentsRepo),
 		commands.NewUpdateStudentStatusHandler(adminStudentsRepo),
 	).WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, canViewStudents, canManageStudentStatus)
-	settingRouter.WithAuditRepo(auditRepo).WithRBACEvaluator(rbacEvaluator).RegisterRoutes(v1, authRequired, adminOrModerator)
+	settingRouter.WithAuditRepo(auditRepo).WithRBACEvaluator(rbacEvaluator).RegisterRoutes(v1, authRequired, adminOnly)
 	dashRepo := infraRepo.NewMySQLDashboardRepository(db)
 	dashRouter := dashboardRoute.NewDashboardRouter(dashQuery.NewGetAdminDashboardHandler(dashRepo)).
 		WithTeacherHandler(dashQuery.NewGetTeacherDashboardHandler(dashRepo)).
-		WithGlobalStudentsHandler(dashQuery.NewListGlobalStudentsHandler(dashRepo))
+		WithGlobalStudentsHandler(dashQuery.NewListGlobalStudentsHandler(dashRepo)).
+		WithRBACEvaluator(rbacEvaluator)
 	dashRouter.RegisterRoutes(v1, authRequired, adminDashboardAccess)
 	dashRouter.RegisterTeacherRoutes(v1, authRequired, instructorOrAdmin, globalStudentsAccess)
 	vaultRouter.WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, staffRoles, canAuthorVault, instructorOrAdmin)
 	classroomRouter.RegisterRoutes(v1, authRequired, canCreateClassrooms)
 	studentClassroomRouter.RegisterRoutes(v1, authRequired)
-	gameRouter.RegisterRoutes(v1, authRequired, canTuneGames, canTuneGames)
+	gameRouter.RegisterRoutes(v1, authRequired, canTuneGames, adminOnly)
 	gameStudentRouter.RegisterRoutes(v1, authRequired)
 	livesRouter.RegisterRoutes(v1, authRequired)
 	progressRouter.RegisterRoutes(v1, authRequired)
@@ -424,7 +425,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		inboxRepo,
 		deviceRepo,
 		pushSender,
-	)
+	).WithRBACEvaluator(rbacEvaluator)
 
 	catalogUnlockRouter.RegisterRoutes(v1, authRequired)
 	notificationRoute.NewRouter(infraRepo.NewMySQLNotificationPreferences(db)).RegisterRoutes(v1, authRequired)
@@ -434,7 +435,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	notificationRoute.NewClassroomNotificationRouter(listClassroomNotificationsHandler).RegisterRoutes(v1, authRequired, canGlobalAnnouncements)
 	classroom.NewBroadcastRouter(broadcastClassroomHandler).RegisterRoutes(v1, authRequired, canBroadcastClassroom)
 	classroom.NewNotificationRouter(listClassroomNotificationsHandler).RegisterRoutes(v1, authRequired, canBroadcastClassroom)
-	vault.NewDispatchRouter(dispatchVaultWordHandler).RegisterRoutes(v1, authRequired, canBroadcastClassroom)
+	vault.NewDispatchRouter(dispatchVaultWordHandler).RegisterRoutes(v1, authRequired, restMiddleware.RequireAnyPermission(rbacEvaluator, access.PermNotificationsClassroomBroadcast, access.PermNotificationsGlobalAnnouncements))
 	myMemoryClient := translationInfra.NewMyMemoryClient(os.Getenv("MYMEMORY_EMAIL"))
 	vocabulary.NewVocabularyRouter(vocabQuery.NewSearchVocabularyHandler(myMemoryClient)).RegisterRoutes(v1, authRequired)
 	device.NewDeviceRouter(deviceRepo).RegisterRoutes(v1, authRequired)

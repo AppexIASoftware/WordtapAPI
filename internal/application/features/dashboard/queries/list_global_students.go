@@ -7,13 +7,14 @@ import (
 
 // GlobalStudentFilter holds query parameters for filtering global students.
 type GlobalStudentFilter struct {
-	Query    string
-	Plan     string
-	Level    string
-	CourseID string
-	Status   string
-	Limit    int
-	Offset   int
+	InstructorID string
+	Query        string
+	Plan         string
+	Level        string
+	CourseID     string
+	Status       string
+	Limit        int
+	Offset       int
 }
 
 // GlobalCourseOption represents a published/available course for the filter dropdown.

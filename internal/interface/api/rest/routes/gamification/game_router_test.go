@@ -11,6 +11,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	gameCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/gamification/commands"
 	gameQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/gamification/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
@@ -280,11 +281,12 @@ func setupAdminGameRouter() (*echo.Echo, *security.JWTService, *mockGameRouterRe
 	r := gamification.NewGameRouter(createHandler, updateHandler, deleteHandler, listHandler, getHandler, listAdminHandler, listGlobalHandler, createGlobalHandler, updateGlobalHandler, deleteGlobalHandler)
 
 	authRequired := restMiddleware.RequireAuth(jwtSvc)
-	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
-	adminOrModerator := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator)
+	rbacEval := access.NewRBACPolicyEvaluator(nil)
+	canTuneGames := restMiddleware.RequirePermission(rbacEval, access.PermGamesTuneLevels)
+	adminOnly := restMiddleware.RequireRole(entities.RoleAdmin)
 
 	v1 := e.Group("/api/v1")
-	r.RegisterRoutes(v1, authRequired, instructorOrAdmin, adminOrModerator)
+	r.RegisterRoutes(v1, authRequired, canTuneGames, adminOnly)
 
 	return e, jwtSvc, repo
 }
@@ -297,6 +299,11 @@ func TestGameRouterRBAC_AdminGamesList(t *testing.T) {
 		Email: "teacher@wordtap.app",
 		Role:  entities.RoleInstructor,
 	})
+	modToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+		ID:    "moderator-uuid-1",
+		Email: "moderator@wordtap.app",
+		Role:  entities.RoleModerator,
+	})
 
 	t.Run("teacher is rejected from the global games list (403)", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/games", nil)
@@ -307,6 +314,30 @@ func TestGameRouterRBAC_AdminGamesList(t *testing.T) {
 
 		if rec.Code != http.StatusForbidden {
 			t.Fatalf("expected %d for teacher, got %d", http.StatusForbidden, rec.Code)
+		}
+	})
+
+	t.Run("moderator is rejected from the global games list (403)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/games", nil)
+		req.Header.Set("Authorization", "Bearer "+modToken)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected %d for moderator, got %d", http.StatusForbidden, rec.Code)
+		}
+	})
+
+	t.Run("teacher still reads own games via /teacher/games (200)", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/teacher/games", nil)
+		req.Header.Set("Authorization", "Bearer "+teacherToken)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected %d for teacher own games, got %d: %s", http.StatusOK, rec.Code, rec.Body.String())
 		}
 	})
 

@@ -50,7 +50,7 @@ func (r *SettingRouter) WithRBACEvaluator(eval *access.RBACPolicyEvaluator) *Set
 func (r *SettingRouter) RegisterRoutes(
 	v1 *echo.Group,
 	authMiddleware echo.MiddlewareFunc,
-	adminOrModerator echo.MiddlewareFunc,
+	adminOnly echo.MiddlewareFunc,
 ) {
 	// Endpoint público
 	v1.GET("/public-settings", r.GetPublicSettings)
@@ -60,7 +60,7 @@ func (r *SettingRouter) RegisterRoutes(
 
 	// Endpoints administrativos
 	adminGroup := v1.Group("/admin/settings")
-	adminGroup.Use(authMiddleware, adminOrModerator)
+	adminGroup.Use(authMiddleware, adminOnly)
 	adminGroup.GET("", r.GetAllSettings)
 	adminGroup.PUT("", r.UpdateSetting)
 }

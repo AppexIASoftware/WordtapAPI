@@ -10,6 +10,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	dashQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/dashboard/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	restMiddleware "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/middleware"
@@ -79,6 +80,115 @@ func TestDashboardRouter_GetAdminDashboard(t *testing.T) {
 		_ = h(c)
 		if rec.Code != http.StatusForbidden {
 			t.Fatalf("expected 403, got %d", rec.Code)
+		}
+	})
+}
+
+type stubGlobalStudentsReader struct {
+	lastFilter dashQuery.GlobalStudentFilter
+}
+
+func (s *stubGlobalStudentsReader) ListGlobalStudents(_ context.Context, filter dashQuery.GlobalStudentFilter) (*dashQuery.GlobalStudentsResponse, error) {
+	s.lastFilter = filter
+	return &dashQuery.GlobalStudentsResponse{
+		Items:   []dashQuery.GlobalStudentItem{},
+		Total:   0,
+		Courses: []dashQuery.GlobalCourseOption{},
+	}, nil
+}
+
+type stubDashboardSettingRepo struct {
+	rbacJSON string
+}
+
+func (s *stubDashboardSettingRepo) Get(_ context.Context, key string) (*entities.PlatformSetting, error) {
+	if key == access.RBACSettingKey && s.rbacJSON != "" {
+		return &entities.PlatformSetting{Key: key, Value: s.rbacJSON}, nil
+	}
+	return nil, nil
+}
+func (s *stubDashboardSettingRepo) Set(context.Context, string, string) error { return nil }
+func (s *stubDashboardSettingRepo) GetAll(context.Context) ([]entities.PlatformSetting, error) {
+	return nil, nil
+}
+
+func TestDashboardRouter_ListGlobalStudents(t *testing.T) {
+	settingRepo := &stubDashboardSettingRepo{}
+	eval := access.NewRBACPolicyEvaluator(settingRepo)
+	studentsReader := &stubGlobalStudentsReader{}
+
+	e := echo.New()
+	v1 := e.Group("/api/v1")
+
+	injectHeaders := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			c.Set("user_id", c.Request().Header.Get("X-Test-User-ID"))
+			c.Set("user_role", c.Request().Header.Get("X-Test-Role"))
+			return next(c)
+		}
+	}
+	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
+	globalStudentsAccess := restMiddleware.RequirePermissionOrRole(eval, access.PermStudentsViewDirectory, entities.RoleInstructor)
+
+	router := NewDashboardRouter(dashQuery.NewGetAdminDashboardHandler(&stubDashboardReader{})).
+		WithGlobalStudentsHandler(dashQuery.NewListGlobalStudentsHandler(studentsReader)).
+		WithRBACEvaluator(eval)
+	router.RegisterTeacherRoutes(v1, injectHeaders, instructorOrAdmin, globalStudentsAccess)
+
+	doReq := func(userID, role string) *httptest.ResponseRecorder {
+		studentsReader.lastFilter = dashQuery.GlobalStudentFilter{InstructorID: "sentinel"}
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/teacher/global-students", nil)
+		req.Header.Set("X-Test-User-ID", userID)
+		req.Header.Set("X-Test-Role", role)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	t.Run("admin receives 200 with unscoped filter", func(t *testing.T) {
+		rec := doReq("admin-1", "admin")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		if studentsReader.lastFilter.InstructorID != "" {
+			t.Fatalf("expected empty InstructorID for admin, got %q", studentsReader.lastFilter.InstructorID)
+		}
+	})
+
+	t.Run("moderator without students:view_directory receives 403", func(t *testing.T) {
+		settingRepo.rbacJSON = ""
+		rec := doReq("mod-1", "moderator")
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("moderator with students:view_directory receives 200 unscoped", func(t *testing.T) {
+		settingRepo.rbacJSON = `{"students:view_directory":{"moderator":true}}`
+		rec := doReq("mod-1", "moderator")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		if studentsReader.lastFilter.InstructorID != "" {
+			t.Fatalf("expected empty InstructorID for authorized moderator, got %q", studentsReader.lastFilter.InstructorID)
+		}
+	})
+
+	t.Run("instructor receives 200 strictly scoped to own instructor id", func(t *testing.T) {
+		settingRepo.rbacJSON = ""
+		rec := doReq("teacher-77", "instructor")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		if studentsReader.lastFilter.InstructorID != "teacher-77" {
+			t.Fatalf("expected InstructorID=teacher-77, got %q", studentsReader.lastFilter.InstructorID)
+		}
+	})
+
+	t.Run("student receives 403", func(t *testing.T) {
+		rec := doReq("student-1", "student")
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
 		}
 	})
 }

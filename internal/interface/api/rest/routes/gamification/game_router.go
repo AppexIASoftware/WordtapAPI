@@ -55,16 +55,16 @@ func (r *GameRouter) RegisterRoutes(
 	v1 *echo.Group,
 	authRequired echo.MiddlewareFunc,
 	instructorOrAdmin echo.MiddlewareFunc,
-	adminOrModerator echo.MiddlewareFunc,
+	adminOnly echo.MiddlewareFunc,
 ) {
 	// Public global games catalog for authenticated users (students, teachers, admins)
 	v1.GET("/games/global", r.ListGlobalGames, authRequired)
 
 	// Admin global games management (platform-wide activities only)
-	v1.GET("/admin/games", r.ListAdminGames, authRequired, adminOrModerator)
-	v1.POST("/admin/games", r.CreateAdminGame, authRequired, adminOrModerator)
-	v1.PUT("/admin/games/:id", r.UpdateAdminGame, authRequired, adminOrModerator)
-	v1.DELETE("/admin/games/:id", r.DeleteAdminGame, authRequired, adminOrModerator)
+	v1.GET("/admin/games", r.ListAdminGames, authRequired, adminOnly)
+	v1.POST("/admin/games", r.CreateAdminGame, authRequired, adminOnly)
+	v1.PUT("/admin/games/:id", r.UpdateAdminGame, authRequired, adminOnly)
+	v1.DELETE("/admin/games/:id", r.DeleteAdminGame, authRequired, adminOnly)
 
 	group := v1.Group("/teacher/games")
 	group.Use(authRequired, instructorOrAdmin)

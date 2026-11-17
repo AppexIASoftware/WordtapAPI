@@ -3,10 +3,13 @@ package dashboard
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	dashQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/dashboard/queries"
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/response"
 )
 
@@ -15,6 +18,7 @@ type DashboardRouter struct {
 	getAdminDashboard   *dashQuery.GetAdminDashboardHandler
 	getTeacherDashboard *dashQuery.GetTeacherDashboardHandler
 	listGlobalStudents  *dashQuery.ListGlobalStudentsHandler
+	rbacEvaluator       *access.RBACPolicyEvaluator
 }
 
 // NewDashboardRouter creates a DashboardRouter.
@@ -31,6 +35,12 @@ func (r *DashboardRouter) WithTeacherHandler(h *dashQuery.GetTeacherDashboardHan
 // WithGlobalStudentsHandler attaches the global students telemetry query handler.
 func (r *DashboardRouter) WithGlobalStudentsHandler(h *dashQuery.ListGlobalStudentsHandler) *DashboardRouter {
 	r.listGlobalStudents = h
+	return r
+}
+
+// WithRBACEvaluator attaches the dynamic RBAC policy evaluator for directory scoping.
+func (r *DashboardRouter) WithRBACEvaluator(eval *access.RBACPolicyEvaluator) *DashboardRouter {
+	r.rbacEvaluator = eval
 	return r
 }
 
@@ -51,16 +61,35 @@ func (r *DashboardRouter) RegisterTeacherRoutes(v1 *echo.Group, authRequired, in
 
 // ListGlobalStudents returns filtered global student telemetry from MySQL.
 func (r *DashboardRouter) ListGlobalStudents(c *echo.Context) error {
+	userID, _ := c.Get("user_id").(string)
+	roleStr, _ := c.Get("user_role").(string)
+	role := entities.UserRole(strings.ToLower(strings.TrimSpace(roleStr)))
+
+	eval := r.rbacEvaluator
+	if eval == nil {
+		eval = access.NewRBACPolicyEvaluator(nil)
+	}
+
+	var instructorID string
+	if !eval.IsAllowed(c.Request().Context(), role, access.PermStudentsViewDirectory) {
+		trimmedID := strings.TrimSpace(userID)
+		if role != entities.RoleInstructor || trimmedID == "" {
+			return response.Fail(c, http.StatusForbidden, "No tienes permisos para realizar esta acción.")
+		}
+		instructorID = trimmedID
+	}
+
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))
 	offset, _ := strconv.Atoi(c.QueryParam("offset"))
 	data, err := r.listGlobalStudents.Handle(c.Request().Context(), dashQuery.GlobalStudentFilter{
-		Query:    c.QueryParam("q"),
-		Plan:     c.QueryParam("plan"),
-		Level:    c.QueryParam("level"),
-		CourseID: c.QueryParam("course_id"),
-		Status:   c.QueryParam("status"),
-		Limit:    limit,
-		Offset:   offset,
+		InstructorID: instructorID,
+		Query:        c.QueryParam("q"),
+		Plan:         c.QueryParam("plan"),
+		Level:        c.QueryParam("level"),
+		CourseID:     c.QueryParam("course_id"),
+		Status:       c.QueryParam("status"),
+		Limit:        limit,
+		Offset:       offset,
 	})
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "No se pudo cargar el listado global de estudiantes.", err)

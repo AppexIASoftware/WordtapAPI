@@ -288,20 +288,43 @@ func TestAdminGameCRUD_GlobalGames(t *testing.T) {
 		}
 	})
 
-	t.Run("teacher is rejected from the global activity CRUD (403)", func(t *testing.T) {
+	t.Run("teacher and moderator are rejected from global activity CRUD (403)", func(t *testing.T) {
 		teacherToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
 			ID:    "teacher-uuid-1",
 			Email: "teacher@wordtap.app",
 			Role:  entities.RoleInstructor,
 		})
+		modToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+			ID:    "mod-uuid-1",
+			Email: "mod@wordtap.app",
+			Role:  entities.RoleModerator,
+		})
 
 		body, _ := json.Marshal(map[string]any{"title": "No permitido"})
-		req := bearerRequest(http.MethodPost, "/api/v1/admin/games", body, teacherToken)
-		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, req)
+		for _, tc := range []struct {
+			role   string
+			token  string
+			method string
+			path   string
+		}{
+			{"teacher", teacherToken, http.MethodPost, "/api/v1/admin/games"},
+			{"teacher", teacherToken, http.MethodPut, "/api/v1/admin/games/game-admin-1"},
+			{"teacher", teacherToken, http.MethodDelete, "/api/v1/admin/games/game-admin-1"},
+			{"moderator", modToken, http.MethodPost, "/api/v1/admin/games"},
+			{"moderator", modToken, http.MethodPut, "/api/v1/admin/games/game-admin-1"},
+			{"moderator", modToken, http.MethodDelete, "/api/v1/admin/games/game-admin-1"},
+		} {
+			var reqBody []byte
+			if tc.method != http.MethodDelete {
+				reqBody = body
+			}
+			req := bearerRequest(tc.method, tc.path, reqBody, tc.token)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
 
-		if rec.Code != http.StatusForbidden {
-			t.Fatalf("expected %d for teacher, got %d", http.StatusForbidden, rec.Code)
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("%s %s %s: expected 403, got %d: %s", tc.role, tc.method, tc.path, rec.Code, rec.Body.String())
+			}
 		}
 	})
 }

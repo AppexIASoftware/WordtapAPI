@@ -2,6 +2,7 @@ package commands_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/inbox"
@@ -242,4 +243,98 @@ func TestDispatchVaultWord_Success_CEFR(t *testing.T) {
 	if len(inboxRepo.created) != 2 {
 		t.Errorf("expected 2 notifications in inbox, got %d", len(inboxRepo.created))
 	}
+}
+
+func TestDispatchVaultWord_RBACAndOwnership(t *testing.T) {
+	ownerID := "teacher-owner"
+	privateItem := &entities.ContentBankItem{
+		ID:         "vault-private-1",
+		PromptText: "lograr",
+		TargetText: "achieve",
+		CEFRLevel:  "B1",
+		CreatedBy:  &ownerID,
+	}
+	officialItem := &entities.ContentBankItem{
+		ID:         "vault-official-1",
+		PromptText: "casa",
+		TargetText: "house",
+		CEFRLevel:  "A1",
+	}
+
+	t.Run("instructor cannot dispatch another teacher private vault item", func(t *testing.T) {
+		clsID := "cls-1"
+		handler := commands.NewDispatchVaultWordHandler(
+			&mockBankRepoForDispatch{item: privateItem},
+			&mockClassroomRepoForDispatch{classroom: &entities.Classroom{ID: clsID, TeacherID: "teacher-other"}},
+			&mockUserRepoForDispatch{},
+			&mockInboxRepoForDispatch{},
+			&mockDeviceRepoForDispatch{},
+			&mockPushSenderForDispatch{},
+		)
+
+		_, err := handler.Handle(context.Background(), commands.DispatchVaultWordCommand{
+			ItemVaultID:       "vault-private-1",
+			TargetAudience:    "classroom",
+			TargetClassroomID: &clsID,
+			SenderUserID:      "teacher-other",
+			SenderRole:        entities.RoleInstructor,
+		})
+		if !errors.Is(err, commands.ErrVaultItemNotFound) {
+			t.Fatalf("expected ErrVaultItemNotFound, got %v", err)
+		}
+	})
+
+	t.Run("instructor blocked from cefr and all audiences", func(t *testing.T) {
+		handler := commands.NewDispatchVaultWordHandler(
+			&mockBankRepoForDispatch{item: officialItem},
+			&mockClassroomRepoForDispatch{},
+			&mockUserRepoForDispatch{userIDs: []string{"student-1"}},
+			&mockInboxRepoForDispatch{},
+			&mockDeviceRepoForDispatch{},
+			&mockPushSenderForDispatch{},
+		)
+
+		for _, aud := range []string{"cefr", "all"} {
+			_, err := handler.Handle(context.Background(), commands.DispatchVaultWordCommand{
+				ItemVaultID:    "vault-official-1",
+				TargetAudience: aud,
+				SenderUserID:   "teacher-owner",
+				SenderRole:     entities.RoleInstructor,
+			})
+			if !errors.Is(err, commands.ErrGlobalDispatchForbidden) {
+				t.Fatalf("audience %s: expected ErrGlobalDispatchForbidden, got %v", aud, err)
+			}
+		}
+	})
+
+	t.Run("fails closed on missing sender role and rejects unknown audience", func(t *testing.T) {
+		handler := commands.NewDispatchVaultWordHandler(
+			&mockBankRepoForDispatch{item: officialItem},
+			&mockClassroomRepoForDispatch{},
+			&mockUserRepoForDispatch{},
+			&mockInboxRepoForDispatch{},
+			&mockDeviceRepoForDispatch{},
+			&mockPushSenderForDispatch{},
+		)
+
+		_, err := handler.Handle(context.Background(), commands.DispatchVaultWordCommand{
+			ItemVaultID:    "vault-official-1",
+			TargetAudience: "all",
+			SenderUserID:   "user-1",
+			SenderRole:     "",
+		})
+		if !errors.Is(err, commands.ErrClassroomForbidden) {
+			t.Fatalf("expected ErrClassroomForbidden for empty role, got %v", err)
+		}
+
+		_, err = handler.Handle(context.Background(), commands.DispatchVaultWordCommand{
+			ItemVaultID:    "vault-official-1",
+			TargetAudience: "unknown",
+			SenderUserID:   "admin-1",
+			SenderRole:     entities.RoleAdmin,
+		})
+		if !errors.Is(err, commands.ErrInvalidTargetAudience) {
+			t.Fatalf("expected ErrInvalidTargetAudience, got %v", err)
+		}
+	})
 }
