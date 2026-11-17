@@ -21,7 +21,6 @@ type CreateVaultItemCommand struct {
 	IPA         *string
 	CEFRLevel   string
 	Difficulty  int
-	AudioURL    *string
 	Explanation *string
 	Metadata    string
 	IsOfficial  bool
@@ -88,7 +87,6 @@ func (h *CreateVaultItemHandler) Handle(ctx context.Context, cmd CreateVaultItem
 		IPA:         cmd.IPA,
 		CEFRLevel:   cefr,
 		Difficulty:  diff,
-		AudioURL:    cmd.AudioURL,
 		Explanation: cmd.Explanation,
 		Metadata:    meta,
 		Status:      status,

@@ -24,7 +24,7 @@ type TeacherGame struct {
 	ItemCount             int        `gorm:"default:6;not null" json:"item_count"`
 	SourceType            string     `gorm:"type:varchar(40);default:'course_lesson';not null" json:"source_type"` // course_lesson, vault, custom_list
 	SourceID              *string    `gorm:"type:varchar(36)" json:"source_id,omitempty"`
-	CustomWordsJSON       *string    `gorm:"type:json" json:"custom_words_json,omitempty"` // vocabulary pairs [{term, translation, audio_url}]
+	CustomWordsJSON       *string    `gorm:"type:json" json:"custom_words_json,omitempty"` // vocabulary pairs [{term, translation}]
 	OwnerType             OwnerType  `gorm:"type:varchar(20);default:'teacher';not null;index" json:"owner_type"`
 	IsGlobal              bool       `gorm:"default:false;not null;index" json:"is_global"`
 	IsPublishedStandalone bool       `gorm:"default:false;not null;index" json:"is_published_standalone"`

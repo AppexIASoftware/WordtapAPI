@@ -86,7 +86,6 @@ type CreateVaultItemRequest struct {
 	IPA         *string `json:"ipa"`
 	CEFRLevel   string  `json:"cefr_level"`
 	Difficulty  int     `json:"difficulty"`
-	AudioURL    *string `json:"audio_url"`
 	Explanation *string `json:"explanation"`
 	Metadata    string  `json:"metadata"`
 }
@@ -99,7 +98,6 @@ type UpdateVaultItemRequest struct {
 	IPA         *string `json:"ipa"`
 	CEFRLevel   *string `json:"cefr_level"`
 	Difficulty  *int    `json:"difficulty"`
-	AudioURL    *string `json:"audio_url"`
 	Explanation *string `json:"explanation"`
 	Metadata    *string `json:"metadata"`
 }
@@ -213,7 +211,6 @@ func (r *VaultRouter) CreateOfficialItem(c *echo.Context) error {
 		IPA:         req.IPA,
 		CEFRLevel:   req.CEFRLevel,
 		Difficulty:  req.Difficulty,
-		AudioURL:    req.AudioURL,
 		Explanation: req.Explanation,
 		Metadata:    req.Metadata,
 		IsOfficial:  true,
@@ -251,7 +248,6 @@ func (r *VaultRouter) UpdateOfficialItem(c *echo.Context) error {
 		IPA:         req.IPA,
 		CEFRLevel:   req.CEFRLevel,
 		Difficulty:  req.Difficulty,
-		AudioURL:    req.AudioURL,
 		Explanation: req.Explanation,
 		Metadata:    req.Metadata,
 		RequesterID: userID,
@@ -358,7 +354,6 @@ func (r *VaultRouter) CreateTeacherPrivateItem(c *echo.Context) error {
 		IPA:         req.IPA,
 		CEFRLevel:   req.CEFRLevel,
 		Difficulty:  req.Difficulty,
-		AudioURL:    req.AudioURL,
 		Explanation: req.Explanation,
 		Metadata:    req.Metadata,
 		IsOfficial:  false,
@@ -391,7 +386,6 @@ func (r *VaultRouter) UpdateTeacherPrivateItem(c *echo.Context) error {
 		IPA:         req.IPA,
 		CEFRLevel:   req.CEFRLevel,
 		Difficulty:  req.Difficulty,
-		AudioURL:    req.AudioURL,
 		Explanation: req.Explanation,
 		Metadata:    req.Metadata,
 		RequesterID: userID,

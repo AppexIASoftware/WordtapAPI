@@ -32,7 +32,6 @@ type ContentBankItem struct {
 	IPA         *string       `gorm:"type:varchar(180)" json:"ipa"`
 	CEFRLevel   string        `gorm:"type:varchar(5);default:'A1';not null;index:idx_vault_difficulty,priority:1" json:"cefr_level"` // A1, A2, B1, B2, C1, C2
 	Difficulty  int           `gorm:"default:1;not null;index:idx_vault_difficulty,priority:2" json:"difficulty"`                    // 1: Básico, 2: Medio, 3: Desafío
-	AudioURL    *string       `gorm:"type:text" json:"audio_url"`
 	Explanation *string       `gorm:"type:text" json:"explanation"`
 	Metadata    string        `gorm:"type:json;not null" json:"metadata"` // Metadatos específicos dinámicos según el tipo de banco
 	Status      ContentStatus `gorm:"type:varchar(20);default:'published';not null" json:"status"`

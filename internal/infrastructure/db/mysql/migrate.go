@@ -32,7 +32,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&entities.VocabularyItem{},
 		&entities.Phrase{},
 		&entities.LessonItem{},
-		&entities.ContentAsset{},
 
 		// Aulas y Cohortes Docente
 		&entities.Classroom{},

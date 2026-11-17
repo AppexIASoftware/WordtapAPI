@@ -120,7 +120,6 @@ type VocabularyItem struct {
 	PartOfSpeech    *string       `gorm:"type:varchar(50)" json:"part_of_speech"`
 	Definition      *string       `gorm:"type:text" json:"definition"`
 	ExampleSentence *string       `gorm:"type:text" json:"example_sentence"`
-	AudioURL        *string       `gorm:"type:text" json:"audio_url"`
 	Status          ContentStatus `gorm:"type:varchar(20);default:'published';not null" json:"status"`
 	CreatedAt       time.Time     `json:"created_at"`
 
@@ -140,7 +139,6 @@ type Phrase struct {
 	CategoryID  *string       `gorm:"type:varchar(36);index" json:"category_id"`
 	Spanish     string        `gorm:"type:text;not null" json:"spanish"`
 	English     string        `gorm:"type:text;not null" json:"english"`
-	AudioURL    *string       `gorm:"type:text" json:"audio_url"`
 	Explanation *string       `gorm:"type:text" json:"explanation"`
 	Status      ContentStatus `gorm:"type:varchar(20);default:'published';not null" json:"status"`
 	CreatedAt   time.Time     `json:"created_at"`
@@ -176,27 +174,6 @@ type LessonItem struct {
 func (li *LessonItem) BeforeCreate(tx *gorm.DB) error {
 	if li.ID == "" {
 		li.ID = uuid.NewString()
-	}
-	return nil
-}
-
-// ContentAsset stores multimedia resources for lessons.
-type ContentAsset struct {
-	ID           string    `gorm:"type:varchar(36);primaryKey" json:"id"`
-	LessonID     *string   `gorm:"type:varchar(36);index" json:"lesson_id"`
-	LessonItemID *string   `gorm:"type:varchar(36);index" json:"lesson_item_id"`
-	AssetType    string    `gorm:"type:varchar(30);not null" json:"asset_type"`
-	URL          string    `gorm:"type:text;not null" json:"url"`
-	Title        *string   `gorm:"type:varchar(180)" json:"title"`
-	CreatedAt    time.Time `json:"created_at"`
-
-	Lesson     *Lesson     `gorm:"foreignKey:LessonID;constraint:OnDelete:CASCADE" json:"lesson,omitempty"`
-	LessonItem *LessonItem `gorm:"foreignKey:LessonItemID;constraint:OnDelete:CASCADE" json:"lesson_item,omitempty"`
-}
-
-func (ca *ContentAsset) BeforeCreate(tx *gorm.DB) error {
-	if ca.ID == "" {
-		ca.ID = uuid.NewString()
 	}
 	return nil
 }

@@ -20,7 +20,6 @@ type UpdateVaultItemCommand struct {
 	IPA         *string
 	CEFRLevel   *string
 	Difficulty  *int
-	AudioURL    *string
 	Explanation *string
 	Metadata    *string
 	RequesterID string
@@ -83,9 +82,6 @@ func (h *UpdateVaultItemHandler) Handle(ctx context.Context, cmd UpdateVaultItem
 	}
 	if cmd.Difficulty != nil && *cmd.Difficulty >= 1 && *cmd.Difficulty <= 3 {
 		item.Difficulty = *cmd.Difficulty
-	}
-	if cmd.AudioURL != nil {
-		item.AudioURL = cmd.AudioURL
 	}
 	if cmd.Explanation != nil {
 		item.Explanation = cmd.Explanation
