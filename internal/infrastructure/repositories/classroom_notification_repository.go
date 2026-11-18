@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -80,6 +81,7 @@ func (r *MySQLClassroomNotificationRepository) ListByCourse(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	r.syncReadCounts(ctx, notifications)
 	return notifications, nil
 }
 
@@ -98,42 +100,21 @@ func (r *MySQLClassroomNotificationRepository) ListByLesson(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	r.syncReadCounts(ctx, notifications)
 	return notifications, nil
 }
 
 // ListAll lists notifications with flexible filters (admin global scope).
 func (r *MySQLClassroomNotificationRepository) ListAll(ctx context.Context, filter domainRepo.ClassroomNotificationFilter, limit, offset int) ([]entities.ClassroomNotification, error) {
 	notifications := make([]entities.ClassroomNotification, 0)
-	query := r.db.WithContext(ctx).
+	query := applyAdminNotificationFilter(r.db.WithContext(ctx).
 		Preload("Classroom").
 		Preload("Teacher").
 		Preload("TargetCourse").
 		Preload("TargetLesson").
 		Order("sent_at DESC").
 		Limit(limit).
-		Offset(offset)
-
-	if filter.ClassroomID != nil && *filter.ClassroomID != "" {
-		query = query.Where("classroom_id = ?", *filter.ClassroomID)
-	}
-	if filter.TeacherID != nil && *filter.TeacherID != "" {
-		query = query.Where("teacher_id = ?", *filter.TeacherID)
-	}
-	if filter.CourseID != nil && *filter.CourseID != "" {
-		query = query.Where("target_course_id = ?", *filter.CourseID)
-	}
-	if filter.LessonID != nil && *filter.LessonID != "" {
-		query = query.Where("target_lesson_id = ?", *filter.LessonID)
-	}
-	if filter.Status != nil {
-		query = query.Where("status = ?", *filter.Status)
-	}
-	if filter.DateFrom != nil && *filter.DateFrom != "" {
-		query = query.Where("sent_at >= ?", *filter.DateFrom)
-	}
-	if filter.DateTo != nil && *filter.DateTo != "" {
-		query = query.Where("sent_at <= ?", *filter.DateTo)
-	}
+		Offset(offset), filter)
 
 	err := query.Find(&notifications).Error
 	if err != nil {
@@ -148,44 +129,43 @@ func (r *MySQLClassroomNotificationRepository) syncReadCounts(ctx context.Contex
 		return
 	}
 
-	// 1. Collect unique titles for single-roundtrip aggregation
-	titles := make([]string, 0, len(notifs))
-	titleSet := make(map[string]struct{}, len(notifs))
+	ids := make([]string, 0, len(notifs))
+	idSet := make(map[string]struct{}, len(notifs))
 	for _, n := range notifs {
-		if _, exists := titleSet[n.Title]; !exists && n.Title != "" {
-			titleSet[n.Title] = struct{}{}
-			titles = append(titles, n.Title)
+		if _, exists := idSet[n.ID]; !exists && n.ID != "" {
+			idSet[n.ID] = struct{}{}
+			ids = append(ids, n.ID)
 		}
 	}
-	if len(titles) == 0 {
+	if len(ids) == 0 {
 		return
 	}
 
-	// 2. Aggregated batch query: single roundtrip avoiding N+1 roundtrips
-	type TitleReadStat struct {
-		Title string
-		Total int
+	// Single-roundtrip FK aggregation replacing heuristic title grouping
+	type NotifReadStat struct {
+		ClassroomNotificationID string
+		Total                   int
 	}
-	var stats []TitleReadStat
+	var stats []NotifReadStat
 	err := r.db.WithContext(ctx).Model(&entities.Notification{}).
-		Select("title, count(*) as total").
-		Where("title IN ? AND is_read = ?", titles, true).
-		Group("title").
+		Select("classroom_notification_id, count(*) as total").
+		Where("classroom_notification_id IN ? AND is_read = ?", ids, true).
+		Group("classroom_notification_id").
 		Scan(&stats).Error
 	if err != nil {
 		return
 	}
 
-	countsByTitle := make(map[string]int, len(stats))
+	countsByID := make(map[string]int, len(stats))
 	for _, s := range stats {
-		countsByTitle[s.Title] = s.Total
+		countsByID[s.ClassroomNotificationID] = s.Total
 	}
 
-	// 3. In-memory metric mapping for fast reads without locking
 	for i := range notifs {
-		readCount := countsByTitle[notifs[i].Title]
-		notifs[i].ReadCount = readCount
-		if readCount > 0 && notifs[i].Status != entities.ClassroomNotificationStatusSent {
+		if readCount := countsByID[notifs[i].ID]; readCount > notifs[i].ReadCount {
+			notifs[i].ReadCount = readCount
+		}
+		if notifs[i].ReadCount > 0 && notifs[i].Status != entities.ClassroomNotificationStatusSent {
 			notifs[i].Status = entities.ClassroomNotificationStatusSent
 		} else if notifs[i].Status == entities.ClassroomNotificationStatusFailed && notifs[i].RecipientCount > 0 {
 			notifs[i].Status = entities.ClassroomNotificationStatusPartial
@@ -222,8 +202,19 @@ func (r *MySQLClassroomNotificationRepository) CountByTeacher(ctx context.Contex
 // CountAll counts notifications with flexible filters (admin global scope).
 func (r *MySQLClassroomNotificationRepository) CountAll(ctx context.Context, filter domainRepo.ClassroomNotificationFilter) (int64, error) {
 	var count int64
-	query := r.db.WithContext(ctx).Model(&entities.ClassroomNotification{})
+	query := applyAdminNotificationFilter(
+		r.db.WithContext(ctx).Model(&entities.ClassroomNotification{}),
+		filter,
+	)
 
+	err := query.Count(&count).Error
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func applyAdminNotificationFilter(query *gorm.DB, filter domainRepo.ClassroomNotificationFilter) *gorm.DB {
 	if filter.ClassroomID != nil && *filter.ClassroomID != "" {
 		query = query.Where("classroom_id = ?", *filter.ClassroomID)
 	}
@@ -239,18 +230,17 @@ func (r *MySQLClassroomNotificationRepository) CountAll(ctx context.Context, fil
 	if filter.Status != nil {
 		query = query.Where("status = ?", *filter.Status)
 	}
-	if filter.DateFrom != nil && *filter.DateFrom != "" {
-		query = query.Where("sent_at >= ?", *filter.DateFrom)
+	if filter.DateFrom != nil {
+		if parsed, ok := parseFilterTime(*filter.DateFrom); ok {
+			query = query.Where("sent_at >= ?", parsed)
+		}
 	}
-	if filter.DateTo != nil && *filter.DateTo != "" {
-		query = query.Where("sent_at <= ?", *filter.DateTo)
+	if filter.DateTo != nil {
+		if parsed, ok := parseFilterTime(*filter.DateTo); ok {
+			query = query.Where("sent_at <= ?", parsed)
+		}
 	}
-
-	err := query.Count(&count).Error
-	if err != nil {
-		return 0, err
-	}
-	return count, nil
+	return query
 }
 
 // ListClassroomCoursesForTeacher returns the course IDs stored on the classroom.
@@ -309,10 +299,35 @@ func (r *MySQLClassroomNotificationRepository) CountByClassroomWithCourseScope(c
 }
 
 func applyTeacherHistoryFilters(query *gorm.DB, filters []domainRepo.ClassroomNotificationFilter) *gorm.DB {
-	if len(filters) == 0 { return query }
+	if len(filters) == 0 {
+		return query
+	}
 	f := filters[0]
-	if f.Status != nil { query = query.Where("status = ?", *f.Status) }
-	if f.DateFrom != nil { if value, err := time.Parse(time.RFC3339Nano, *f.DateFrom); err == nil { query = query.Where("sent_at >= ?", value.UTC()) } }
-	if f.DateTo != nil { if value, err := time.Parse(time.RFC3339Nano, *f.DateTo); err == nil { query = query.Where("sent_at <= ?", value.UTC()) } }
+	if f.Status != nil {
+		query = query.Where("status = ?", *f.Status)
+	}
+	if f.DateFrom != nil {
+		if parsed, ok := parseFilterTime(*f.DateFrom); ok {
+			query = query.Where("sent_at >= ?", parsed)
+		}
+	}
+	if f.DateTo != nil {
+		if parsed, ok := parseFilterTime(*f.DateTo); ok {
+			query = query.Where("sent_at <= ?", parsed)
+		}
+	}
 	return query
+}
+
+func parseFilterTime(raw string) (time.Time, bool) {
+	val := strings.TrimSpace(raw)
+	if val == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
+		if parsed, err := time.Parse(layout, val); err == nil {
+			return parsed.UTC(), true
+		}
+	}
+	return time.Time{}, false
 }

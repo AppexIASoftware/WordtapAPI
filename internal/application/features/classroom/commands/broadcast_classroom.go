@@ -113,29 +113,11 @@ func (h *BroadcastClassroomHandler) Handle(ctx context.Context, cmd BroadcastCla
 
 	now := time.Now().UTC()
 	studentIDs := make([]string, 0, len(enrollments))
-	notifications := make([]entities.Notification, 0, len(enrollments))
-
 	for _, en := range enrollments {
 		if en.StudentID == "" {
 			continue
 		}
 		studentIDs = append(studentIDs, en.StudentID)
-		notifications = append(notifications, entities.Notification{
-			ID:               uuid.NewString(),
-			UserID:           en.StudentID,
-			NotificationType: entities.NotificationTypeReminder,
-			Title:            cmd.Title,
-			Body:             cmd.Message,
-			ActionURL:        &actionURL,
-			SentAt:           &now,
-			CreatedAt:        now,
-		})
-	}
-
-	if len(notifications) > 0 {
-		if err := h.inboxRepo.CreateBatch(ctx, notifications); err != nil {
-			return nil, fmt.Errorf("failed to save classroom notifications in inbox: %w", err)
-		}
 	}
 
 	tokens, err := h.deviceRepo.GetTokensByUsers(ctx, studentIDs)
@@ -176,7 +158,8 @@ func (h *BroadcastClassroomHandler) Handle(ctx context.Context, cmd BroadcastCla
 		wg.Wait()
 	}
 
-	// Persist master record in classroom_notifications for teacher and admin history audit
+	// Persist master record BEFORE child inbox notifications so FK integrity holds on batch insert
+	var classroomNotifID *string
 	if h.classroomNotifRepo != nil {
 		historyStatus := entities.ClassroomNotificationStatusSent
 		if len(studentIDs) == 0 {
@@ -188,18 +171,21 @@ func (h *BroadcastClassroomHandler) Handle(ctx context.Context, cmd BroadcastCla
 		var targetCourseID *string
 		var targetLessonID *string
 		actionType := "open_classroom"
-		if cmd.ActionType == "open_lesson" && strings.TrimSpace(cmd.ActionPayload) != "" {
-			lID := strings.TrimSpace(cmd.ActionPayload)
-			targetLessonID = &lID
-			actionType = "open_content"
-		} else if cmd.ActionType == "open_course" && strings.TrimSpace(cmd.ActionPayload) != "" {
-			cID := strings.TrimSpace(cmd.ActionPayload)
-			targetCourseID = &cID
-			actionType = "open_content"
+		if cmd.ActionType == "open_lesson" {
+			if lID := cleanEntityIDSegment(cmd.ActionPayload); lID != nil {
+				targetLessonID = lID
+				actionType = "open_content"
+			}
+		} else if cmd.ActionType == "open_course" {
+			if cID := cleanEntityIDSegment(cmd.ActionPayload); cID != nil {
+				targetCourseID = cID
+				actionType = "open_content"
+			}
 		}
 
+		historyID := uuid.NewString()
 		history := &entities.ClassroomNotification{
-			ID:             uuid.NewString(),
+			ID:             historyID,
 			ClassroomID:    &cmd.ClassroomID,
 			TeacherID:      cmd.TeacherID,
 			Title:          cmd.Title,
@@ -213,7 +199,38 @@ func (h *BroadcastClassroomHandler) Handle(ctx context.Context, cmd BroadcastCla
 			Status:         historyStatus,
 			CreatedAt:      now,
 		}
-		_ = h.classroomNotifRepo.Create(ctx, history)
+		if err := h.classroomNotifRepo.Create(ctx, history); err != nil {
+			if history.TargetCourseID != nil || history.TargetLessonID != nil {
+				history.TargetCourseID = nil
+				history.TargetLessonID = nil
+				err = h.classroomNotifRepo.Create(ctx, history)
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to create notification history: %w", err)
+			}
+		}
+		classroomNotifID = &historyID
+	}
+
+	notifications := make([]entities.Notification, 0, len(studentIDs))
+	for _, sID := range studentIDs {
+		notifications = append(notifications, entities.Notification{
+			ID:                      uuid.NewString(),
+			UserID:                  sID,
+			ClassroomNotificationID: classroomNotifID,
+			NotificationType:        entities.NotificationTypeReminder,
+			Title:                   cmd.Title,
+			Body:                    cmd.Message,
+			ActionURL:               &actionURL,
+			SentAt:                  &now,
+			CreatedAt:               now,
+		})
+	}
+
+	if len(notifications) > 0 {
+		if err := h.inboxRepo.CreateBatch(ctx, notifications); err != nil {
+			return nil, fmt.Errorf("failed to save classroom notifications in inbox: %w", err)
+		}
 	}
 
 	return &BroadcastClassroomResult{
@@ -221,4 +238,16 @@ func (h *BroadcastClassroomHandler) Handle(ctx context.Context, cmd BroadcastCla
 		RecipientsCount: len(studentIDs),
 		DevicesCount:    int(devicesDispatched.Load()),
 	}, nil
+}
+
+func cleanEntityIDSegment(raw string) *string {
+	s := strings.TrimSpace(raw)
+	if idx := strings.IndexAny(s, "?#"); idx >= 0 {
+		s = s[:idx]
+	}
+	s = strings.Trim(s, "/")
+	if s == "" || strings.Contains(s, "/") || len(s) > 36 {
+		return nil
+	}
+	return &s
 }

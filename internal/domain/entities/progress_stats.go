@@ -50,7 +50,7 @@ func (p *UserLessonProgress) CalculateProgress() {
 	}
 
 	if p.ProgressPercent >= 100.0 && p.CompletedAt == nil {
-		now := time.Now()
+		now := time.Now().UTC()
 		p.CompletedAt = &now
 	}
 }
@@ -126,7 +126,7 @@ func (uv *UserVocabulary) ApplySM2(q int) {
 	uv.EaseFactor = math.Round(newEF*100) / 100
 
 	uv.TimesSeen++
-	now := time.Now()
+	now := time.Now().UTC()
 	uv.LastReviewedAt = &now
 	nextReview := now.Add(time.Duration(uv.IntervalDays) * 24 * time.Hour)
 	uv.NextReviewDate = &nextReview
@@ -146,7 +146,7 @@ type UserLearningStats struct {
 	MaxLives          int        `gorm:"default:5;not null" json:"max_lives"`
 	LastLifeLostAt    *time.Time `json:"last_life_lost_at,omitempty"`
 	AccuracyPercent   float64    `gorm:"type:decimal(5,2);default:0.00;not null" json:"accuracy_percent"`
-	LastActivityDate  *time.Time `gorm:"type:date" json:"last_activity_date"`
+	LastActivityDate  *time.Time `gorm:"type:date;index:idx_learning_last_activity" json:"last_activity_date"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 
 	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
@@ -155,7 +155,7 @@ type UserLearningStats struct {
 func (s *UserLearningStats) DeductLife() bool {
 	if s.LivesRemaining > 0 {
 		s.LivesRemaining--
-		now := time.Now()
+		now := time.Now().UTC()
 		s.LastLifeLostAt = &now
 		return true
 	}
@@ -212,8 +212,8 @@ func (s *UserLearningStats) RecordVictory(starsEarned int, wordsPracticed int, n
 // UserDailyActivity guarda el registro de estudio y preguntas respondidas por día.
 type UserDailyActivity struct {
 	ID                string    `gorm:"type:varchar(36);primaryKey" json:"id"`
-	UserID            string    `gorm:"type:varchar(36);not null;uniqueIndex:idx_user_activity,priority:1;index:idx_act_user_date,priority:1" json:"user_id"`
-	ActivityDate      time.Time `gorm:"type:date;not null;uniqueIndex:idx_user_activity,priority:2;index:idx_act_user_date,priority:2" json:"activity_date"`
+	UserID            string    `gorm:"type:varchar(36);not null;uniqueIndex:idx_user_activity,priority:1;index:idx_daily_activity_date,priority:2" json:"user_id"`
+	ActivityDate      time.Time `gorm:"type:date;not null;uniqueIndex:idx_user_activity,priority:2;index:idx_daily_activity_date,priority:1" json:"activity_date"`
 	MinutesStudied    int       `gorm:"default:0;not null" json:"minutes_studied"`
 	QuestionsAnswered int       `gorm:"default:0;not null" json:"questions_answered"`
 	CorrectAnswers    int       `gorm:"default:0;not null" json:"correct_answers"`

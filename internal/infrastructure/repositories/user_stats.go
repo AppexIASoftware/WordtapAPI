@@ -6,166 +6,181 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
-func (r *MySQLUserRepository) GetLearningStats(ctx context.Context, userID string) (*entities.UserLearningStats, error) {
+func lockOrInitLearningStats(tx *gorm.DB, userID string) (*entities.UserLearningStats, error) {
+	seed := entities.UserLearningStats{
+		UserID:         userID,
+		LivesRemaining: 5,
+		MaxLives:       5,
+	}
+	if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&seed).Error; err != nil {
+		return nil, err
+	}
 	var stats entities.UserLearningStats
-	err := r.db.WithContext(ctx).Where("user_id = ?", userID).First(&stats).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			stats = entities.UserLearningStats{
-				UserID:         userID,
-				LivesRemaining: 5,
-				MaxLives:       5,
-			}
-			if createErr := r.db.WithContext(ctx).Create(&stats).Error; createErr != nil {
-				return nil, createErr
-			}
-			return &stats, nil
-		}
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("user_id = ?", userID).
+		First(&stats).Error; err != nil {
 		return nil, err
 	}
 	return &stats, nil
 }
 
-func (r *MySQLUserRepository) DeductUserLife(ctx context.Context, userID string) (*entities.UserLearningStats, error) {
-	stats, err := r.GetLearningStats(ctx, userID)
-	if err != nil {
+func (r *MySQLUserRepository) GetLearningStats(ctx context.Context, userID string) (*entities.UserLearningStats, error) {
+	var stats entities.UserLearningStats
+	err := r.db.WithContext(ctx).Where("user_id = ?", userID).First(&stats).Error
+	if err == nil {
+		return &stats, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
-	stats.DeductLife()
-	if err := r.db.WithContext(ctx).Model(&entities.UserLearningStats{}).
-		Where("user_id = ?", userID).
-		Updates(map[string]any{
-			"lives_remaining":   stats.LivesRemaining,
-			"last_life_lost_at": stats.LastLifeLostAt,
-			"updated_at":        time.Now(),
-		}).Error; err != nil {
+	var initialized *entities.UserLearningStats
+	if txErr := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var lockErr error
+		initialized, lockErr = lockOrInitLearningStats(tx, userID)
+		return lockErr
+	}); txErr != nil {
+		return nil, txErr
+	}
+	return initialized, nil
+}
+
+func (r *MySQLUserRepository) DeductUserLife(ctx context.Context, userID string) (*entities.UserLearningStats, error) {
+	var stats *entities.UserLearningStats
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		stats, txErr = lockOrInitLearningStats(tx, userID)
+		if txErr != nil {
+			return txErr
+		}
+		if !stats.DeductLife() {
+			return nil
+		}
+		now := time.Now().UTC()
+		stats.UpdatedAt = now
+		return tx.Model(&entities.UserLearningStats{}).
+			Where("user_id = ?", userID).
+			Updates(map[string]any{
+				"lives_remaining":   stats.LivesRemaining,
+				"last_life_lost_at": stats.LastLifeLostAt,
+				"updated_at":        now,
+			}).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	return stats, nil
 }
 
 func (r *MySQLUserRepository) RefillUserLives(ctx context.Context, userID string) (*entities.UserLearningStats, error) {
-	stats, err := r.GetLearningStats(ctx, userID)
+	var stats *entities.UserLearningStats
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var txErr error
+		stats, txErr = lockOrInitLearningStats(tx, userID)
+		if txErr != nil {
+			return txErr
+		}
+		stats.RefillLives()
+		now := time.Now().UTC()
+		stats.UpdatedAt = now
+		return tx.Model(&entities.UserLearningStats{}).
+			Where("user_id = ?", userID).
+			Updates(map[string]any{
+				"lives_remaining":   stats.LivesRemaining,
+				"last_life_lost_at": nil,
+				"updated_at":        now,
+			}).Error
+	})
 	if err != nil {
-		return nil, err
-	}
-	stats.RefillLives()
-	if err := r.db.WithContext(ctx).Model(&entities.UserLearningStats{}).
-		Where("user_id = ?", userID).
-		Updates(map[string]any{
-			"lives_remaining":   stats.LivesRemaining,
-			"last_life_lost_at": nil,
-			"updated_at":        time.Now(),
-		}).Error; err != nil {
 		return nil, err
 	}
 	return stats, nil
 }
 
 func (r *MySQLUserRepository) RecordGameVictory(ctx context.Context, params domainRepo.RecordProgressParams) (*domainRepo.RecordProgressResult, error) {
-	now := time.Now()
+	now := time.Now().UTC()
 	res := &domainRepo.RecordProgressResult{
 		StarsEarned: params.StarsEarned,
 	}
 
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var stats entities.UserLearningStats
-		if err := tx.Where("user_id = ?", params.UserID).First(&stats).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				stats = entities.UserLearningStats{
-					UserID:         params.UserID,
-					LivesRemaining: 5,
-					MaxLives:       5,
-				}
-				if err := tx.Create(&stats).Error; err != nil {
-					return err
-				}
-			} else {
-				return err
-			}
+		stats, err := lockOrInitLearningStats(tx, params.UserID)
+		if err != nil {
+			return err
 		}
 
 		if params.LessonID != "" {
-			var prog entities.UserLessonProgress
-			err := tx.Where("user_id = ? AND lesson_id = ?", params.UserID, params.LessonID).First(&prog).Error
-			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			seedProg := entities.UserLessonProgress{
+				UserID:         params.UserID,
+				LessonID:       params.LessonID,
+				CompletedItems: 0,
+				TotalItems:     params.WordsPracticed,
+				StartedAt:      &now,
+				UpdatedAt:      now,
+			}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&seedProg).Error; err != nil {
 				return err
 			}
-
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				prog = entities.UserLessonProgress{
-					UserID:          params.UserID,
-					LessonID:        params.LessonID,
-					CompletedItems:  params.WordsPracticed,
-					TotalItems:      params.WordsPracticed,
-					ProgressPercent: 100.0,
-					StartedAt:       &now,
-					CompletedAt:     &now,
-					UpdatedAt:       now,
-				}
-				if err := tx.Create(&prog).Error; err != nil {
-					return err
-				}
-				stats.LessonsCompleted++
-				res.LessonCompleted = true
-			} else {
-				wasCompleted := prog.CompletedAt != nil || prog.ProgressPercent >= 100.0
-				prog.ProgressPercent = 100.0
-				prog.CompletedAt = &now
-				if params.WordsPracticed > prog.CompletedItems {
-					prog.CompletedItems = params.WordsPracticed
-				}
-				prog.UpdatedAt = now
-				if err := tx.Save(&prog).Error; err != nil {
-					return err
-				}
-				if !wasCompleted {
-					stats.LessonsCompleted++
-				}
-				res.LessonCompleted = true
+			var prog entities.UserLessonProgress
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+				Where("user_id = ? AND lesson_id = ?", params.UserID, params.LessonID).
+				First(&prog).Error; err != nil {
+				return err
 			}
+			wasCompleted := prog.CompletedAt != nil || prog.ProgressPercent >= 100.0
+			if params.WordsPracticed > prog.TotalItems {
+				prog.TotalItems = params.WordsPracticed
+			}
+			if prog.TotalItems <= 0 {
+				prog.TotalItems = 1
+			}
+			prog.CompletedItems = prog.TotalItems
+			prog.ProgressPercent = 100.0
+			prog.CompletedAt = &now
+			prog.UpdatedAt = now
+			if err := tx.Save(&prog).Error; err != nil {
+				return err
+			}
+			if !wasCompleted {
+				stats.LessonsCompleted++
+			}
+			res.LessonCompleted = true
 		}
 
 		stats.RecordVictory(params.StarsEarned, params.WordsPracticed, now)
-		if err := tx.Save(&stats).Error; err != nil {
+		if err := tx.Save(stats).Error; err != nil {
 			return err
 		}
 
 		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+		seedDaily := entities.UserDailyActivity{
+			UserID:       params.UserID,
+			ActivityDate: today,
+		}
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&seedDaily).Error; err != nil {
+			return err
+		}
 		var daily entities.UserDailyActivity
-		dailyErr := tx.Where("user_id = ? AND activity_date = ?", params.UserID, today).First(&daily).Error
-		if dailyErr != nil && !errors.Is(dailyErr, gorm.ErrRecordNotFound) {
-			return dailyErr
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("user_id = ? AND activity_date = ?", params.UserID, today).
+			First(&daily).Error; err != nil {
+			return err
 		}
 		points := params.StarsEarned * 10
 		if points == 0 {
 			points = 5
 		}
-		if errors.Is(dailyErr, gorm.ErrRecordNotFound) {
-			daily = entities.UserDailyActivity{
-				UserID:            params.UserID,
-				ActivityDate:      today,
-				MinutesStudied:    2,
-				QuestionsAnswered: params.WordsPracticed,
-				CorrectAnswers:    params.WordsPracticed,
-				PointsEarned:      points,
-			}
-			if err := tx.Create(&daily).Error; err != nil {
-				return err
-			}
-		} else {
-			daily.MinutesStudied += 2
-			daily.QuestionsAnswered += params.WordsPracticed
-			daily.CorrectAnswers += params.WordsPracticed
-			daily.PointsEarned += points
-			if err := tx.Save(&daily).Error; err != nil {
-				return err
-			}
+		daily.MinutesStudied += 2
+		daily.QuestionsAnswered += params.WordsPracticed
+		daily.CorrectAnswers += params.WordsPracticed
+		daily.PointsEarned += points
+		if err := tx.Save(&daily).Error; err != nil {
+			return err
 		}
 
 		res.TotalStars = stats.TotalStars

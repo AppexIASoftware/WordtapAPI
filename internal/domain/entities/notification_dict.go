@@ -57,20 +57,22 @@ func (sh *UserSearchHistory) BeforeCreate(tx *gorm.DB) error {
 
 // Notification represents an inbox item or reminder delivered to a user.
 type Notification struct {
-	ID               string           `gorm:"type:varchar(36);primaryKey" json:"id"`
-	UserID           string           `gorm:"type:varchar(36);not null;index:idx_notif_user,priority:1" json:"user_id"`
-	NotificationType NotificationType `gorm:"type:varchar(40);not null" json:"notification_type"`
-	Title            string           `gorm:"type:varchar(180);not null" json:"title"`
-	Body             string           `gorm:"type:text;not null" json:"body"`
-	ActionURL        *string          `gorm:"type:text" json:"action_url"`
-	VocabularyItemID *string          `gorm:"type:varchar(36);index" json:"vocabulary_item_id"`
-	IsRead           bool             `gorm:"default:false;not null;index:idx_notif_user,priority:2" json:"is_read"`
-	SentAt           *time.Time       `json:"sent_at"`
-	ReadAt           *time.Time       `json:"read_at"`
-	CreatedAt        time.Time        `gorm:"index:idx_notif_user,priority:3" json:"created_at"`
+	ID                      string           `gorm:"type:varchar(36);primaryKey" json:"id"`
+	UserID                  string           `gorm:"type:varchar(36);not null;index:idx_notif_user,priority:1" json:"user_id"`
+	ClassroomNotificationID *string          `gorm:"type:varchar(36);index" json:"classroom_notification_id,omitempty"`
+	NotificationType        NotificationType `gorm:"type:varchar(40);not null" json:"notification_type"`
+	Title                   string           `gorm:"type:varchar(180);not null" json:"title"`
+	Body                    string           `gorm:"type:text;not null" json:"body"`
+	ActionURL               *string          `gorm:"type:text" json:"action_url"`
+	VocabularyItemID        *string          `gorm:"type:varchar(36);index" json:"vocabulary_item_id"`
+	IsRead                  bool             `gorm:"default:false;not null;index:idx_notif_user,priority:2" json:"is_read"`
+	SentAt                  *time.Time       `json:"sent_at"`
+	ReadAt                  *time.Time       `json:"read_at"`
+	CreatedAt               time.Time        `gorm:"index:idx_notif_user,priority:3" json:"created_at"`
 
-	User           *User           `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
-	VocabularyItem *VocabularyItem `gorm:"foreignKey:VocabularyItemID;constraint:OnDelete:SET NULL" json:"vocabulary_item,omitempty"`
+	User                  *User                  `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
+	ClassroomNotification *ClassroomNotification `gorm:"foreignKey:ClassroomNotificationID;constraint:OnDelete:SET NULL" json:"classroom_notification,omitempty"`
+	VocabularyItem        *VocabularyItem        `gorm:"foreignKey:VocabularyItemID;constraint:OnDelete:SET NULL" json:"vocabulary_item,omitempty"`
 }
 
 func (n *Notification) BeforeCreate(tx *gorm.DB) error {

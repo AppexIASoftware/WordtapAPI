@@ -40,28 +40,48 @@ func (r *MySQLNotificationInbox) UnreadCount(ctx context.Context, userID string)
 }
 
 func (r *MySQLNotificationInbox) MarkRead(ctx context.Context, userID, id string) (bool, error) {
-	result := r.db.WithContext(ctx).Model(&entities.Notification{}).
-		Where("user_id = ? AND id = ? AND is_read = ?", userID, id, false).
-		Updates(map[string]any{"is_read": true, "read_at": time.Now().UTC()})
-	if result.Error != nil {
-		return false, result.Error
-	}
-	if result.RowsAffected > 0 {
-		var notif entities.Notification
-		if err := r.db.WithContext(ctx).Select("title", "created_at").First(&notif, "id = ?", id).Error; err == nil {
-			windowStart := notif.CreatedAt.Add(-10 * time.Minute)
-			windowEnd := notif.CreatedAt.Add(10 * time.Minute)
-			_ = r.db.WithContext(ctx).Exec(`
-				UPDATE classroom_notifications
-				SET read_count = read_count + 1,
-				    status = CASE WHEN status = 'partial' OR status = 'failed' THEN 'sent' ELSE status END
-				WHERE title = ? AND sent_at BETWEEN ? AND ?
-			`, notif.Title, windowStart, windowEnd).Error
+	markFn := func(db *gorm.DB) (bool, error) {
+		result := db.WithContext(ctx).Model(&entities.Notification{}).
+			Where("user_id = ? AND id = ? AND is_read = ?", userID, id, false).
+			Updates(map[string]any{"is_read": true, "read_at": time.Now().UTC()})
+		if result.Error != nil {
+			return false, result.Error
 		}
+		if result.RowsAffected > 0 {
+			if err := db.WithContext(ctx).Exec(`
+				UPDATE classroom_notifications cn
+				INNER JOIN notifications n ON n.classroom_notification_id = cn.id
+				SET cn.read_count = cn.read_count + 1,
+				    cn.status = CASE WHEN cn.status IN ('partial', 'failed') THEN 'sent' ELSE cn.status END
+				WHERE n.id = ?
+			`, id).Error; err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+		return false, nil
+	}
+
+	var markedNew bool
+	var err error
+	if r.db.DryRun {
+		markedNew, err = markFn(r.db)
+	} else {
+		err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var txErr error
+			markedNew, txErr = markFn(tx)
+			return txErr
+		})
+	}
+	if err != nil {
+		return false, err
+	}
+	if markedNew {
 		return true, nil
 	}
+
 	var count int64
-	err := r.db.WithContext(ctx).Model(&entities.Notification{}).Where("user_id = ? AND id = ?", userID, id).Count(&count).Error
+	err = r.db.WithContext(ctx).Model(&entities.Notification{}).Where("user_id = ? AND id = ?", userID, id).Count(&count).Error
 	return count > 0, err
 }
 

@@ -5,6 +5,9 @@ import (
 	"errors"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
+	"github.com/AppexIASoftware/WordtapAPI/internal/domain/apperrors"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
@@ -100,7 +103,34 @@ func (r *MySQLClassroomRepository) FindByStudent(ctx context.Context, studentID 
 
 // EnrollStudent registers a student in the virtual classroom.
 func (r *MySQLClassroomRepository) EnrollStudent(ctx context.Context, enrollment *entities.ClassroomEnrollment) error {
-	return r.db.WithContext(ctx).Create(enrollment).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var classroom entities.Classroom
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ?", enrollment.ClassroomID).
+			First(&classroom).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return apperrors.New("El código ingresado no corresponde a un aula activa.")
+			}
+			return err
+		}
+		if !classroom.IsActive {
+			return apperrors.New("El código ingresado no corresponde a un aula activa.")
+		}
+
+		var existing entities.ClassroomEnrollment
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("classroom_id = ? AND student_id = ?", enrollment.ClassroomID, enrollment.StudentID).
+			First(&existing).Error
+		if err == nil {
+			*enrollment = existing
+			return nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		return tx.Create(enrollment).Error
+	})
 }
 
 // FindEnrollment checks whether a student is already enrolled in a classroom.

@@ -7,6 +7,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/commands"
 	"github.com/AppexIASoftware/WordtapAPI/internal/application/features/inbox"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
 )
 
 type mockClassroomRepoForBroadcast struct {
@@ -51,6 +52,7 @@ func (m *mockClassroomRepoForBroadcast) Update(context.Context, *entities.Classr
 
 type mockInboxRepoForBroadcast struct {
 	created []entities.Notification
+	events  *[]string
 }
 
 func (m *mockInboxRepoForBroadcast) List(context.Context, string, int, *inbox.Cursor) (inbox.Page, error) {
@@ -66,8 +68,57 @@ func (m *mockInboxRepoForBroadcast) Create(context.Context, *entities.Notificati
 	return nil
 }
 func (m *mockInboxRepoForBroadcast) CreateBatch(_ context.Context, notifs []entities.Notification) error {
+	if m.events != nil {
+		*m.events = append(*m.events, "inbox.create_batch")
+	}
 	m.created = append(m.created, notifs...)
 	return nil
+}
+
+type mockClassroomNotifRepoForBroadcast struct {
+	created []*entities.ClassroomNotification
+	events  *[]string
+}
+
+func (m *mockClassroomNotifRepoForBroadcast) Create(_ context.Context, notification *entities.ClassroomNotification) error {
+	if m.events != nil {
+		*m.events = append(*m.events, "classroom_notif.create")
+	}
+	m.created = append(m.created, notification)
+	return nil
+}
+func (m *mockClassroomNotifRepoForBroadcast) ListByClassroom(context.Context, string, int, int) ([]entities.ClassroomNotification, error) {
+	return nil, nil
+}
+func (m *mockClassroomNotifRepoForBroadcast) ListByTeacher(context.Context, string, int, int) ([]entities.ClassroomNotification, error) {
+	return nil, nil
+}
+func (m *mockClassroomNotifRepoForBroadcast) ListByCourse(context.Context, string, int, int) ([]entities.ClassroomNotification, error) {
+	return nil, nil
+}
+func (m *mockClassroomNotifRepoForBroadcast) ListByLesson(context.Context, string, int, int) ([]entities.ClassroomNotification, error) {
+	return nil, nil
+}
+func (m *mockClassroomNotifRepoForBroadcast) ListAll(context.Context, domainRepo.ClassroomNotificationFilter, int, int) ([]entities.ClassroomNotification, error) {
+	return nil, nil
+}
+func (m *mockClassroomNotifRepoForBroadcast) CountByClassroom(context.Context, string) (int64, error) {
+	return 0, nil
+}
+func (m *mockClassroomNotifRepoForBroadcast) CountByTeacher(context.Context, string) (int64, error) {
+	return 0, nil
+}
+func (m *mockClassroomNotifRepoForBroadcast) CountAll(context.Context, domainRepo.ClassroomNotificationFilter) (int64, error) {
+	return 0, nil
+}
+func (m *mockClassroomNotifRepoForBroadcast) ListClassroomCoursesForTeacher(context.Context, string) ([]string, error) {
+	return nil, nil
+}
+func (m *mockClassroomNotifRepoForBroadcast) ListByClassroomWithCourseScope(context.Context, string, int, int, ...domainRepo.ClassroomNotificationFilter) ([]entities.ClassroomNotification, error) {
+	return nil, nil
+}
+func (m *mockClassroomNotifRepoForBroadcast) CountByClassroomWithCourseScope(context.Context, string, ...domainRepo.ClassroomNotificationFilter) (int64, error) {
+	return 0, nil
 }
 
 type mockDeviceRepoForBroadcast struct {
@@ -231,5 +282,47 @@ func TestBroadcastClassroom_Success(t *testing.T) {
 	}
 	if *inboxRepo.created[len(inboxRepo.created)-1].ActionURL != "/courses/course-123" {
 		t.Errorf("expected action url '/courses/course-123', got %s", *inboxRepo.created[len(inboxRepo.created)-1].ActionURL)
+	}
+}
+
+func TestBroadcastClassroom_CreatesParentHistoryBeforeInboxFK(t *testing.T) {
+	var events []string
+	clsRepo := &mockClassroomRepoForBroadcast{
+		classroom: &entities.Classroom{ID: "cls-fk", TeacherID: "teacher-1"},
+		enrollments: []entities.ClassroomEnrollment{
+			{StudentID: "stu-1"},
+			{StudentID: "stu-2"},
+		},
+	}
+	inboxRepo := &mockInboxRepoForBroadcast{events: &events}
+	notifRepo := &mockClassroomNotifRepoForBroadcast{events: &events}
+
+	handler := commands.NewBroadcastClassroomHandler(
+		clsRepo,
+		inboxRepo,
+		&mockDeviceRepoForBroadcast{tokens: []string{"tok-1"}},
+		&mockPushSenderForBroadcast{},
+	).WithClassroomNotifRepo(notifRepo)
+
+	_, err := handler.Handle(context.Background(), commands.BroadcastClassroomCommand{
+		ClassroomID: "cls-fk",
+		TeacherID:   "teacher-1",
+		Title:       "Aviso FK",
+		Message:     "Mensaje con historial vinculado",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(events) != 2 || events[0] != "classroom_notif.create" || events[1] != "inbox.create_batch" {
+		t.Fatalf("expected parent creation before inbox batch, got %v", events)
+	}
+	if len(notifRepo.created) != 1 || notifRepo.created[0].ID == "" {
+		t.Fatalf("expected 1 parent ClassroomNotification with ID, got %+v", notifRepo.created)
+	}
+	parentID := notifRepo.created[0].ID
+	for i, n := range inboxRepo.created {
+		if n.ClassroomNotificationID == nil || *n.ClassroomNotificationID != parentID {
+			t.Fatalf("inbox[%d] expected ClassroomNotificationID=%q, got %v", i, parentID, n.ClassroomNotificationID)
+		}
 	}
 }

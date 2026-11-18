@@ -65,9 +65,9 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 // UserAuthAccount vincula cuentas de proveedores OAuth (Google, Apple) con el usuario.
 type UserAuthAccount struct {
 	ID                string    `gorm:"type:varchar(36);primaryKey" json:"id"`
-	UserID            string    `gorm:"type:varchar(36);not null;uniqueIndex:idx_provider_account" json:"user_id"`
-	Provider          string    `gorm:"type:varchar(40);not null;uniqueIndex:idx_provider_account" json:"provider"`
-	ProviderAccountID string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_provider_account" json:"provider_account_id"`
+	UserID            string    `gorm:"type:varchar(36);not null;index:idx_user_auth_accounts_user_id" json:"user_id"`
+	Provider          string    `gorm:"type:varchar(40);not null;uniqueIndex:idx_provider_account,priority:1" json:"provider"`
+	ProviderAccountID string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_provider_account,priority:2" json:"provider_account_id"`
 	CreatedAt         time.Time `json:"created_at"`
 
 	User *User `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`

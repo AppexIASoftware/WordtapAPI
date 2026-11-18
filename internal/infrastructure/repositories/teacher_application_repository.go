@@ -3,9 +3,11 @@ package repositories
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	domainRepo "github.com/AppexIASoftware/WordtapAPI/internal/domain/repositories"
@@ -88,31 +90,60 @@ func (r *MySQLTeacherApplicationRepository) Update(ctx context.Context, app *ent
 	return r.db.WithContext(ctx).Save(app).Error
 }
 
+func lockTeacherAppAndUser(tx *gorm.DB, appID string) (*entities.TeacherApplication, *entities.User, error) {
+	var app entities.TeacherApplication
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", appID).First(&app).Error; err != nil {
+		return nil, nil, err
+	}
+	var user entities.User
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", app.UserID).First(&user).Error; err != nil {
+		return nil, nil, err
+	}
+	if user.Role == entities.RoleAdmin {
+		return nil, nil, errors.New("cannot modify an administrator account through teacher application workflow")
+	}
+	return &app, &user, nil
+}
+
+func reviewerPtr(reviewerID string) *string {
+	id := strings.TrimSpace(reviewerID)
+	if id == "" {
+		return nil
+	}
+	return &id
+}
+
 func (r *MySQLTeacherApplicationRepository) ApproveInTx(ctx context.Context, appID string, reviewerID string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var app entities.TeacherApplication
-		if err := tx.Where("id = ?", appID).First(&app).Error; err != nil {
+		app, user, err := lockTeacherAppAndUser(tx, appID)
+		if err != nil {
 			return err
 		}
 		if app.Status == entities.ApplicationStatusApproved {
 			return errors.New("application is already approved")
 		}
 
-		now := time.Now()
+		now := time.Now().UTC()
 		app.Status = entities.ApplicationStatusApproved
-		app.ReviewedBy = &reviewerID
+		app.ReviewedBy = reviewerPtr(reviewerID)
 		app.ReviewedAt = &now
 		app.UpdatedAt = now
-		if err := tx.Save(&app).Error; err != nil {
+		if err := tx.Save(app).Error; err != nil {
 			return err
 		}
 
-		// Promover al usuario a rol de instructor
-		if err := tx.Model(&entities.User{}).Where("id = ?", app.UserID).Updates(map[string]any{
-			"role":       entities.RoleInstructor,
-			"updated_at": now,
-		}).Error; err != nil {
-			return err
+		// Protect moderator accounts from unintended role downgrade while restoring is_active if needed
+		if user.Role != entities.RoleModerator || !user.IsActive {
+			updates := map[string]any{
+				"is_active":  true,
+				"updated_at": now,
+			}
+			if user.Role != entities.RoleModerator {
+				updates["role"] = entities.RoleInstructor
+			}
+			if err := tx.Model(&entities.User{}).Where("id = ?", app.UserID).Updates(updates).Error; err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -120,39 +151,54 @@ func (r *MySQLTeacherApplicationRepository) ApproveInTx(ctx context.Context, app
 }
 
 func (r *MySQLTeacherApplicationRepository) RejectInTx(ctx context.Context, appID string, reviewerID string, reason string) error {
-	now := time.Now()
-	var reasonPtr *string
-	if reason != "" {
-		reasonPtr = &reason
-	}
-	return r.db.WithContext(ctx).Model(&entities.TeacherApplication{}).Where("id = ?", appID).Updates(map[string]any{
-		"status":           entities.ApplicationStatusRejected,
-		"reviewed_by":      reviewerID,
-		"reviewed_at":      now,
-		"rejection_reason": reasonPtr,
-		"updated_at":       now,
-	}).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		app, _, err := lockTeacherAppAndUser(tx, appID)
+		if err != nil {
+			return err
+		}
+		if app.Status == entities.ApplicationStatusApproved || app.Status == entities.ApplicationStatusSuspended {
+			return errors.New("cannot reject an already approved or suspended application")
+		}
+
+		now := time.Now().UTC()
+		var reasonPtr *string
+		if reason != "" {
+			reasonPtr = &reason
+		}
+		app.Status = entities.ApplicationStatusRejected
+		app.ReviewedBy = reviewerPtr(reviewerID)
+		app.ReviewedAt = &now
+		app.RejectionReason = reasonPtr
+		app.UpdatedAt = now
+		return tx.Save(app).Error
+	})
 }
 
 func (r *MySQLTeacherApplicationRepository) SuspendInTx(ctx context.Context, appID string, reviewerID string, reason string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var app entities.TeacherApplication
-		if err := tx.Where("id = ?", appID).First(&app).Error; err != nil {
+		app, user, err := lockTeacherAppAndUser(tx, appID)
+		if err != nil {
 			return err
 		}
+		if app.Status != entities.ApplicationStatusApproved {
+			return errors.New("only approved applications can be suspended")
+		}
+		if user.Role == entities.RoleModerator {
+			return errors.New("cannot suspend a moderator account through teacher application workflow")
+		}
 
-		now := time.Now()
+		now := time.Now().UTC()
 		var reasonPtr *string
 		if reason != "" {
 			reasonPtr = &reason
 		}
 
 		app.Status = entities.ApplicationStatusSuspended
-		app.ReviewedBy = &reviewerID
+		app.ReviewedBy = reviewerPtr(reviewerID)
 		app.ReviewedAt = &now
 		app.RejectionReason = reasonPtr
 		app.UpdatedAt = now
-		if err := tx.Save(&app).Error; err != nil {
+		if err := tx.Save(app).Error; err != nil {
 			return err
 		}
 
@@ -175,26 +221,32 @@ func (r *MySQLTeacherApplicationRepository) SuspendInTx(ctx context.Context, app
 
 func (r *MySQLTeacherApplicationRepository) ReactivateInTx(ctx context.Context, appID string, reviewerID string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var app entities.TeacherApplication
-		if err := tx.Where("id = ?", appID).First(&app).Error; err != nil {
+		app, user, err := lockTeacherAppAndUser(tx, appID)
+		if err != nil {
 			return err
 		}
+		if app.Status != entities.ApplicationStatusSuspended && app.Status != entities.ApplicationStatusRejected {
+			return errors.New("only suspended or rejected applications can be reactivated")
+		}
 
-		now := time.Now()
+		now := time.Now().UTC()
 		app.Status = entities.ApplicationStatusApproved
-		app.ReviewedBy = &reviewerID
+		app.ReviewedBy = reviewerPtr(reviewerID)
 		app.ReviewedAt = &now
 		app.UpdatedAt = now
-		if err := tx.Save(&app).Error; err != nil {
+		if err := tx.Save(app).Error; err != nil {
 			return err
 		}
 
-		// Reactivar la cuenta y asegurar rol de instructor
-		if err := tx.Model(&entities.User{}).Where("id = ?", app.UserID).Updates(map[string]any{
+		// Reactivar la cuenta preservando rol si ya es moderador
+		updates := map[string]any{
 			"is_active":  true,
-			"role":       entities.RoleInstructor,
 			"updated_at": now,
-		}).Error; err != nil {
+		}
+		if user.Role != entities.RoleModerator {
+			updates["role"] = entities.RoleInstructor
+		}
+		if err := tx.Model(&entities.User{}).Where("id = ?", app.UserID).Updates(updates).Error; err != nil {
 			return err
 		}
 
@@ -204,19 +256,31 @@ func (r *MySQLTeacherApplicationRepository) ReactivateInTx(ctx context.Context, 
 
 func (r *MySQLTeacherApplicationRepository) DeleteInTx(ctx context.Context, appID string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var app entities.TeacherApplication
-		if err := tx.Where("id = ?", appID).First(&app).Error; err != nil {
+		app, user, err := lockTeacherAppAndUser(tx, appID)
+		if err != nil {
 			return err
 		}
 
-		now := time.Now()
-		// Revertir rol a estudiante si era instructor
-		_ = tx.Model(&entities.User{}).Where("id = ? AND role = ?", app.UserID, entities.RoleInstructor).Updates(map[string]any{
-			"role":       entities.RoleStudent,
-			"updated_at": now,
-		}).Error
+		now := time.Now().UTC()
+		// Revertir rol solo si se elimina la única postulación aprobada activa del instructor
+		if app.Status == entities.ApplicationStatusApproved && user.Role == entities.RoleInstructor {
+			var otherApproved int64
+			if err := tx.Model(&entities.TeacherApplication{}).
+				Where("user_id = ? AND id <> ? AND status = ?", app.UserID, app.ID, entities.ApplicationStatusApproved).
+				Count(&otherApproved).Error; err != nil {
+				return err
+			}
+			if otherApproved == 0 {
+				if err := tx.Model(&entities.User{}).Where("id = ? AND role = ?", app.UserID, entities.RoleInstructor).Updates(map[string]any{
+					"role":       entities.RoleStudent,
+					"updated_at": now,
+				}).Error; err != nil {
+					return err
+				}
+			}
+		}
 
 		// Eliminar la postulación
-		return tx.Delete(&app).Error
+		return tx.Delete(app).Error
 	})
 }

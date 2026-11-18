@@ -12,6 +12,10 @@ import (
 func AutoMigrate(db *gorm.DB) error {
 	fmt.Println("Running database migrations...")
 
+	if err := prepareUniqueConstraints(db); err != nil {
+		return fmt.Errorf("failed to prepare unique constraints: %w", err)
+	}
+
 	err := db.AutoMigrate(
 		// Authentication & User
 		&entities.User{},
@@ -56,6 +60,7 @@ func AutoMigrate(db *gorm.DB) error {
 		// Diccionario y Notificaciones
 		&entities.TranslationEntry{},
 		&entities.UserSearchHistory{},
+		&entities.ClassroomNotification{},
 		&entities.Notification{},
 		&entities.NotificationPreference{},
 		&entities.NotificationSchedule{},
@@ -193,5 +198,59 @@ func AutoMigrate(db *gorm.DB) error {
 	}
 
 	fmt.Println("Database migration completed successfully!")
+	return nil
+}
+
+func prepareUniqueConstraints(db *gorm.DB) error {
+	if db == nil || db.Dialector == nil || db.Dialector.Name() != "mysql" {
+		return nil
+	}
+
+	if db.Migrator().HasTable(&entities.UserAuthAccount{}) {
+		var idxCols int64
+		if err := db.Raw(`
+			SELECT COUNT(*) FROM information_schema.STATISTICS
+			WHERE TABLE_SCHEMA = DATABASE()
+			  AND TABLE_NAME = 'user_auth_accounts'
+			  AND INDEX_NAME = 'idx_provider_account'
+		`).Scan(&idxCols).Error; err != nil {
+			return err
+		}
+		if idxCols > 2 {
+			// Ensure user_id stays indexed before dropping legacy 3-column index backing FK
+			if !db.Migrator().HasIndex(&entities.UserAuthAccount{}, "idx_user_auth_accounts_user_id") {
+				if err := db.Exec(`CREATE INDEX idx_user_auth_accounts_user_id ON user_auth_accounts (user_id)`).Error; err != nil {
+					return err
+				}
+			}
+			if err := db.Exec(`DROP INDEX idx_provider_account ON user_auth_accounts`).Error; err != nil {
+				return err
+			}
+		}
+		if !db.Migrator().HasIndex(&entities.UserAuthAccount{}, "idx_provider_account") {
+			if err := db.Exec(`
+				DELETE ua1 FROM user_auth_accounts ua1
+				INNER JOIN user_auth_accounts ua2
+				  ON ua1.provider = ua2.provider
+				 AND ua1.provider_account_id = ua2.provider_account_id
+				 AND (ua1.created_at > ua2.created_at OR (ua1.created_at = ua2.created_at AND ua1.id > ua2.id))
+			`).Error; err != nil {
+				return err
+			}
+		}
+	}
+
+	if db.Migrator().HasTable(&entities.ClassroomEnrollment{}) && !db.Migrator().HasIndex(&entities.ClassroomEnrollment{}, "idx_classroom_student") {
+		if err := db.Exec(`
+			DELETE ce1 FROM classroom_enrollments ce1
+			INNER JOIN classroom_enrollments ce2
+			  ON ce1.classroom_id = ce2.classroom_id
+			 AND ce1.student_id = ce2.student_id
+			 AND (ce1.enrolled_at > ce2.enrolled_at OR (ce1.enrolled_at = ce2.enrolled_at AND ce1.id > ce2.id))
+		`).Error; err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

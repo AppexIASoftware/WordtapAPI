@@ -42,8 +42,8 @@ func (c *Classroom) BeforeCreate(tx *gorm.DB) error {
 // ClassroomEnrollment registra la vinculación de un estudiante a un aula privada mediante código.
 type ClassroomEnrollment struct {
 	ID            string     `gorm:"type:varchar(36);primaryKey" json:"id"`
-	ClassroomID   string     `gorm:"type:varchar(36);index;not null" json:"classroom_id"`
-	StudentID     string     `gorm:"type:varchar(36);index;not null" json:"student_id"`
+	ClassroomID   string     `gorm:"type:varchar(36);index;uniqueIndex:idx_classroom_student,priority:1;not null" json:"classroom_id"`
+	StudentID     string     `gorm:"type:varchar(36);index;uniqueIndex:idx_classroom_student,priority:2;not null" json:"student_id"`
 	EnrolledAt    time.Time  `json:"enrolled_at"`
 	LastActiveAt  *time.Time `json:"last_active_at,omitempty"`
 	WordsMastered int        `gorm:"default:0;not null" json:"words_mastered"`
@@ -60,7 +60,7 @@ func (e *ClassroomEnrollment) BeforeCreate(tx *gorm.DB) error {
 		e.ID = uuid.NewString()
 	}
 	if e.EnrolledAt.IsZero() {
-		e.EnrolledAt = time.Now()
+		e.EnrolledAt = time.Now().UTC()
 	}
 	return nil
 }

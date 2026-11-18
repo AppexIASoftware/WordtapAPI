@@ -49,7 +49,7 @@ func (h *EnrollStudentHandler) Handle(ctx context.Context, cmd EnrollStudentComm
 		return existing, nil
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	enrollment := &entities.ClassroomEnrollment{
 		ClassroomID:   classroom.ID,
 		StudentID:     cmd.StudentID,

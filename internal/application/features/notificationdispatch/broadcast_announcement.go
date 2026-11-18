@@ -89,24 +89,6 @@ func (h *BroadcastAnnouncementHandler) Handle(ctx context.Context, cmd Broadcast
 	}
 
 	now := time.Now().UTC()
-	notifications := make([]entities.Notification, len(userIDs))
-	for i, uID := range userIDs {
-		notifications[i] = entities.Notification{
-			ID:               uuid.NewString(),
-			UserID:           uID,
-			NotificationType: notifType,
-			Title:            cmd.Title,
-			Body:             cmd.Body,
-			ActionURL:        cmd.ActionURL,
-			SentAt:           &now,
-			CreatedAt:        now,
-		}
-	}
-
-	if err := h.inboxRepo.CreateBatch(ctx, notifications); err != nil {
-		return nil, fmt.Errorf("failed to save announcements in inbox: %w", err)
-	}
-
 	tokens, err := h.deviceRepo.GetTokensByUsers(ctx, userIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch recipient device tokens: %w", err)
@@ -154,31 +136,31 @@ func (h *BroadcastAnnouncementHandler) Handle(ctx context.Context, cmd Broadcast
 		finalStatus = entities.ClassroomNotificationStatusPartial
 	}
 
-	// Persist master record in classroom_notifications for global announcement audit history
-	if h.classroomNotifRepo != nil {
+	// Persist master record BEFORE child inbox entries so classroom_notification_id FK is valid
+	var classroomNotifID *string
+	adminID := strings.TrimSpace(cmd.AdminID)
+	if h.classroomNotifRepo != nil && adminID != "" {
 		actionType := "announcement"
 		var targetCourseID *string
 		var targetLessonID *string
 		if cmd.ActionURL != nil && *cmd.ActionURL != "" {
-			url := *cmd.ActionURL
-			if strings.HasPrefix(url, "/courses/") {
-				cID := strings.TrimPrefix(url, "/courses/")
-				targetCourseID = &cID
-				actionType = "open_content"
-			} else if strings.HasPrefix(url, "/lessons/") {
-				lID := strings.TrimPrefix(url, "/lessons/")
-				targetLessonID = &lID
-				actionType = "open_content"
+			rawURL := *cmd.ActionURL
+			if strings.HasPrefix(rawURL, "/courses/") {
+				if cID := cleanEntityIDSegment(strings.TrimPrefix(rawURL, "/courses/")); cID != nil {
+					targetCourseID = cID
+					actionType = "open_content"
+				}
+			} else if strings.HasPrefix(rawURL, "/lessons/") {
+				if lID := cleanEntityIDSegment(strings.TrimPrefix(rawURL, "/lessons/")); lID != nil {
+					targetLessonID = lID
+					actionType = "open_content"
+				}
 			}
 		}
 
-		adminID := cmd.AdminID
-		if adminID == "" {
-			adminID = "system-admin"
-		}
-
+		historyID := uuid.NewString()
 		history := &entities.ClassroomNotification{
-			ID:             uuid.NewString(),
+			ID:             historyID,
 			ClassroomID:    nil,
 			TeacherID:      adminID,
 			Title:          cmd.Title,
@@ -192,11 +174,52 @@ func (h *BroadcastAnnouncementHandler) Handle(ctx context.Context, cmd Broadcast
 			Status:         finalStatus,
 			CreatedAt:      now,
 		}
-		_ = h.classroomNotifRepo.Create(ctx, history)
+		if err := h.classroomNotifRepo.Create(ctx, history); err != nil {
+			if history.TargetCourseID != nil || history.TargetLessonID != nil {
+				history.TargetCourseID = nil
+				history.TargetLessonID = nil
+				err = h.classroomNotifRepo.Create(ctx, history)
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to create notification history: %w", err)
+			}
+		}
+		classroomNotifID = &historyID
+	}
+
+	notifications := make([]entities.Notification, len(userIDs))
+	for i, uID := range userIDs {
+		notifications[i] = entities.Notification{
+			ID:                      uuid.NewString(),
+			UserID:                  uID,
+			ClassroomNotificationID: classroomNotifID,
+			NotificationType:        notifType,
+			Title:                   cmd.Title,
+			Body:                    cmd.Body,
+			ActionURL:               cmd.ActionURL,
+			SentAt:                  &now,
+			CreatedAt:               now,
+		}
+	}
+
+	if err := h.inboxRepo.CreateBatch(ctx, notifications); err != nil {
+		return nil, fmt.Errorf("failed to save announcements in inbox: %w", err)
 	}
 
 	return &BroadcastAnnouncementResult{
 		RecipientsCount: len(userIDs),
 		DevicesCount:    int(devicesDispatched.Load()),
 	}, nil
+}
+
+func cleanEntityIDSegment(raw string) *string {
+	s := strings.TrimSpace(raw)
+	if idx := strings.IndexAny(s, "?#"); idx >= 0 {
+		s = s[:idx]
+	}
+	s = strings.Trim(s, "/")
+	if s == "" || strings.Contains(s, "/") || len(s) > 36 {
+		return nil
+	}
+	return &s
 }
