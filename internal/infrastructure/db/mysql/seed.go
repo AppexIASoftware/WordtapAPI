@@ -53,13 +53,16 @@ func Seed(db *gorm.DB) error {
 		}
 	}
 
-	// 0.1 Docente/Instructor Inicial (Bootstrap desde variable de entorno o default demo)
-	teacherEmail := strings.ToLower(strings.TrimSpace(os.Getenv("INITIAL_TEACHER_EMAIL")))
-	if teacherEmail == "" {
+	// 0.1 Docente/Instructor Inicial (env explícito en cualquier entorno; fallback demo solo en dev/local)
+	appEnv := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
+	isDevEnv := appEnv == "" || appEnv == "development" || appEnv == "dev" || appEnv == "local"
+	explicitTeacherEmail := strings.ToLower(strings.TrimSpace(os.Getenv("INITIAL_TEACHER_EMAIL")))
+	teacherEmail := explicitTeacherEmail
+	if teacherEmail == "" && isDevEnv {
 		teacherEmail = strings.ToLower(strings.TrimSpace(os.Getenv("DEV_TEACHER_EMAIL")))
-	}
-	if teacherEmail == "" {
-		teacherEmail = "mateo.silva@wordtap.app"
+		if teacherEmail == "" {
+			teacherEmail = "mateo.silva@wordtap.app"
+		}
 	}
 	if teacherEmail != "" {
 		for _, rawEmail := range strings.Split(teacherEmail, ",") {
@@ -70,7 +73,7 @@ func Seed(db *gorm.DB) error {
 			var user entities.User
 			err := db.Where("email = ?", email).First(&user).Error
 			if err == nil {
-				if user.Role != entities.RoleInstructor && user.Role != entities.RoleAdmin {
+				if explicitTeacherEmail != "" && user.Role == entities.RoleStudent {
 					if err := db.Model(&user).Update("role", entities.RoleInstructor).Error; err != nil {
 						return fmt.Errorf("failed to upgrade initial instructor role for %s: %w", email, err)
 					}
@@ -164,51 +167,27 @@ func Seed(db *gorm.DB) error {
 		return fmt.Errorf("failed to seed content bank items: %w", err)
 	}
 
-	// 2. Cursos
-	var defaultTeacher entities.User
-	var defaultTeacherID *string
-	if err := db.Where("role = ? AND is_active = ?", entities.RoleInstructor, true).Order("created_at ASC").First(&defaultTeacher).Error; err == nil {
-		defaultTeacherID = &defaultTeacher.ID
-	} else if err := db.Where("role = ? AND is_active = ?", entities.RoleAdmin, true).Order("created_at ASC").First(&defaultTeacher).Error; err == nil {
-		defaultTeacherID = &defaultTeacher.ID
-	}
-
-	courses := []entities.Course{
-		{
-			Title:       "Inglés básico gratuito",
-			Slug:        "ingles-basico-gratuito",
-			Description: stringPtr("Fundamentos de vocabulario y frases."),
-			AccessTier:  entities.AccessTierFree,
-			Level:       "beginner",
-			Status:      entities.ContentStatusPublished,
-			CreatedBy:   defaultTeacherID,
-			SortOrder:   1,
-		},
-		{
-			Title:       "Curso premium WordTap",
-			Slug:        "curso-premium-wordtap",
-			Description: stringPtr("Contenido avanzado y ejercicios exclusivos."),
-			AccessTier:  entities.AccessTierCourse,
-			Level:       "intermediate",
-			Status:      entities.ContentStatusPublished,
-			CreatedBy:   defaultTeacherID,
-			SortOrder:   2,
-		},
-	}
-
-	for _, c := range courses {
+	// 2. Cursos oficiales de la plataforma
+	for _, c := range initialPlatformCourses() {
 		var existing entities.Course
-		if err := db.Where("slug = ?", c.Slug).First(&existing).Error; err != nil {
+		err := db.Where("slug = ?", c.Slug).First(&existing).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			if err := db.Create(&c).Error; err != nil {
 				return fmt.Errorf("failed to seed course %s: %w", c.Slug, err)
 			}
-		} else if existing.CreatedBy == nil && defaultTeacherID != nil {
-			db.Model(&existing).Update("created_by", *defaultTeacherID)
+			continue
 		}
-	}
-
-	if defaultTeacherID != nil {
-		db.Model(&entities.Course{}).Where("created_by IS NULL").Update("created_by", *defaultTeacherID)
+		if err != nil {
+			return fmt.Errorf("failed to lookup seeded course %s: %w", c.Slug, err)
+		}
+		if existing.OwnerType != entities.OwnerTypePlatform || existing.CreatedBy != nil {
+			if err := db.Model(&entities.Course{}).Where("id = ?", existing.ID).Updates(map[string]any{
+				"owner_type": entities.OwnerTypePlatform,
+				"created_by": nil,
+			}).Error; err != nil {
+				return fmt.Errorf("failed to normalize seeded course %s: %w", c.Slug, err)
+			}
+		}
 	}
 
 	// 3. Productos
@@ -363,14 +342,45 @@ func Seed(db *gorm.DB) error {
 	}
 	for _, s := range defaultSettings {
 		var count int64
-		db.Model(&entities.PlatformSetting{}).Where("`key` = ?", s.Key).Count(&count)
+		if err := db.Model(&entities.PlatformSetting{}).Where("`key` = ?", s.Key).Count(&count).Error; err != nil {
+			return fmt.Errorf("failed to inspect default setting %s: %w", s.Key, err)
+		}
 		if count == 0 {
-			_ = db.Create(&s).Error
+			if err := db.Create(&s).Error; err != nil {
+				return fmt.Errorf("failed to seed default setting %s: %w", s.Key, err)
+			}
 		}
 	}
 
 	fmt.Println("Initial database seed completed successfully!")
 	return nil
+}
+
+func initialPlatformCourses() []entities.Course {
+	return []entities.Course{
+		{
+			Title:       "Inglés básico gratuito",
+			Slug:        "ingles-basico-gratuito",
+			Description: stringPtr("Fundamentos de vocabulario y frases."),
+			AccessTier:  entities.AccessTierFree,
+			Level:       "beginner",
+			Status:      entities.ContentStatusPublished,
+			OwnerType:   entities.OwnerTypePlatform,
+			CreatedBy:   nil,
+			SortOrder:   1,
+		},
+		{
+			Title:       "Curso premium WordTap",
+			Slug:        "curso-premium-wordtap",
+			Description: stringPtr("Contenido avanzado y ejercicios exclusivos."),
+			AccessTier:  entities.AccessTierCourse,
+			Level:       "intermediate",
+			Status:      entities.ContentStatusPublished,
+			OwnerType:   entities.OwnerTypePlatform,
+			CreatedBy:   nil,
+			SortOrder:   2,
+		},
+	}
 }
 
 func stringPtr(s string) *string {

@@ -33,9 +33,6 @@ func (p *ContentPolicy) Authorize(ctx context.Context, course *entities.Course, 
 	if course.Status != entities.ContentStatusPublished || (lesson != nil && (lesson.CourseID != course.ID || lesson.Status != entities.ContentStatusPublished)) {
 		return ErrContentDenied
 	}
-	if role == entities.RoleInstructor {
-		return nil
-	}
 	if EffectiveOwnerType(course) == entities.OwnerTypePlatform {
 		return nil
 	}

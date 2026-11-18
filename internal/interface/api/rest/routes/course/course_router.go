@@ -1,8 +1,8 @@
 package course
 
 import (
-	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 
@@ -17,7 +17,6 @@ type CourseRouter struct {
 	createCourseHandler         *courseCmd.CreateCourseHandler
 	updateCourseHandler         *courseCmd.UpdateCourseHandler
 	deleteCourseHandler         *courseCmd.DeleteCourseHandler
-	submitCourseReviewHandler   *courseCmd.SubmitCourseReviewHandler
 	listTeacherCoursesHandler   *courseQuery.ListTeacherCoursesHandler
 	listPublishedCoursesHandler *courseQuery.ListPublishedCoursesHandler
 	listAdminCoursesHandler     *courseQuery.ListAdminCoursesHandler
@@ -34,7 +33,6 @@ func NewCourseRouter(
 	createCourseHandler *courseCmd.CreateCourseHandler,
 	updateCourseHandler *courseCmd.UpdateCourseHandler,
 	deleteCourseHandler *courseCmd.DeleteCourseHandler,
-	submitCourseReviewHandler *courseCmd.SubmitCourseReviewHandler,
 	listTeacherCoursesHandler *courseQuery.ListTeacherCoursesHandler,
 	listPublishedCoursesHandler *courseQuery.ListPublishedCoursesHandler,
 	listAdminCoursesHandler *courseQuery.ListAdminCoursesHandler,
@@ -44,12 +42,17 @@ func NewCourseRouter(
 		createCourseHandler:         createCourseHandler,
 		updateCourseHandler:         updateCourseHandler,
 		deleteCourseHandler:         deleteCourseHandler,
-		submitCourseReviewHandler:   submitCourseReviewHandler,
 		listTeacherCoursesHandler:   listTeacherCoursesHandler,
 		listPublishedCoursesHandler: listPublishedCoursesHandler,
 		listAdminCoursesHandler:     listAdminCoursesHandler,
 		getCourseDetailHandler:      getCourseDetailHandler,
 	}
+}
+
+func requesterFromContext(c *echo.Context) (string, entities.UserRole) {
+	userID, _ := c.Get("user_id").(string)
+	roleStr, _ := c.Get("user_role").(string)
+	return strings.TrimSpace(userID), entities.UserRole(strings.ToLower(strings.TrimSpace(roleStr)))
 }
 
 // RegisterRoutes registers course endpoints on the v1 router group.
@@ -62,23 +65,16 @@ func (r *CourseRouter) RegisterRoutes(
 	instructorOrAdmin echo.MiddlewareFunc,
 	adminOrModerator echo.MiddlewareFunc,
 ) {
-	// Course catalog (students, admin, moderator. Teacher has no access to Wordtap catalog)
 	v1.GET("/courses", r.ListPublicCourses, authRequired, catalogRoles)
-
-	// Course details (accessible by student, author, admin, moderator)
 	v1.GET("/courses/:id", r.GetCourseDetail, authRequired, studentOrStaff)
-
-	// Admin global courses list (all courses, any author, all statuses)
 	v1.GET("/admin/courses", r.ListAdminCourses, authRequired, adminOrModerator)
 
-	// Course management (teacher, admin, moderator)
 	coursesGroup := v1.Group("/courses")
 	coursesGroup.Use(authRequired, staffRoles)
 	coursesGroup.POST("", r.CreateCourse)
 	coursesGroup.PUT("/:id", r.UpdateCourse)
 	coursesGroup.DELETE("/:id", r.DeleteCourse)
 
-	// Teacher private courses list and detail (only own courses)
 	teacherGroup := v1.Group("/teacher")
 	teacherGroup.Use(authRequired, instructorOrAdmin)
 	teacherGroup.GET("/courses", r.ListTeacherCourses)
@@ -109,11 +105,10 @@ type UpdateCourseRequest struct {
 	ChangeSummary *string                 `json:"change_summary"`
 }
 
-// CreateCourse handles POST /api/v1/courses
+// CreateCourse handles POST /api/v1/courses.
 func (r *CourseRouter) CreateCourse(c *echo.Context) error {
-	userIDVal := c.Get("user_id")
-	userID, ok := userIDVal.(string)
-	if !ok || userID == "" {
+	userID, role := requesterFromContext(c)
+	if userID == "" {
 		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
 	}
 
@@ -122,19 +117,16 @@ func (r *CourseRouter) CreateCourse(c *echo.Context) error {
 		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
 	}
 
-	roleStr, _ := c.Get("user_role").(string)
-	role := entities.UserRole(roleStr)
 	ownerType := entities.OwnerTypeTeacher
 	if role == entities.RoleAdmin || role == entities.RoleModerator {
 		ownerType = entities.OwnerTypePlatform
 	}
 
-	ctx := c.Request().Context()
 	priceCentsVal := 0
 	if req.PriceCents != nil {
 		priceCentsVal = *req.PriceCents
 	}
-	course, err := r.createCourseHandler.Handle(ctx, courseCmd.CreateCourseCommand{
+	course, err := r.createCourseHandler.Handle(c.Request().Context(), courseCmd.CreateCourseCommand{
 		Title:         req.Title,
 		Description:   req.Description,
 		Level:         req.Level,
@@ -154,19 +146,14 @@ func (r *CourseRouter) CreateCourse(c *echo.Context) error {
 	return c.JSON(http.StatusCreated, course)
 }
 
-// UpdateCourse handles PUT /api/v1/courses/:id
+// UpdateCourse handles PUT /api/v1/courses/:id.
 func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 	courseID := c.Param("id")
 	if courseID == "" {
 		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del curso.")
 	}
 
-	userIDVal := c.Get("user_id")
-	userID, _ := userIDVal.(string)
-
-	roleVal := c.Get("user_role")
-	roleStr, _ := roleVal.(string)
-
+	userID, role := requesterFromContext(c)
 	var req UpdateCourseRequest
 	if err := c.Bind(&req); err != nil {
 		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
@@ -184,8 +171,7 @@ func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 		statusPtr = &st
 	}
 
-	ctx := c.Request().Context()
-	updated, err := r.updateCourseHandler.Handle(ctx, courseCmd.UpdateCourseCommand{
+	updated, err := r.updateCourseHandler.Handle(c.Request().Context(), courseCmd.UpdateCourseCommand{
 		CourseID:      courseID,
 		Title:         req.Title,
 		Description:   req.Description,
@@ -198,7 +184,7 @@ func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 		Status:        statusPtr,
 		ChangeSummary: req.ChangeSummary,
 		RequesterID:   userID,
-		RequesterRole: entities.UserRole(roleStr),
+		RequesterRole: role,
 	})
 	if err != nil {
 		return response.Error(c, http.StatusBadRequest, "No se pudo actualizar el curso.", err)
@@ -207,26 +193,19 @@ func (r *CourseRouter) UpdateCourse(c *echo.Context) error {
 	return c.JSON(http.StatusOK, updated)
 }
 
-// DeleteCourse handles DELETE /api/v1/courses/:id
+// DeleteCourse handles DELETE /api/v1/courses/:id.
 func (r *CourseRouter) DeleteCourse(c *echo.Context) error {
 	courseID := c.Param("id")
 	if courseID == "" {
 		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del curso.")
 	}
 
-	userIDVal := c.Get("user_id")
-	userID, _ := userIDVal.(string)
-
-	roleVal := c.Get("user_role")
-	roleStr, _ := roleVal.(string)
-
-	ctx := c.Request().Context()
-	err := r.deleteCourseHandler.Handle(ctx, courseCmd.DeleteCourseCommand{
+	userID, role := requesterFromContext(c)
+	if err := r.deleteCourseHandler.Handle(c.Request().Context(), courseCmd.DeleteCourseCommand{
 		CourseID:      courseID,
 		RequesterID:   userID,
-		RequesterRole: entities.UserRole(roleStr),
-	})
-	if err != nil {
+		RequesterRole: role,
+	}); err != nil {
 		return response.Error(c, http.StatusBadRequest, "No se pudo eliminar el curso.", err)
 	}
 
@@ -234,181 +213,4 @@ func (r *CourseRouter) DeleteCourse(c *echo.Context) error {
 		"status":    "deleted",
 		"course_id": courseID,
 	})
-}
-
-// GetCourseDetail handles GET /api/v1/courses/:id
-func (r *CourseRouter) GetCourseDetail(c *echo.Context) error {
-	courseID := c.Param("id")
-	if courseID == "" {
-		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del curso.")
-	}
-
-	userID, _ := c.Get("user_id").(string)
-	roleStr, _ := c.Get("user_role").(string)
-
-	ctx := c.Request().Context()
-	course, err := r.getCourseDetailHandler.Handle(ctx, courseQuery.GetCourseDetailQuery{
-		CourseID:      courseID,
-		RequesterID:   userID,
-		RequesterRole: entities.UserRole(roleStr),
-	})
-	if err != nil {
-		if errors.Is(err, courseQuery.ErrCourseAccessDenied) {
-			if userID == "" {
-				return response.Fail(c, http.StatusNotFound, "No se encontró el curso.")
-			}
-			return response.Fail(c, http.StatusForbidden, "No tienes permisos para ver este curso.")
-		}
-		return response.Fail(c, http.StatusNotFound, "No se encontró el curso.")
-	}
-
-	isOwner := userID != "" && course.CreatedBy != nil && *course.CreatedBy == userID
-	isAdmin := entities.UserRole(roleStr) == entities.RoleAdmin
-	isModerator := entities.UserRole(roleStr) == entities.RoleModerator
-	auditMode := c.QueryParam("audit") == "1" || c.QueryParam("audit") == "true"
-
-	if (course.Status != entities.ContentStatusPublished || auditMode) && (isOwner || isAdmin || isModerator) {
-		return c.JSON(http.StatusOK, toAuditCourseDTO(course))
-	}
-
-	if !isOwner && !isAdmin {
-		err := r.contentPolicy.Authorize(ctx, course, nil, userID, entities.UserRole(roleStr))
-		if err != nil && !errors.Is(err, access.ErrContentDenied) {
-			return response.Error(c, http.StatusInternalServerError, "No se pudo cargar el curso.", err)
-		}
-		return c.JSON(http.StatusOK, toPublicCourseDTO(course, true))
-	}
-
-	// Owner or admin on published course: return public course DTO for mobile client consistency
-	return c.JSON(http.StatusOK, toPublicCourseDTO(course, true))
-}
-
-// GetTeacherCourseDetail handles GET /api/v1/teacher/courses/:id (private teacher-owned detail path)
-func (r *CourseRouter) GetTeacherCourseDetail(c *echo.Context) error {
-	courseID := c.Param("id")
-	if courseID == "" {
-		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del curso.")
-	}
-
-	userIDVal := c.Get("user_id")
-	userID, ok := userIDVal.(string)
-	if !ok || userID == "" {
-		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
-	}
-
-	roleVal := c.Get("user_role")
-	roleStr, _ := roleVal.(string)
-
-	ctx := c.Request().Context()
-	course, err := r.getCourseDetailHandler.Handle(ctx, courseQuery.GetCourseDetailQuery{
-		CourseID:      courseID,
-		RequesterID:   userID,
-		RequesterRole: entities.UserRole(roleStr),
-	})
-	if err != nil {
-		if errors.Is(err, courseQuery.ErrCourseAccessDenied) {
-			return response.Fail(c, http.StatusForbidden, "No tienes permisos para ver este curso.")
-		}
-		return response.Fail(c, http.StatusNotFound, "No se encontró el curso.")
-	}
-
-	isOwner := course.CreatedBy != nil && *course.CreatedBy == userID
-	isAdmin := entities.UserRole(roleStr) == entities.RoleAdmin
-	if !isOwner && !isAdmin {
-		return response.Fail(c, http.StatusForbidden, "No tienes permisos para ver este curso.")
-	}
-
-	return c.JSON(http.StatusOK, course)
-}
-
-// ListTeacherCourses handles GET /api/v1/teacher/courses
-func (r *CourseRouter) ListTeacherCourses(c *echo.Context) error {
-	userIDVal := c.Get("user_id")
-	userID, ok := userIDVal.(string)
-	if !ok || userID == "" {
-		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
-	}
-
-	ctx := c.Request().Context()
-	courses, err := r.listTeacherCoursesHandler.Handle(ctx, courseQuery.ListTeacherCoursesQuery{
-		AuthorID: userID,
-	})
-	if err != nil {
-		return response.Error(c, http.StatusInternalServerError, "No se pudieron cargar tus cursos.", err)
-	}
-
-	return c.JSON(http.StatusOK, courses)
-}
-
-type SubmitCourseReviewRequest struct {
-	ChangeSummary *string `json:"change_summary"`
-}
-
-// SubmitCourseReview handles POST /api/v1/courses/:id/submit-review
-func (r *CourseRouter) SubmitCourseReview(c *echo.Context) error {
-	courseID := c.Param("id")
-	if courseID == "" {
-		return response.Fail(c, http.StatusBadRequest, "Falta el identificador del curso.")
-	}
-
-	userIDVal := c.Get("user_id")
-	userID, _ := userIDVal.(string)
-
-	roleVal := c.Get("user_role")
-	roleStr, _ := roleVal.(string)
-
-	var req SubmitCourseReviewRequest
-	_ = c.Bind(&req)
-
-	ctx := c.Request().Context()
-	submitted, err := r.submitCourseReviewHandler.Handle(ctx, courseCmd.SubmitCourseReviewCommand{
-		CourseID:      courseID,
-		RequesterID:   userID,
-		RequesterRole: entities.UserRole(roleStr),
-		ChangeSummary: req.ChangeSummary,
-	})
-	if err != nil {
-		return response.Error(c, http.StatusBadRequest, "No se pudo enviar el curso a revisión.", err)
-	}
-
-	return c.JSON(http.StatusOK, submitted)
-}
-
-// ListPublicCourses handles GET /api/v1/courses (public catalog of published courses)
-func (r *CourseRouter) ListPublicCourses(c *echo.Context) error {
-	ctx := c.Request().Context()
-	courses, err := r.listPublishedCoursesHandler.Handle(ctx, courseQuery.ListPublishedCoursesQuery{})
-	if err != nil {
-		return response.Error(c, http.StatusInternalServerError, "No se pudo cargar el catálogo de cursos.", err)
-	}
-
-	publicCourses := make([]PublicCourseDTO, 0, len(courses))
-	for _, c := range courses {
-		publicCourses = append(publicCourses, ToPublicCourseDTO(&c))
-	}
-
-	return c.JSON(http.StatusOK, publicCourses)
-}
-
-// ListAdminCourses handles GET /api/v1/admin/courses (all courses across all authors).
-// The optional "status" and "owner_type" query parameters narrow the result.
-func (r *CourseRouter) ListAdminCourses(c *echo.Context) error {
-	ctx := c.Request().Context()
-	status := entities.ContentStatus(c.QueryParam("status"))
-	switch status {
-	case "", entities.ContentStatusDraft, entities.ContentStatusInReview,
-		entities.ContentStatusPublished, entities.ContentStatusArchived:
-	default:
-		return response.Fail(c, http.StatusBadRequest, "El estado de curso solicitado no es válido.")
-	}
-	ownerType := entities.OwnerType(c.QueryParam("owner_type"))
-	if ownerType != "" && !ownerType.IsValid() {
-		return response.Fail(c, http.StatusBadRequest, "El tipo de propietario solicitado no es válido.")
-	}
-	courses, err := r.listAdminCoursesHandler.Handle(ctx, courseQuery.ListAdminCoursesQuery{Status: status, OwnerType: ownerType})
-	if err != nil {
-		return response.Error(c, http.StatusInternalServerError, "No se pudo cargar la lista administrativa de cursos.", err)
-	}
-
-	return c.JSON(http.StatusOK, courses)
 }

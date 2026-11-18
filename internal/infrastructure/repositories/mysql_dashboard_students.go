@@ -9,18 +9,23 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 )
 
+func escapeLikePattern(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	runes := []rune(trimmed)
+	if len(runes) > 100 {
+		trimmed = string(runes[:100])
+	}
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(strings.ToLower(trimmed))
+}
+
 // ListGlobalStudents returns paginated students with learning stats, plan tier, and latest course progress.
-// When filter.InstructorID is set, rows, courses, and progress are scoped strictly to that instructor's classrooms and courses.
+// When filter.InstructorID is set, rows, courses, and progress are scoped strictly to that instructor's classrooms and teacher-owned courses.
 func (r *MySQLDashboardRepository) ListGlobalStudents(ctx context.Context, filter dashQuery.GlobalStudentFilter) (*dashQuery.GlobalStudentsResponse, error) {
 	q := r.db.WithContext(ctx).Model(&entities.User{}).Where("users.role = ?", entities.RoleStudent)
 
 	instructorID := strings.TrimSpace(filter.InstructorID)
-	if instructorID != "" {
-		q = q.Where(
-			"(EXISTS (SELECT 1 FROM classroom_enrollments ce INNER JOIN classrooms cl ON cl.id = ce.classroom_id WHERE ce.student_id = users.id AND cl.teacher_id = ?) OR EXISTS (SELECT 1 FROM user_lesson_progresses ulp INNER JOIN lessons l ON l.id = ulp.lesson_id INNER JOIN courses c ON c.id = l.course_id WHERE ulp.user_id = users.id AND c.created_by = ?))",
-			instructorID, instructorID,
-		)
-	}
+	q = scopeToInstructorStudents(q, "users.id", instructorID)
 
 	if plan := strings.TrimSpace(filter.Plan); plan != "" && plan != "all" {
 		q = q.Where("users.access_tier = ?", plan)
@@ -30,18 +35,25 @@ func (r *MySQLDashboardRepository) ListGlobalStudents(ctx context.Context, filte
 	} else if status == "suspended" {
 		q = q.Where("users.is_active = ?", false)
 	}
-	if level := strings.TrimSpace(filter.Level); level != "" && level != "all" {
-		q = q.Where("LOWER(users.learning_level) LIKE ?", "%"+strings.ToLower(level)+"%")
+	if level := escapeLikePattern(filter.Level); level != "" && level != "all" {
+		q = q.Where("LOWER(users.learning_level) LIKE ? ESCAPE '\\\\'", "%"+level+"%")
 	}
-	if search := strings.TrimSpace(filter.Query); search != "" {
-		like := "%" + strings.ToLower(search) + "%"
-		q = q.Where("(LOWER(users.name) LIKE ? OR LOWER(users.email) LIKE ?)", like, like)
+	if search := escapeLikePattern(filter.Query); search != "" {
+		like := "%" + search + "%"
+		q = q.Where("(LOWER(users.name) LIKE ? ESCAPE '\\\\' OR LOWER(users.email) LIKE ? ESCAPE '\\\\')", like, like)
 	}
 	if courseID := strings.TrimSpace(filter.CourseID); courseID != "" && courseID != "all" {
-		q = q.Where(
-			"(EXISTS (SELECT 1 FROM user_lesson_progresses ulp INNER JOIN lessons l ON l.id = ulp.lesson_id WHERE ulp.user_id = users.id AND l.course_id = ?) OR EXISTS (SELECT 1 FROM classroom_enrollments ce INNER JOIN classrooms c ON c.id = ce.classroom_id WHERE ce.student_id = users.id AND c.course_id = ?))",
-			courseID, courseID,
-		)
+		if instructorID != "" {
+			q = q.Where(
+				"(EXISTS (SELECT 1 FROM user_lesson_progresses ulp INNER JOIN lessons l ON l.id = ulp.lesson_id INNER JOIN courses co ON co.id = l.course_id WHERE ulp.user_id = users.id AND l.course_id = ? AND co.created_by = ? AND co.owner_type = ?) OR EXISTS (SELECT 1 FROM classroom_enrollments ce INNER JOIN classrooms c ON c.id = ce.classroom_id WHERE ce.student_id = users.id AND c.course_id = ? AND c.teacher_id = ?))",
+				courseID, instructorID, entities.OwnerTypeTeacher, courseID, instructorID,
+			)
+		} else {
+			q = q.Where(
+				"(EXISTS (SELECT 1 FROM user_lesson_progresses ulp INNER JOIN lessons l ON l.id = ulp.lesson_id WHERE ulp.user_id = users.id AND l.course_id = ?) OR EXISTS (SELECT 1 FROM classroom_enrollments ce INNER JOIN classrooms c ON c.id = ce.classroom_id WHERE ce.student_id = users.id AND c.course_id = ?))",
+				courseID, courseID,
+			)
+		}
 	}
 
 	var total int64
@@ -63,11 +75,13 @@ func (r *MySQLDashboardRepository) ListGlobalStudents(ctx context.Context, filte
 		Model(&entities.Course{}).
 		Select("id, title")
 	if instructorID != "" {
-		courseQuery = courseQuery.Where("status = ? AND created_by = ?", entities.ContentStatusPublished, instructorID)
+		courseQuery = courseQuery.Where("status = ? AND created_by = ? AND owner_type = ?", entities.ContentStatusPublished, instructorID, entities.OwnerTypeTeacher)
 	} else {
 		courseQuery = courseQuery.Where("status = ? AND owner_type = ?", entities.ContentStatusPublished, entities.OwnerTypePlatform)
 	}
-	courseQuery.Order("title ASC").Scan(&courseRows)
+	if err := courseQuery.Order("title ASC").Scan(&courseRows).Error; err != nil {
+		return nil, err
+	}
 
 	userIDs := make([]string, 0, len(users))
 	for _, u := range users {
@@ -92,9 +106,11 @@ func (r *MySQLDashboardRepository) ListGlobalStudents(ctx context.Context, filte
 			Joins("INNER JOIN courses c ON c.id = l.course_id").
 			Where("ulp.user_id IN ?", userIDs)
 		if instructorID != "" {
-			progressQuery = progressQuery.Where("c.created_by = ?", instructorID)
+			progressQuery = progressQuery.Where("c.created_by = ? AND c.owner_type = ?", instructorID, entities.OwnerTypeTeacher)
 		}
-		progressQuery.Order("ulp.updated_at DESC").Scan(&progressRows)
+		if err := progressQuery.Order("ulp.updated_at DESC").Scan(&progressRows).Error; err != nil {
+			return nil, err
+		}
 
 		courseIDSet := make(map[string]struct{})
 		for _, pr := range progressRows {
@@ -117,12 +133,14 @@ func (r *MySQLDashboardRepository) ListGlobalStudents(ctx context.Context, filte
 				CourseID string
 				Total    int
 			}
-			r.db.WithContext(ctx).
+			if err := r.db.WithContext(ctx).
 				Table("lessons").
 				Select("course_id, COUNT(*) as total").
 				Where("course_id IN ? AND status = ?", courseIDs, entities.ContentStatusPublished).
 				Group("course_id").
-				Scan(&lessonCounts)
+				Scan(&lessonCounts).Error; err != nil {
+				return nil, err
+			}
 			for _, lc := range lessonCounts {
 				totalLessonsByCourse[lc.CourseID] = lc.Total
 			}

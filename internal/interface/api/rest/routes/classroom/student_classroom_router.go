@@ -39,9 +39,24 @@ func NewStudentClassroomRouter(
 func (r *StudentClassroomRouter) RegisterRoutes(
 	v1 *echo.Group,
 	authRequired echo.MiddlewareFunc,
+	joinMiddlewares ...echo.MiddlewareFunc,
 ) {
 	v1.GET("/student/classrooms", r.ListStudentClassrooms, authRequired)
-	v1.POST("/classrooms/join", r.JoinClassroom, authRequired)
+	joinChain := append([]echo.MiddlewareFunc{authRequired}, joinMiddlewares...)
+	v1.POST("/classrooms/join", r.JoinClassroom, joinChain...)
+}
+
+func requireStudentSession(c *echo.Context) (string, error) {
+	userID, _ := c.Get("user_id").(string)
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return "", response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
+	}
+	roleStr, _ := c.Get("user_role").(string)
+	if entities.UserRole(strings.ToLower(strings.TrimSpace(roleStr))) != entities.RoleStudent {
+		return "", response.Fail(c, http.StatusForbidden, "Esta sección es exclusiva para estudiantes.")
+	}
+	return userID, nil
 }
 
 type JoinClassroomRequest struct {
@@ -49,9 +64,9 @@ type JoinClassroomRequest struct {
 }
 
 func (r *StudentClassroomRouter) JoinClassroom(c *echo.Context) error {
-	userID, ok := c.Get("user_id").(string)
-	if !ok || userID == "" {
-		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
+	userID, errResp := requireStudentSession(c)
+	if errResp != nil {
+		return errResp
 	}
 
 	var req JoinClassroomRequest
@@ -75,9 +90,9 @@ func (r *StudentClassroomRouter) JoinClassroom(c *echo.Context) error {
 }
 
 func (r *StudentClassroomRouter) ListStudentClassrooms(c *echo.Context) error {
-	userID, ok := c.Get("user_id").(string)
-	if !ok || userID == "" {
-		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
+	userID, errResp := requireStudentSession(c)
+	if errResp != nil {
+		return errResp
 	}
 
 	classrooms, err := r.listStudentClassroomsHandler.Handle(c.Request().Context(), queries.ListStudentClassroomsQuery{
@@ -87,18 +102,26 @@ func (r *StudentClassroomRouter) ListStudentClassrooms(c *echo.Context) error {
 		return response.Error(c, http.StatusInternalServerError, "No se pudieron obtener las aulas del estudiante.", err)
 	}
 
+	ctx := c.Request().Context()
+	allowedByCourse := make(map[string]bool)
 	payload := make([]map[string]any, 0, len(classrooms))
-	for _, cls := range classrooms {
-		allowed := make(map[string]bool)
-		for i := range cls.ResolvedCourses {
-			course := &cls.ResolvedCourses[i]
-			err := r.contentPolicy.Authorize(c.Request().Context(), course, nil, userID, entities.RoleStudent)
+	for i := range classrooms {
+		cls := &classrooms[i]
+		for j := range cls.ResolvedCourses {
+			course := &cls.ResolvedCourses[j]
+			if course.Status != entities.ContentStatusPublished {
+				continue
+			}
+			if _, seen := allowedByCourse[course.ID]; seen {
+				continue
+			}
+			err := r.contentPolicy.Authorize(ctx, course, nil, userID, entities.RoleStudent)
 			if err != nil && !errors.Is(err, access.ErrContentDenied) {
 				return response.Error(c, http.StatusInternalServerError, "No se pudieron obtener las aulas del estudiante.", err)
 			}
-			allowed[course.ID] = err == nil
+			allowedByCourse[course.ID] = err == nil
 		}
-		payload = append(payload, formatStudentClassroomDTO(&cls, userID, allowed))
+		payload = append(payload, formatStudentClassroomDTO(cls, userID, allowedByCourse))
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
@@ -109,10 +132,8 @@ func (r *StudentClassroomRouter) ListStudentClassrooms(c *echo.Context) error {
 
 func formatStudentClassroomDTO(cls *entities.Classroom, studentID string, permissions ...map[string]bool) map[string]any {
 	teacherName := "Docente Asignado"
-	if cls.Teacher != nil {
-		if cls.Teacher.Name != "" {
-			teacherName = cls.Teacher.Name
-		}
+	if cls.Teacher != nil && cls.Teacher.Name != "" {
+		teacherName = cls.Teacher.Name
 	}
 
 	// Progreso del estudiante en esta cohorte
@@ -133,12 +154,18 @@ func formatStudentClassroomDTO(cls *entities.Classroom, studentID string, permis
 		weeklyGoal = 50
 	}
 
+	var accessByCourse map[string]bool
+	if len(permissions) > 0 {
+		accessByCourse = permissions[0]
+	}
+
 	// Cursos asignados con Pase Escolar
-	assignedCourses := make([]map[string]any, 0)
+	assignedCourses := make([]map[string]any, 0, len(cls.ResolvedCourses))
 	for _, course := range cls.ResolvedCourses {
 		if course.Status != entities.ContentStatusPublished {
 			continue
 		}
+		hasAccess := resolveClassroomCourseAccess(course, accessByCourse)
 		lessons := studentCourseLessons(cls, course)
 		lessonCount := len(lessons)
 		assignedCourses = append(assignedCourses, map[string]any{
@@ -149,6 +176,7 @@ func formatStudentClassroomDTO(cls *entities.Classroom, studentID string, permis
 			"lessonCount": lessonCount,
 			"lessons":     lessons,
 			"available":   true,
+			"has_access":  hasAccess,
 			"access_tier": course.AccessTier,
 			"price_cents": course.PriceCents,
 		})
@@ -197,4 +225,11 @@ func formatStudentClassroomDTO(cls *entities.Classroom, studentID string, permis
 		"activeGames":     activeGamesList,
 		"stumbles":        stumbles,
 	}
+}
+
+func resolveClassroomCourseAccess(course entities.Course, accessByCourse map[string]bool) bool {
+	if accessByCourse != nil {
+		return accessByCourse[course.ID]
+	}
+	return access.EffectiveOwnerType(&course) == entities.OwnerTypePlatform
 }

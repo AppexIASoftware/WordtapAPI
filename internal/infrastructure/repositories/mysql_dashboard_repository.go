@@ -14,12 +14,19 @@ import (
 
 // MySQLDashboardRepository aggregates live metrics and recent activity from MySQL.
 type MySQLDashboardRepository struct {
-	db *gorm.DB
+	db                *gorm.DB
+	simulationEnabled bool
 }
 
 // NewMySQLDashboardRepository creates a MySQL-backed DashboardReader.
 func NewMySQLDashboardRepository(db *gorm.DB) *MySQLDashboardRepository {
 	return &MySQLDashboardRepository{db: db}
+}
+
+// WithSimulationEnabled enables counting simulated course purchases in teacher metrics during development.
+func (r *MySQLDashboardRepository) WithSimulationEnabled(enabled bool) *MySQLDashboardRepository {
+	r.simulationEnabled = enabled
+	return r
 }
 
 type roleCountRow struct {
@@ -170,20 +177,21 @@ func (r *MySQLDashboardRepository) loadRecentEvents(ctx context.Context) ([]dash
 		Preload("ActorUser").
 		Order("created_at DESC").
 		Limit(5).
-		Find(&auditRows).Error; err == nil {
-		for _, a := range auditRows {
-			actor := "Sistema"
-			if a.ActorUser != nil && a.ActorUser.Name != "" {
-				actor = a.ActorUser.Name
-			}
-			events = append(events, dashQuery.DashboardEventItem{
-				ID:        "audit-" + a.ID,
-				Action:    a.Action,
-				Summary:   fmt.Sprintf("%s actualizó %s", actor, a.EntityType),
-				Actor:     actor,
-				CreatedAt: a.CreatedAt,
-			})
+		Find(&auditRows).Error; err != nil {
+		return nil, err
+	}
+	for _, a := range auditRows {
+		actor := "Sistema"
+		if a.ActorUser != nil && a.ActorUser.Name != "" {
+			actor = a.ActorUser.Name
 		}
+		events = append(events, dashQuery.DashboardEventItem{
+			ID:        "audit-" + a.ID,
+			Action:    a.Action,
+			Summary:   fmt.Sprintf("%s actualizó %s", actor, a.EntityType),
+			Actor:     actor,
+			CreatedAt: a.CreatedAt,
+		})
 	}
 
 	var apps []entities.TeacherApplication
@@ -191,36 +199,38 @@ func (r *MySQLDashboardRepository) loadRecentEvents(ctx context.Context) ([]dash
 		Preload("User").
 		Order("updated_at DESC").
 		Limit(4).
-		Find(&apps).Error; err == nil {
-		for _, app := range apps {
-			name := "Docente"
-			if app.User != nil && app.User.Name != "" {
-				name = app.User.Name
-			}
-			events = append(events, dashQuery.DashboardEventItem{
-				ID:        "app-" + app.ID,
-				Action:    "teacher.application." + string(app.Status),
-				Summary:   fmt.Sprintf("Postulación docente de %s (%s)", name, app.Status),
-				Actor:     name,
-				CreatedAt: app.UpdatedAt,
-			})
+		Find(&apps).Error; err != nil {
+		return nil, err
+	}
+	for _, app := range apps {
+		name := "Docente"
+		if app.User != nil && app.User.Name != "" {
+			name = app.User.Name
 		}
+		events = append(events, dashQuery.DashboardEventItem{
+			ID:        "app-" + app.ID,
+			Action:    "teacher.application." + string(app.Status),
+			Summary:   fmt.Sprintf("Postulación docente de %s (%s)", name, app.Status),
+			Actor:     name,
+			CreatedAt: app.UpdatedAt,
+		})
 	}
 
 	var courses []entities.Course
 	if err := r.db.WithContext(ctx).
 		Order("updated_at DESC").
 		Limit(4).
-		Find(&courses).Error; err == nil {
-		for _, c := range courses {
-			events = append(events, dashQuery.DashboardEventItem{
-				ID:        "course-" + c.ID,
-				Action:    "course." + string(c.Status),
-				Summary:   fmt.Sprintf("Curso '%s' en estado %s", c.Title, c.Status),
-				Actor:     "Catálogo",
-				CreatedAt: c.UpdatedAt,
-			})
-		}
+		Find(&courses).Error; err != nil {
+		return nil, err
+	}
+	for _, c := range courses {
+		events = append(events, dashQuery.DashboardEventItem{
+			ID:        "course-" + c.ID,
+			Action:    "course." + string(c.Status),
+			Summary:   fmt.Sprintf("Curso '%s' en estado %s", c.Title, c.Status),
+			Actor:     "Catálogo",
+			CreatedAt: c.UpdatedAt,
+		})
 	}
 
 	sort.Slice(events, func(i, j int) bool {
@@ -230,86 +240,4 @@ func (r *MySQLDashboardRepository) loadRecentEvents(ctx context.Context) ([]dash
 		events = events[:6]
 	}
 	return events, nil
-}
-
-func teacherPeriodStart(period string, now time.Time) time.Time {
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	switch period {
-	case "today":
-		return today
-	case "30d":
-		return today.AddDate(0, 0, -29)
-	case "year":
-		return today.AddDate(-1, 0, 0)
-	default:
-		return today.AddDate(0, 0, -6)
-	}
-}
-
-// GetTeacherDashboard aggregates real student, vault, and revenue metrics from MySQL.
-func (r *MySQLDashboardRepository) GetTeacherDashboard(ctx context.Context, instructorID, period string) (*dashQuery.TeacherDashboardResponse, error) {
-	now := time.Now().UTC()
-	since := teacherPeriodStart(period, now)
-
-	res := &dashQuery.TeacherDashboardResponse{
-		Period:      period,
-		GeneratedAt: now,
-	}
-
-	r.db.WithContext(ctx).
-		Model(&entities.UserDailyActivity{}).
-		Where("activity_date >= ?", since).
-		Distinct("user_id").
-		Count(&res.ActiveStudents)
-
-	var avgStreak struct {
-		Avg float64
-	}
-	r.db.WithContext(ctx).
-		Model(&entities.UserLearningStats{}).
-		Select("COALESCE(AVG(current_streak_days), 0) as avg").
-		Scan(&avgStreak)
-	res.AvgStreakDays = avgStreak.Avg
-
-	r.db.WithContext(ctx).
-		Model(&entities.User{}).
-		Where("role = ?", entities.RoleStudent).
-		Count(&res.TotalStudents)
-
-	if res.TotalStudents > 0 {
-		var retained int64
-		r.db.WithContext(ctx).
-			Model(&entities.UserLearningStats{}).
-			Where("last_activity_date >= ?", since).
-			Count(&retained)
-		res.RetentionPercent = float64(retained) * 100 / float64(res.TotalStudents)
-	}
-
-	vaultQuery := r.db.WithContext(ctx).Model(&entities.ContentBankItem{})
-	if instructorID != "" {
-		vaultQuery = vaultQuery.Where("is_official = ? OR created_by = ?", true, instructorID)
-	} else {
-		vaultQuery = vaultQuery.Where("is_official = ?", true)
-	}
-	vaultQuery.Count(&res.VaultItems)
-	r.db.WithContext(ctx).Model(&entities.ContentBankType{}).Count(&res.VaultBanks)
-
-	var rev struct {
-		TotalCents int64
-		Count      int64
-	}
-	r.db.WithContext(ctx).
-		Model(&entities.Order{}).
-		Where("status = ? AND created_at >= ?", entities.PaymentStatusApproved, since).
-		Select("COALESCE(SUM(amount_cents), 0) as total_cents, COUNT(*) as count").
-		Scan(&rev)
-	res.RevenueCents = rev.TotalCents
-	res.PaidOrders = rev.Count
-
-	r.db.WithContext(ctx).
-		Model(&entities.Subscription{}).
-		Where("status = ?", "active").
-		Count(&res.ActiveSubscriptions)
-
-	return res, nil
 }

@@ -192,3 +192,75 @@ func TestDashboardRouter_ListGlobalStudents(t *testing.T) {
 		}
 	})
 }
+
+type stubTeacherDashboardReader struct {
+	lastInstructorID string
+	lastPeriod       string
+}
+
+func (s *stubTeacherDashboardReader) GetTeacherDashboard(_ context.Context, instructorID, period string) (*dashQuery.TeacherDashboardResponse, error) {
+	s.lastInstructorID = instructorID
+	s.lastPeriod = period
+	return &dashQuery.TeacherDashboardResponse{
+		Period:      period,
+		GeneratedAt: time.Now().UTC(),
+	}, nil
+}
+
+func TestDashboardRouter_GetTeacherDashboard(t *testing.T) {
+	reader := &stubTeacherDashboardReader{}
+	e := echo.New()
+	v1 := e.Group("/api/v1")
+
+	injectHeaders := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			c.Set("user_id", c.Request().Header.Get("X-Test-User-ID"))
+			c.Set("user_role", c.Request().Header.Get("X-Test-Role"))
+			return next(c)
+		}
+	}
+	instructorOrAdmin := restMiddleware.RequireRole(entities.RoleInstructor, entities.RoleAdmin)
+	router := NewDashboardRouter(dashQuery.NewGetAdminDashboardHandler(&stubDashboardReader{})).
+		WithTeacherHandler(dashQuery.NewGetTeacherDashboardHandler(reader))
+	router.RegisterTeacherRoutes(v1, injectHeaders, instructorOrAdmin, instructorOrAdmin)
+
+	call := func(userID, role, query string) *httptest.ResponseRecorder {
+		reader.lastInstructorID = "sentinel"
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/teacher/dashboard"+query, nil)
+		req.Header.Set("X-Test-User-ID", userID)
+		req.Header.Set("X-Test-Role", role)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	t.Run("instructor forces own user_id ignoring instructor_id param", func(t *testing.T) {
+		rec := call("teacher-11", "instructor", "?instructor_id=other-teacher&period=30d")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		if reader.lastInstructorID != "teacher-11" || reader.lastPeriod != "30d" {
+			t.Fatalf("unexpected scope: instructor=%q period=%q", reader.lastInstructorID, reader.lastPeriod)
+		}
+	})
+
+	t.Run("admin uses unscoped platform view or optional instructor_id filter", func(t *testing.T) {
+		recGlobal := call("admin-1", "admin", "")
+		if recGlobal.Code != http.StatusOK || reader.lastInstructorID != "" {
+			t.Fatalf("expected empty admin scope, got code=%d instructor=%q", recGlobal.Code, reader.lastInstructorID)
+		}
+		recScoped := call("admin-1", "admin", "?instructor_id=teacher-22")
+		if recScoped.Code != http.StatusOK || reader.lastInstructorID != "teacher-22" {
+			t.Fatalf("expected optional instructor scope for admin, got code=%d instructor=%q", recScoped.Code, reader.lastInstructorID)
+		}
+	})
+
+	t.Run("moderator and student receive 403", func(t *testing.T) {
+		if rec := call("mod-1", "moderator", ""); rec.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 for moderator, got %d", rec.Code)
+		}
+		if rec := call("stu-1", "student", ""); rec.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 for student, got %d", rec.Code)
+		}
+	})
+}

@@ -10,11 +10,49 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
 	classroomCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/commands"
 	classroomQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/classroom/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/classroom"
 )
+
+type stubClassroomPurchaseReader struct {
+	purchased bool
+	calls     int
+}
+
+func (s *stubClassroomPurchaseReader) HasPurchase(_ context.Context, _, _ string) (bool, error) {
+	s.calls++
+	return s.purchased, nil
+}
+
+func setupStudentClassroomRouterWithPolicy(reader *stubClassroomPurchaseReader) (*echo.Echo, *mockClassroomRepo) {
+	e := echo.New()
+	repo := newMockClassroomRepo()
+
+	enrollHandler := classroomCmd.NewEnrollStudentHandler(repo)
+	listStudentHandler := classroomQuery.NewListStudentClassroomsHandler(repo)
+
+	r := classroom.NewStudentClassroomRouter(listStudentHandler, enrollHandler).
+		WithContentPolicy(access.NewContentPolicy(reader, true))
+
+	v1 := e.Group("/api/v1")
+	passMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			c.Set("user_id", "student-uuid-99")
+			role := c.Request().Header.Get("X-Test-Role")
+			if role == "" {
+				role = "student"
+			}
+			c.Set("user_role", role)
+			return next(c)
+		}
+	}
+	r.RegisterRoutes(v1, passMiddleware)
+
+	return e, repo
+}
 
 func setupStudentClassroomRouter() (*echo.Echo, *mockClassroomRepo) {
 	e := echo.New()
@@ -29,6 +67,11 @@ func setupStudentClassroomRouter() (*echo.Echo, *mockClassroomRepo) {
 	passMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			c.Set("user_id", "student-uuid-99")
+			role := c.Request().Header.Get("X-Test-Role")
+			if role == "" {
+				role = "student"
+			}
+			c.Set("user_role", role)
 			return next(c)
 		}
 	}
@@ -131,6 +174,70 @@ func TestStudentClassroomRouter(t *testing.T) {
 		teacher, ok := resp.Data[0]["teacher"].(map[string]any)
 		if !ok || teacher["credential"] != nil {
 			t.Errorf("la respuesta no debe inventar credenciales docentes: %v", resp.Data[0]["teacher"])
+		}
+	})
+
+	t.Run("GET /api/v1/student/classrooms reflects purchase policy in has_access while keeping available=true", func(t *testing.T) {
+		for _, tc := range []struct {
+			name      string
+			purchased bool
+			want      bool
+		}{
+			{"unpurchased teacher course", false, false},
+			{"purchased teacher course", true, true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				reader := &stubClassroomPurchaseReader{purchased: tc.purchased}
+				ce, crepo := setupStudentClassroomRouterWithPolicy(reader)
+				sharedPaid := entities.Course{ID: "course-paid", Title: "Curso Pago", OwnerType: entities.OwnerTypeTeacher, Status: entities.ContentStatusPublished}
+				draftCourse := entities.Course{ID: "course-draft", Title: "Borrador", OwnerType: entities.OwnerTypeTeacher, Status: entities.ContentStatusDraft}
+				crepo.classrooms = []entities.Classroom{
+					{ID: "cls-policy-1", IsActive: true, ResolvedCourses: []entities.Course{sharedPaid, draftCourse}},
+					{ID: "cls-policy-2", IsActive: true, ResolvedCourses: []entities.Course{sharedPaid}},
+				}
+				req := httptest.NewRequest(http.MethodGet, "/api/v1/student/classrooms", nil)
+				rec := httptest.NewRecorder()
+				ce.ServeHTTP(rec, req)
+				if rec.Code != http.StatusOK {
+					t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+				}
+				if reader.calls != 1 {
+					t.Fatalf("expected HasPurchase memoized to 1 call across classrooms (skipping drafts), got %d", reader.calls)
+				}
+				var out struct {
+					Data []struct {
+						AssignedCourses []map[string]any `json:"assignedCourses"`
+					} `json:"data"`
+				}
+				if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || len(out.Data) != 2 || len(out.Data[0].AssignedCourses) != 1 || len(out.Data[1].AssignedCourses) != 1 {
+					t.Fatalf("unexpected payload: %v %s", err, rec.Body.String())
+				}
+				entry := out.Data[0].AssignedCourses[0]
+				if entry["available"] != true || entry["has_access"] != tc.want {
+					t.Fatalf("got available=%v has_access=%v, want available=true has_access=%v", entry["available"], entry["has_access"], tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("non-student roles receive 403 Forbidden on student classroom routes", func(t *testing.T) {
+		for _, role := range []string{"instructor", "moderator"} {
+			joinReq := httptest.NewRequest(http.MethodPost, "/api/v1/classrooms/join", bytes.NewBufferString(`{"code":"WT-4B7K"}`))
+			joinReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+			joinReq.Header.Set("X-Test-Role", role)
+			joinRec := httptest.NewRecorder()
+			e.ServeHTTP(joinRec, joinReq)
+			if joinRec.Code != http.StatusForbidden {
+				t.Fatalf("expected 403 on join for %s, got %d", role, joinRec.Code)
+			}
+
+			listReq := httptest.NewRequest(http.MethodGet, "/api/v1/student/classrooms", nil)
+			listReq.Header.Set("X-Test-Role", role)
+			listRec := httptest.NewRecorder()
+			e.ServeHTTP(listRec, listReq)
+			if listRec.Code != http.StatusForbidden {
+				t.Fatalf("expected 403 on student classrooms for %s, got %d", role, listRec.Code)
+			}
 		}
 	})
 }

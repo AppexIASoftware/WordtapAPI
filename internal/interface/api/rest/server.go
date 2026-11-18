@@ -228,7 +228,6 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		createCourseHandler,
 		updateCourseHandler,
 		deleteCourseHandler,
-		submitCourseReviewHandler,
 		listTeacherCoursesHandler,
 		listPublishedCoursesHandler,
 		listAdminCoursesHandler,
@@ -361,7 +360,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		commands.NewUpdateStudentStatusHandler(adminStudentsRepo),
 	).WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, canViewStudents, canManageStudentStatus)
 	settingRouter.WithAuditRepo(auditRepo).WithRBACEvaluator(rbacEvaluator).RegisterRoutes(v1, authRequired, adminOnly)
-	dashRepo := infraRepo.NewMySQLDashboardRepository(db)
+	dashRepo := infraRepo.NewMySQLDashboardRepository(db).WithSimulationEnabled(simulationEnabled)
 	dashRouter := dashboardRoute.NewDashboardRouter(dashQuery.NewGetAdminDashboardHandler(dashRepo)).
 		WithTeacherHandler(dashQuery.NewGetTeacherDashboardHandler(dashRepo)).
 		WithGlobalStudentsHandler(dashQuery.NewListGlobalStudentsHandler(dashRepo)).
@@ -370,7 +369,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	dashRouter.RegisterTeacherRoutes(v1, authRequired, instructorOrAdmin, globalStudentsAccess)
 	vaultRouter.WithAuditRepo(auditRepo).RegisterRoutes(v1, authRequired, staffRoles, canAuthorVault, instructorOrAdmin)
 	classroomRouter.RegisterRoutes(v1, authRequired, canCreateClassrooms)
-	studentClassroomRouter.RegisterRoutes(v1, authRequired)
+	studentClassroomRouter.RegisterRoutes(v1, authRequired, studentOnly, restMiddleware.IPRateLimiter(5, 10))
 	gameRouter.RegisterRoutes(v1, authRequired, canTuneGames, adminOnly)
 	gameStudentRouter.RegisterRoutes(v1, authRequired)
 	livesRouter.RegisterRoutes(v1, authRequired)

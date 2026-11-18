@@ -29,6 +29,7 @@ func TestContentPolicy(t *testing.T) {
 	}{
 		{"purchaser independent of classroom", "buyer", entities.RoleStudent, course, lesson, true, nil},
 		{"other student", "other", entities.RoleStudent, course, lesson, true, ErrContentDenied},
+		{"foreign instructor", "other-teacher", entities.RoleInstructor, course, lesson, true, ErrContentDenied},
 		{"simulation disabled", "buyer", entities.RoleStudent, course, lesson, false, ErrContentDenied},
 		{"owner", "teacher", entities.RoleInstructor, course, lesson, false, nil},
 		{"administrator", "admin", entities.RoleAdmin, course, lesson, false, nil},

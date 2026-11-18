@@ -40,7 +40,8 @@ func (h *GetCourseDetailHandler) Handle(ctx context.Context, query GetCourseDeta
 	}
 
 	if course.Status != entities.ContentStatusPublished {
-		isOwner := query.RequesterID != "" && course.CreatedBy != nil && *course.CreatedBy == query.RequesterID
+		isOwner := access.EffectiveOwnerType(course) == entities.OwnerTypeTeacher &&
+			query.RequesterID != "" && course.CreatedBy != nil && *course.CreatedBy == query.RequesterID
 		isAdmin := query.RequesterRole == entities.RoleAdmin
 		isModerator := query.RequesterRole == entities.RoleModerator &&
 			(course.Status == entities.ContentStatusInReview || access.EffectiveOwnerType(course) == entities.OwnerTypePlatform)

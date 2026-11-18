@@ -219,7 +219,7 @@ func setupTestServer() (*echo.Echo, *security.JWTService, *mockCourseRepository,
 	listAdminQuery := courseQuery.NewListAdminCoursesHandler(repo)
 	getQuery := courseQuery.NewGetCourseDetailHandler(repo)
 
-	router := course.NewCourseRouter(createCmd, updateCmd, deleteCmd, submitCmd, listQuery, listPublishedQuery, listAdminQuery, getQuery)
+	router := course.NewCourseRouter(createCmd, updateCmd, deleteCmd, listQuery, listPublishedQuery, listAdminQuery, getQuery)
 
 	authRequired := restMiddleware.RequireAuth(jwtSvc)
 	catalogRoles := restMiddleware.RequireRole(entities.RoleAdmin, entities.RoleModerator, entities.RoleStudent)

@@ -24,11 +24,11 @@ func (r *MySQLCourseRepository) Create(ctx context.Context, course *entities.Cou
 	return r.db.WithContext(ctx).Create(course).Error
 }
 
-// FindByAuthor returns all courses authored by a specific user.
+// FindByAuthor returns all teacher-owned courses authored by a specific user.
 func (r *MySQLCourseRepository) FindByAuthor(ctx context.Context, authorID string) ([]entities.Course, error) {
 	courses := make([]entities.Course, 0)
 	err := r.db.WithContext(ctx).
-		Where("created_by = ?", authorID).
+		Where("created_by = ? AND owner_type = ?", authorID, entities.OwnerTypeTeacher).
 		Preload("Author").
 		Preload("Category").
 		Preload("Lessons", func(db *gorm.DB) *gorm.DB {

@@ -42,6 +42,9 @@ func TestUnpurchasedCourseIncludesOnlySelectedPublishedLessonPreview(t *testing.
 	}}}
 	dto := formatStudentClassroomDTO(classroom, "student", map[string]bool{"course": false})
 	courses := dto["assignedCourses"].([]map[string]any)
+	if courses[0]["available"] != true || courses[0]["has_access"] != false {
+		t.Fatalf("expected available=true and has_access=false, got %+v", courses[0])
+	}
 	lessons, ok := courses[0]["lessons"].([]map[string]any)
 	if !ok || len(lessons) != 1 || lessons[0]["title"] != "Selected" || len(lessons[0]) != 3 {
 		t.Fatalf("unexpected preview: %#v", courses[0]["lessons"])

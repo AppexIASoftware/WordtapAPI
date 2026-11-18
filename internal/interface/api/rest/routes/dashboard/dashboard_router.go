@@ -100,8 +100,24 @@ func (r *DashboardRouter) ListGlobalStudents(c *echo.Context) error {
 // GetTeacherDashboard returns real-time learning, vault, and revenue KPIs from MySQL.
 func (r *DashboardRouter) GetTeacherDashboard(c *echo.Context) error {
 	userID, _ := c.Get("user_id").(string)
+	roleStr, _ := c.Get("user_role").(string)
+	role := entities.UserRole(strings.ToLower(strings.TrimSpace(roleStr)))
+
+	var scopeInstructorID string
+	switch role {
+	case entities.RoleAdmin:
+		scopeInstructorID = strings.TrimSpace(c.QueryParam("instructor_id"))
+	case entities.RoleInstructor:
+		scopeInstructorID = strings.TrimSpace(userID)
+		if scopeInstructorID == "" {
+			return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
+		}
+	default:
+		return response.Fail(c, http.StatusForbidden, "No tienes permisos para realizar esta acción.")
+	}
+
 	period := c.QueryParam("period")
-	data, err := r.getTeacherDashboard.Handle(c.Request().Context(), userID, period)
+	data, err := r.getTeacherDashboard.Handle(c.Request().Context(), scopeInstructorID, period)
 	if err != nil {
 		return response.Error(c, http.StatusInternalServerError, "No se pudo cargar el dashboard docente.", err)
 	}

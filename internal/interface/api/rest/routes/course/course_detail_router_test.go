@@ -1,14 +1,35 @@
 package course_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/AppexIASoftware/WordtapAPI/internal/application/access"
+	courseCmd "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/commands"
+	courseQuery "github.com/AppexIASoftware/WordtapAPI/internal/application/features/course/queries"
 	"github.com/AppexIASoftware/WordtapAPI/internal/domain/entities"
+	"github.com/AppexIASoftware/WordtapAPI/internal/infrastructure/security"
+	restMiddleware "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/middleware"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/course"
+	"github.com/labstack/echo/v5"
 )
+
+type stubCoursePurchaseReader struct {
+	purchased bool
+	err       error
+}
+
+func (s stubCoursePurchaseReader) HasPurchase(_ context.Context, userID, courseID string) (bool, error) {
+	if s.err != nil {
+		return false, s.err
+	}
+	return s.purchased, nil
+}
 
 func TestCourseDetailRoutes(t *testing.T) {
 	e, jwtSvc, repo, _ := setupTestServer()
@@ -264,6 +285,145 @@ func TestCourseDetailRoutes(t *testing.T) {
 		e.ServeHTTP(recAdmin, reqAdmin)
 		if recAdmin.Code != http.StatusOK {
 			t.Fatalf("expected 200 OK for admin, got %d", recAdmin.Code)
+		}
+	})
+}
+
+func TestCourseDetail_ContentPolicyHidesUnpurchasedTeacherLessons(t *testing.T) {
+	e := echo.New()
+	jwtSvc := security.NewJWTService("test-secret-key-32-bytes-minimum!", 15*time.Minute, time.Hour)
+	repo := &mockCourseRepository{}
+	reviewRepo := &mockCourseReviewRepository{courses: repo}
+	courseRouter := course.NewCourseRouter(
+		courseCmd.NewCreateCourseHandler(repo),
+		courseCmd.NewUpdateCourseHandler(repo, reviewRepo),
+		courseCmd.NewDeleteCourseHandler(repo),
+		courseQuery.NewListTeacherCoursesHandler(repo),
+		courseQuery.NewListPublishedCoursesHandler(repo),
+		courseQuery.NewListAdminCoursesHandler(repo),
+		courseQuery.NewGetCourseDetailHandler(repo),
+	)
+	authRequired := restMiddleware.RequireAuth(jwtSvc)
+	pass := func(next echo.HandlerFunc) echo.HandlerFunc { return next }
+	courseRouter.RegisterRoutes(e.Group("/api/v1"), authRequired, pass, pass, pass, pass, pass)
+
+	authorID := "teacher-owner-9"
+	teacherCourseID := "teacher-paid-course-1"
+	platformCourseID := "platform-course-1"
+
+	repo.courses = append(repo.courses,
+		entities.Course{
+			ID:        teacherCourseID,
+			Title:     "Curso Pagado Docente",
+			OwnerType: entities.OwnerTypeTeacher,
+			Status:    entities.ContentStatusPublished,
+			CreatedBy: &authorID,
+			Lessons: []entities.Lesson{
+				{ID: "l-teacher-1", CourseID: teacherCourseID, Title: "Unidad 1", Status: entities.ContentStatusPublished},
+			},
+		},
+		entities.Course{
+			ID:        platformCourseID,
+			Title:     "Curso Oficial Plataforma",
+			OwnerType: entities.OwnerTypePlatform,
+			Status:    entities.ContentStatusPublished,
+			Lessons: []entities.Lesson{
+				{ID: "l-platform-1", CourseID: platformCourseID, Title: "Oficial 1", Status: entities.ContentStatusPublished},
+			},
+		},
+	)
+
+	studentToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+		ID:    "student-buyer-1",
+		Email: "buyer@wordtap.app",
+		Role:  entities.RoleStudent,
+	})
+
+	callDetail := func(courseID string) (*httptest.ResponseRecorder, course.PublicCourseDTO) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/courses/"+courseID, nil)
+		req.Header.Set("Authorization", "Bearer "+studentToken)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		var dto course.PublicCourseDTO
+		_ = json.Unmarshal(rec.Body.Bytes(), &dto)
+		return rec, dto
+	}
+
+	t.Run("unpurchased student gets 200 metadata with LessonsCount=1 and Lessons withheld", func(t *testing.T) {
+		courseRouter.WithContentPolicy(access.NewContentPolicy(stubCoursePurchaseReader{purchased: false}, true))
+		rec, dto := callDetail(teacherCourseID)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		if dto.LessonsCount != 1 || len(dto.Lessons) != 0 {
+			t.Fatalf("expected LessonsCount=1 and withheld lessons for unpurchased student, got count=%d lessons=%d", dto.LessonsCount, len(dto.Lessons))
+		}
+	})
+
+	t.Run("purchased student and platform course receive full published lessons", func(t *testing.T) {
+		courseRouter.WithContentPolicy(access.NewContentPolicy(stubCoursePurchaseReader{purchased: true}, true))
+		recPaid, dtoPaid := callDetail(teacherCourseID)
+		if recPaid.Code != http.StatusOK || len(dtoPaid.Lessons) != 1 {
+			t.Fatalf("expected 200 with 1 lesson for purchaser, got code=%d lessons=%d", recPaid.Code, len(dtoPaid.Lessons))
+		}
+
+		courseRouter.WithContentPolicy(access.NewContentPolicy(stubCoursePurchaseReader{purchased: false}, true))
+		recPlat, dtoPlat := callDetail(platformCourseID)
+		if recPlat.Code != http.StatusOK || len(dtoPlat.Lessons) != 1 {
+			t.Fatalf("expected 200 with 1 lesson for platform course, got code=%d lessons=%d", recPlat.Code, len(dtoPlat.Lessons))
+		}
+	})
+
+	t.Run("unexpected purchase store error returns 500", func(t *testing.T) {
+		courseRouter.WithContentPolicy(access.NewContentPolicy(stubCoursePurchaseReader{err: errors.New("db down")}, true))
+		rec, _ := callDetail(teacherCourseID)
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("expected 500 on unexpected storage error, got %d", rec.Code)
+		}
+	})
+
+	t.Run("competitor instructor gets 403 on another teacher published course", func(t *testing.T) {
+		courseRouter.WithContentPolicy(access.NewContentPolicy(stubCoursePurchaseReader{purchased: false}, true))
+		otherTeacherToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+			ID: "teacher-competitor-77", Role: entities.RoleInstructor,
+		})
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/courses/"+teacherCourseID, nil)
+		req.Header.Set("Authorization", "Bearer "+otherTeacherToken)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("expected 403 for competitor instructor, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("moderator audit=1 cannot expose draft lessons inside published teacher course", func(t *testing.T) {
+		pubWithDraft := "teacher-pub-with-draft-1"
+		repo.courses = append(repo.courses, entities.Course{
+			ID:        pubWithDraft,
+			Title:     "Publicado Docente con Borrador",
+			OwnerType: entities.OwnerTypeTeacher,
+			Status:    entities.ContentStatusPublished,
+			CreatedBy: &authorID,
+			Lessons: []entities.Lesson{
+				{ID: "l-pub-ok", CourseID: pubWithDraft, Title: "Pública", Status: entities.ContentStatusPublished},
+				{ID: "l-priv-draft", CourseID: pubWithDraft, Title: "Borrador Privado", Status: entities.ContentStatusDraft,
+					Items: []entities.LessonItem{{ID: "secret-card", LessonID: "l-priv-draft"}}},
+			},
+		})
+		modToken, _, _ := jwtSvc.GenerateAccessToken(&entities.User{
+			ID: "mod-audit-1", Role: entities.RoleModerator,
+		})
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/courses/"+pubWithDraft+"?audit=1", nil)
+		req.Header.Set("Authorization", "Bearer "+modToken)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 for moderator, got %d", rec.Code)
+		}
+		var dto course.PublicCourseDTO
+		_ = json.Unmarshal(rec.Body.Bytes(), &dto)
+		if len(dto.Lessons) != 1 || dto.Lessons[0].ID != "l-pub-ok" {
+			t.Fatalf("moderator ?audit=1 leaked draft lesson on published teacher course: %+v", dto.Lessons)
 		}
 	})
 }
