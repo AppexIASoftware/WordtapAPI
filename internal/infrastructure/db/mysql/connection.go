@@ -102,7 +102,7 @@ func getDSN() (string, error) {
 	}
 
 	// Formato optimizado: interpolateParams=true reduce roundtrips de red en ~66% al omitir COM_STMT_PREPARE/CLOSE individuales
-	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=UTC&interpolateParams=true&timeout=5s&readTimeout=10s&writeTimeout=10s",
+	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=UTC&interpolateParams=true&timeout=10s&readTimeout=30s&writeTimeout=30s",
 		user, password, host, port, dbName,
 	), nil
 }
