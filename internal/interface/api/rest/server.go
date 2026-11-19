@@ -42,6 +42,7 @@ import (
 	restMiddleware "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/middleware"
 	auditRoute "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/audit"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/auth"
+	billingRoute "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/billing"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/catalog"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/classroom"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/course"
@@ -125,16 +126,20 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	simulationEnabled := courseCmd.SimulationEnabled(appEnv, os.Getenv("ENABLE_SIMULATED_COURSE_PURCHASES"))
 	var purchaseReader access.PurchaseReader
 	var simulatedPurchaseStore courseCmd.SimulatedPurchaseRepository
+	var simLister billingRoute.SimulatedCourseLister
 	if simulationEnabled {
 		demoPurchases := infraRepo.NewDemoPurchaseRepository()
 		purchaseReader = demoPurchases
 		simulatedPurchaseStore = demoPurchases
+		simLister = demoPurchases
 	} else {
 		mysqlPurchases := infraRepo.NewMySQLSimulatedPurchaseRepository(db)
 		purchaseReader = mysqlPurchases
 		simulatedPurchaseStore = mysqlPurchases
+		simLister = mysqlPurchases
 	}
-	contentPolicy := access.NewContentPolicy(purchaseReader, simulationEnabled)
+	billingRepo := infraRepo.NewMySQLBillingRepository(db)
+	contentPolicy := access.NewContentPolicy(purchaseReader, simulationEnabled).WithEntitlements(billingRepo)
 
 	// Use cases
 	loginWithGoogleHandler := commands.NewLoginWithGoogleHandler(userRepo, googleVerifier, jwtService, teacherAppRepo)
@@ -422,6 +427,11 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	myMemoryClient := translationInfra.NewMyMemoryClient(os.Getenv("MYMEMORY_EMAIL"))
 	vocabulary.NewVocabularyRouter(vocabQuery.NewSearchVocabularyHandler(myMemoryClient)).RegisterRoutes(v1, authRequired, restMiddleware.IPRateLimiter(10, 20))
 	device.NewDeviceRouter(deviceRepo).RegisterRoutes(v1, authRequired)
+	billingRoute.NewBillingRouter(billingRepo, settingRepo, os.Getenv("STRIPE_WEBHOOK_SECRET"), os.Getenv("MERCADOPAGO_WEBHOOK_SECRET")).
+		WithSimulatedPurchases(simLister, simulationEnabled).
+		WithMercadoPagoFetcher(billingRoute.NewHTTPMercadoPagoClient(os.Getenv("MERCADOPAGO_ACCESS_TOKEN"))).
+		RegisterRoutes(v1, authRequired, studentOnly, restMiddleware.IPRateLimiter(20, 40))
+	billingRoute.NewMonetizationAdminRouter(billingRepo, settingRepo).RegisterRoutes(v1, authRequired, instructorOrAdmin)
 
 	return &Server{App: e}, nil
 }

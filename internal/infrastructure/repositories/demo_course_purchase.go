@@ -82,3 +82,16 @@ func (r *DemoPurchaseRepository) HasPurchase(_ context.Context, userID, courseID
 	_, ok := r.purchases[demoPurchaseKey(userID, courseID)]
 	return ok, nil
 }
+
+func (r *DemoPurchaseRepository) ListPurchasedCourseIDs(_ context.Context, userID string) ([]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	ids := make([]string, 0)
+	for _, p := range r.purchases {
+		if p.UserID == userID {
+			ids = append(ids, p.CourseID)
+		}
+	}
+	return ids, nil
+}

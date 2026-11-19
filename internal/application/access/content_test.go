@@ -54,4 +54,45 @@ func TestContentPolicy(t *testing.T) {
 	if err := NewContentPolicy(testPurchases{err: dbError}, true).Authorize(context.Background(), &course, &lesson, "buyer", entities.RoleStudent); !errors.Is(err, dbError) {
 		t.Fatalf("got %v", err)
 	}
+
+	ent := testEntitlements{subUser: "pro-student", courseUser: "real-buyer", courseID: course.ID}
+	subPlatform := platform
+	subPlatform.AccessTier = entities.AccessTierSubscription
+	if err := NewContentPolicy(nil, false).WithEntitlements(ent).Authorize(context.Background(), &subPlatform, &lesson, "free-student", entities.RoleStudent); !errors.Is(err, ErrContentDenied) {
+		t.Fatalf("expected free student denied subscription platform course, got %v", err)
+	}
+	if err := NewContentPolicy(nil, false).WithEntitlements(ent).Authorize(context.Background(), &subPlatform, &lesson, "pro-student", entities.RoleStudent); err != nil {
+		t.Fatalf("expected active subscriber allowed on platform subscription course, got %v", err)
+	}
+	paidCourse := course
+	paidCourse.AccessTier = entities.AccessTierCourse
+	if err := NewContentPolicy(nil, false).WithEntitlements(ent).Authorize(context.Background(), &paidCourse, &lesson, "real-buyer", entities.RoleStudent); err != nil {
+		t.Fatalf("expected real course entitlement to allow access even with simulation disabled, got %v", err)
+	}
+	paidPlatform := platform
+	paidPlatform.AccessTier = entities.AccessTierCourse
+	if err := NewContentPolicy(nil, false).WithEntitlements(ent).Authorize(context.Background(), &paidPlatform, &lesson, "free-student", entities.RoleStudent); !errors.Is(err, ErrContentDenied) {
+		t.Fatalf("expected unentitled student denied paid platform course, got %v", err)
+	}
+	freePriceMismatch := course
+	freePriceMismatch.AccessTier = entities.AccessTierFree
+	freePriceMismatch.PriceCents = 1500
+	if err := NewContentPolicy(nil, false).Authorize(context.Background(), &freePriceMismatch, &lesson, "free-student", entities.RoleStudent); !errors.Is(err, ErrContentDenied) {
+		t.Fatalf("expected teacher free course with PriceCents > 0 denied, got %v", err)
+	}
+}
+
+type testEntitlements struct {
+	subUser    string
+	courseUser string
+	courseID   string
+	err        error
+}
+
+func (e testEntitlements) HasActiveSubscription(_ context.Context, userID string) (bool, error) {
+	return userID == e.subUser, e.err
+}
+
+func (e testEntitlements) HasCourseEntitlement(_ context.Context, userID, courseID string) (bool, error) {
+	return userID == e.courseUser && courseID == e.courseID, e.err
 }

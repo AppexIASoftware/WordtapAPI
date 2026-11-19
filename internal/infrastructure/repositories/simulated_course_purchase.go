@@ -59,6 +59,17 @@ func (r *MySQLSimulatedPurchaseRepository) HasPurchase(ctx context.Context, user
 	return purchase != nil, err
 }
 
+func (r *MySQLSimulatedPurchaseRepository) ListPurchasedCourseIDs(ctx context.Context, userID string) ([]string, error) {
+	var ids []string
+	err := r.db.WithContext(ctx).Model(&simulatedPurchase{}).
+		Where("user_id = ?", userID).
+		Pluck("course_id", &ids).Error
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 func (r *MySQLSimulatedPurchaseRepository) Purchase(ctx context.Context, userID, courseID, key string) (*commands.SimulatedCoursePurchase, error) {
 	var purchase simulatedPurchase
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -96,7 +107,7 @@ func (r *MySQLSimulatedPurchaseRepository) Purchase(ctx context.Context, userID,
 			if course.OwnerType != entities.OwnerTypeTeacher || course.Status != entities.ContentStatusPublished || course.AccessTier != entities.AccessTierCourse || course.PriceCents <= 0 {
 				return commands.ErrCourseNotPurchasable
 			}
-			purchase = simulatedPurchase{ID: uuid.NewString(), UserID: userID, CourseID: courseID, AmountCents: course.PriceCents, Currency: commands.TeacherCourseCurrency, CreatedAt: time.Now().UTC()}
+			purchase = simulatedPurchase{ID: uuid.NewString(), UserID: userID, CourseID: courseID, AmountCents: course.PriceCents, Currency: entities.CurrencyPEN, CreatedAt: time.Now().UTC()}
 			if err := tx.Create(&purchase).Error; err != nil {
 				return err
 			}
