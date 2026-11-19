@@ -38,6 +38,7 @@ type PublicCourseDTO struct {
 	Description           *string                `json:"description,omitempty"`
 	AccessTier            entities.AccessTier    `json:"access_tier"`
 	PriceCents            int                    `json:"price_cents"`
+	Currency              string                 `json:"currency"`
 	Level                 string                 `json:"level"`
 	Status                entities.ContentStatus `json:"status"`
 	OwnerType             entities.OwnerType     `json:"owner_type"`
@@ -117,6 +118,11 @@ func toCourseDetailDTO(c *entities.Course, includeLessons bool, includeDraftsAnd
 		catName = &c.Category.Name
 	}
 
+	currency := c.Currency
+	if currency == "" {
+		currency = entities.CurrencyPEN
+	}
+
 	return PublicCourseDTO{
 		ID:                    c.ID,
 		Title:                 c.Title,
@@ -124,6 +130,7 @@ func toCourseDetailDTO(c *entities.Course, includeLessons bool, includeDraftsAnd
 		Description:           c.Description,
 		AccessTier:            c.AccessTier,
 		PriceCents:            c.PriceCents,
+		Currency:              currency,
 		Level:                 c.Level,
 		CategoryID:            c.CategoryID,
 		CategoryName:          catName,

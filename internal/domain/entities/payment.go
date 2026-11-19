@@ -26,9 +26,10 @@ const (
 	PaymentStatusCancelled PaymentStatus = "cancelled"
 )
 
-// Product representa cursos o suscripciones a la venta con su precio en centavos.
+// Product representa cursos o suscripciones a la venta con su precio en centavos (PEN).
 type Product struct {
 	ID                string      `gorm:"type:varchar(36);primaryKey" json:"id"`
+	CourseID          *string     `gorm:"type:varchar(36);index" json:"course_id,omitempty"`
 	Name              string      `gorm:"type:varchar(180);not null" json:"name"`
 	Description       *string     `gorm:"type:text" json:"description"`
 	ProductType       ProductType `gorm:"type:varchar(40);not null" json:"product_type"`
@@ -36,15 +37,20 @@ type Product struct {
 	ProviderProductID *string     `gorm:"type:varchar(255)" json:"provider_product_id"`
 	ProviderPriceID   *string     `gorm:"type:varchar(255)" json:"provider_price_id"`
 	PriceCents        int         `gorm:"not null" json:"price_cents"`
-	Currency          string      `gorm:"type:char(3);default:'USD';not null" json:"currency"`
+	Currency          string      `gorm:"type:char(3);default:'PEN';not null" json:"currency"`
 	AccessTier        AccessTier  `gorm:"type:varchar(20);not null" json:"access_tier"`
 	IsActive          bool        `gorm:"default:true;not null" json:"is_active"`
 	CreatedAt         time.Time   `json:"created_at"`
+
+	Course *Course `gorm:"foreignKey:CourseID;constraint:OnDelete:SET NULL" json:"course,omitempty"`
 }
 
 func (p *Product) BeforeCreate(tx *gorm.DB) error {
 	if p.ID == "" {
 		p.ID = uuid.NewString()
+	}
+	if p.Currency == "" {
+		p.Currency = CurrencyPEN
 	}
 	return nil
 }
@@ -52,15 +58,15 @@ func (p *Product) BeforeCreate(tx *gorm.DB) error {
 // Order almacena las intenciones y confirmaciones de compra del usuario.
 type Order struct {
 	ID                 string        `gorm:"type:varchar(36);primaryKey" json:"id"`
-	UserID             string        `gorm:"type:varchar(36);not null;index:idx_orders_user,priority:1" json:"user_id"`
+	UserID             string        `gorm:"type:varchar(36);not null;index:idx_orders_user,priority:1;uniqueIndex:idx_orders_user_idempotency,priority:1" json:"user_id"`
 	ProductID          string        `gorm:"type:varchar(36);not null;index" json:"product_id"`
 	Provider           string        `gorm:"type:varchar(40);default:'stripe';not null" json:"provider"`
 	ProviderCheckoutID *string       `gorm:"type:varchar(255);uniqueIndex" json:"provider_checkout_id"`
 	ProviderPaymentID  *string       `gorm:"type:varchar(255)" json:"provider_payment_id"`
 	AmountCents        int           `gorm:"not null" json:"amount_cents"`
-	Currency           string        `gorm:"type:char(3);default:'USD';not null" json:"currency"`
+	Currency           string        `gorm:"type:char(3);default:'PEN';not null" json:"currency"`
 	Status             PaymentStatus `gorm:"type:varchar(20);default:'pending';not null;index:idx_orders_status,priority:1" json:"status"`
-	IdempotencyKey     *string       `gorm:"type:varchar(255);uniqueIndex" json:"idempotency_key"`
+	IdempotencyKey     *string       `gorm:"type:varchar(255);uniqueIndex:idx_orders_user_idempotency,priority:2" json:"idempotency_key"`
 	PaidAt             *time.Time    `json:"paid_at"`
 	CreatedAt          time.Time     `gorm:"index:idx_orders_user,priority:2;index:idx_orders_status,priority:2" json:"created_at"`
 	UpdatedAt          time.Time     `json:"updated_at"`
@@ -73,6 +79,9 @@ func (o *Order) BeforeCreate(tx *gorm.DB) error {
 	if o.ID == "" {
 		o.ID = uuid.NewString()
 	}
+	if o.Currency == "" {
+		o.Currency = CurrencyPEN
+	}
 	return nil
 }
 
@@ -81,6 +90,7 @@ type UserEntitlement struct {
 	ID              string      `gorm:"type:varchar(36);primaryKey" json:"id"`
 	UserID          string      `gorm:"type:varchar(36);not null;index:idx_entitlements_user,priority:1" json:"user_id"`
 	ProductID       string      `gorm:"type:varchar(36);not null;index" json:"product_id"`
+	CourseID        *string     `gorm:"type:varchar(36);index" json:"course_id,omitempty"`
 	OrderID         *string     `gorm:"type:varchar(36);index" json:"order_id"`
 	EntitlementType ProductType `gorm:"type:varchar(40);not null" json:"entitlement_type"`
 	StartsAt        time.Time   `gorm:"not null" json:"starts_at"`
@@ -90,6 +100,7 @@ type UserEntitlement struct {
 
 	User    *User    `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"user,omitempty"`
 	Product *Product `gorm:"foreignKey:ProductID;constraint:OnDelete:RESTRICT" json:"product,omitempty"`
+	Course  *Course  `gorm:"foreignKey:CourseID;constraint:OnDelete:SET NULL" json:"course,omitempty"`
 	Order   *Order   `gorm:"foreignKey:OrderID;constraint:OnDelete:SET NULL" json:"order,omitempty"`
 }
 

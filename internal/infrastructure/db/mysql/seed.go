@@ -190,15 +190,15 @@ func Seed(db *gorm.DB) error {
 		}
 	}
 
-	// 3. Productos
+	// 3. Productos (siempre en PEN / Soles)
 	products := []entities.Product{
 		{
 			Name:        "Curso premium WordTap",
 			Description: stringPtr("Acceso permanente al contenido premium."),
 			ProductType: entities.ProductTypeOneTimeCourse,
-			Provider:    "stripe",
-			PriceCents:  1999,
-			Currency:    "USD",
+			Provider:    "mercadopago",
+			PriceCents:  2990,
+			Currency:    entities.CurrencyPEN,
 			AccessTier:  entities.AccessTierCourse,
 			IsActive:    true,
 		},
@@ -206,9 +206,9 @@ func Seed(db *gorm.DB) error {
 			Name:        "Suscripción mensual WordTap",
 			Description: stringPtr("Acceso mensual al contenido premium."),
 			ProductType: entities.ProductTypeMonthlySubscription,
-			Provider:    "stripe",
-			PriceCents:  999,
-			Currency:    "USD",
+			Provider:    "mercadopago",
+			PriceCents:  1990,
+			Currency:    entities.CurrencyPEN,
 			AccessTier:  entities.AccessTierSubscription,
 			IsActive:    true,
 		},

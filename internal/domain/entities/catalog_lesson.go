@@ -10,6 +10,8 @@ import (
 // ContentStatus defines publication statuses.
 type ContentStatus string
 
+const CurrencyPEN = "PEN"
+
 const (
 	ContentStatusDraft     ContentStatus = "draft"
 	ContentStatusInReview  ContentStatus = "in_review"
@@ -53,6 +55,7 @@ type Course struct {
 	Description   *string       `gorm:"type:text" json:"description"`
 	AccessTier    AccessTier    `gorm:"type:varchar(20);default:'free';not null" json:"access_tier"`
 	PriceCents    int           `gorm:"default:1999;not null" json:"price_cents"`
+	Currency      string        `gorm:"type:char(3);default:'PEN';not null" json:"currency"`
 	Level         string        `gorm:"type:varchar(30);default:'beginner';not null" json:"level"`
 	Status        ContentStatus `gorm:"type:varchar(20);default:'draft';not null" json:"status"`
 	OwnerType     OwnerType     `gorm:"type:varchar(20);default:'teacher';not null;index" json:"owner_type"`
@@ -73,6 +76,9 @@ type Course struct {
 func (c *Course) BeforeCreate(tx *gorm.DB) error {
 	if c.ID == "" {
 		c.ID = uuid.NewString()
+	}
+	if c.Currency == "" {
+		c.Currency = CurrencyPEN
 	}
 	if c.SourceLang == "" {
 		c.SourceLang = "es"

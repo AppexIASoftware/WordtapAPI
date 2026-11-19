@@ -179,6 +179,7 @@ func formatStudentClassroomDTO(cls *entities.Classroom, studentID string, permis
 			"has_access":  hasAccess,
 			"access_tier": course.AccessTier,
 			"price_cents": course.PriceCents,
+			"currency":    currencyOrPEN(course.Currency),
 		})
 	}
 
@@ -232,4 +233,11 @@ func resolveClassroomCourseAccess(course entities.Course, accessByCourse map[str
 		return accessByCourse[course.ID]
 	}
 	return access.EffectiveOwnerType(&course) == entities.OwnerTypePlatform
+}
+
+func currencyOrPEN(currency string) string {
+	if strings.TrimSpace(currency) == "" {
+		return entities.CurrencyPEN
+	}
+	return strings.ToUpper(strings.TrimSpace(currency))
 }

@@ -44,7 +44,7 @@ func (r *MySQLCourseReviewRepository) UpdatePublishedAndSubmit(ctx context.Conte
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&entities.Course{}).
 			Where("id = ? AND created_by = ? AND status = ?", request.CourseID, request.InstructorID, entities.ContentStatusPublished).
-			Select("title", "description", "level", "category_id", "cover_image_url", "access_tier", "price_cents", "status", "updated_at").Omit(clause.Associations).Updates(course)
+			Select("title", "description", "level", "category_id", "cover_image_url", "access_tier", "price_cents", "currency", "status", "updated_at").Omit(clause.Associations).Updates(course)
 		if result.Error != nil {
 			return result.Error
 		}

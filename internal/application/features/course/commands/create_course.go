@@ -128,6 +128,7 @@ func (h *CreateCourseHandler) Handle(ctx context.Context, cmd CreateCourseComman
 		Description:   cmd.Description,
 		AccessTier:    accessTier,
 		PriceCents:    priceCents,
+		Currency:      entities.CurrencyPEN,
 		Level:         level,
 		Status:        entities.ContentStatusDraft,
 		OwnerType:     ownerType,

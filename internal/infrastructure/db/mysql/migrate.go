@@ -131,6 +131,18 @@ func AutoMigrate(db *gorm.DB) error {
 	).Error; err != nil {
 		return fmt.Errorf("failed to sync published lesson status: %w", err)
 	}
+	if err := db.Exec(
+		`UPDATE courses SET currency = ? WHERE currency IS NULL OR currency = '' OR currency <> ?`,
+		entities.CurrencyPEN, entities.CurrencyPEN,
+	).Error; err != nil {
+		return fmt.Errorf("failed to backfill course currency: %w", err)
+	}
+	if err := db.Exec(
+		`UPDATE products SET currency = ? WHERE currency IS NULL OR currency = '' OR currency = 'USD'`,
+		entities.CurrencyPEN,
+	).Error; err != nil {
+		return fmt.Errorf("failed to backfill product currency: %w", err)
+	}
 
 	// 2. Read-optimized SQL Views
 	views := []string{
@@ -248,6 +260,12 @@ func prepareUniqueConstraints(db *gorm.DB) error {
 			 AND ce1.student_id = ce2.student_id
 			 AND (ce1.enrolled_at > ce2.enrolled_at OR (ce1.enrolled_at = ce2.enrolled_at AND ce1.id > ce2.id))
 		`).Error; err != nil {
+			return err
+		}
+	}
+
+	if db.Migrator().HasTable(&entities.Order{}) && db.Migrator().HasIndex(&entities.Order{}, "idx_orders_idempotency_key") {
+		if err := db.Exec(`DROP INDEX idx_orders_idempotency_key ON orders`).Error; err != nil {
 			return err
 		}
 	}

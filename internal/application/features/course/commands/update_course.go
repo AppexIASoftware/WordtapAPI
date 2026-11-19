@@ -168,6 +168,9 @@ func (h *UpdateCourseHandler) Handle(ctx context.Context, cmd UpdateCourseComman
 		course.Status = entities.ContentStatusInReview
 	}
 
+	if course.Currency == "" {
+		course.Currency = entities.CurrencyPEN
+	}
 	course.UpdatedAt = now
 
 	if wasPublished && isTeacher && len(changed) > 0 {
