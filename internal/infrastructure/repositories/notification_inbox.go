@@ -17,7 +17,8 @@ func NewMySQLNotificationInbox(db *gorm.DB) *MySQLNotificationInbox {
 
 func (r *MySQLNotificationInbox) List(ctx context.Context, userID string, limit int, cursor *inbox.Cursor) (inbox.Page, error) {
 	page := inbox.Page{Items: []entities.Notification{}}
-	query := r.db.WithContext(ctx).Where("user_id = ?", userID)
+	query := r.db.WithContext(ctx).
+		Where("user_id = ? AND created_at >= (SELECT created_at FROM users WHERE id = ?)", userID, userID)
 	if cursor != nil {
 		query = query.Where("(created_at < ? OR (created_at = ? AND id < ?))", cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
 	}
@@ -35,7 +36,10 @@ func (r *MySQLNotificationInbox) List(ctx context.Context, userID string, limit 
 
 func (r *MySQLNotificationInbox) UnreadCount(ctx context.Context, userID string) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&entities.Notification{}).Where("user_id = ? AND is_read = ?", userID, false).Count(&count).Error
+	err := r.db.WithContext(ctx).
+		Model(&entities.Notification{}).
+		Where("user_id = ? AND is_read = ? AND created_at >= (SELECT created_at FROM users WHERE id = ?)", userID, false, userID).
+		Count(&count).Error
 	return count, err
 }
 
