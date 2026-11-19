@@ -120,3 +120,46 @@ func (r *AuthRouter) Logout(c *echo.Context) error {
 
 	return c.NoContent(http.StatusNoContent)
 }
+
+type UpdateProfileRequest struct {
+	Name          string  `json:"name"`
+	LearningLevel string  `json:"learning_level"`
+	AvatarURL     *string `json:"avatar_url"`
+}
+
+// UpdateMe maneja PATCH /api/v1/users/me para actualizar nombre, nivel y avatar del usuario autenticado.
+func (r *AuthRouter) UpdateMe(c *echo.Context) error {
+	userIDVal := c.Get("user_id")
+	userID, ok := userIDVal.(string)
+	if !ok || userID == "" {
+		return response.Fail(c, http.StatusUnauthorized, "Sesión no válida.")
+	}
+
+	var req UpdateProfileRequest
+	if err := c.Bind(&req); err != nil {
+		return response.Error(c, http.StatusBadRequest, "Los datos enviados no son válidos.", err)
+	}
+
+	handler := commands.NewUpdateProfileHandler(r.userRepo)
+	updated, err := handler.Handle(c.Request().Context(), commands.UpdateProfileCommand{
+		UserID:        userID,
+		Name:          req.Name,
+		LearningLevel: req.LearningLevel,
+		AvatarURL:     req.AvatarURL,
+	})
+	if err != nil {
+		if errors.Is(err, commands.ErrInvalidProfileName) || errors.Is(err, commands.ErrInvalidProfileLevel) {
+			return response.Fail(c, http.StatusBadRequest, err.Error())
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return response.Fail(c, http.StatusNotFound, "No se encontró el usuario.")
+		}
+		return response.Error(c, http.StatusInternalServerError, "No se pudo actualizar tu perfil.", err)
+	}
+
+	r.userCache.Delete(userID)
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"user": updated,
+	})
+}

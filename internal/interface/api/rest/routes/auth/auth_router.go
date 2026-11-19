@@ -64,6 +64,7 @@ func (r *AuthRouter) RegisterRoutes(v1 *echo.Group, authRequired echo.Middleware
 	usersGroup := v1.Group("/users")
 	usersGroup.Use(authRequired)
 	usersGroup.GET("/me", r.GetMe)
+	usersGroup.PATCH("/me", r.UpdateMe)
 }
 
 type GoogleLoginRequest struct {
