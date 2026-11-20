@@ -141,6 +141,12 @@ func (r *MySQLTeacherApplicationRepository) ApproveInTx(ctx context.Context, app
 			if user.Role != entities.RoleModerator {
 				updates["role"] = entities.RoleInstructor
 			}
+			if app.Bio != nil && (user.Bio == nil || *user.Bio == "") {
+				updates["bio"] = *app.Bio
+			}
+			if app.Specialty != nil && (user.Specialty == nil || *user.Specialty == "") {
+				updates["specialty"] = *app.Specialty
+			}
 			if err := tx.Model(&entities.User{}).Where("id = ?", app.UserID).Updates(updates).Error; err != nil {
 				return err
 			}

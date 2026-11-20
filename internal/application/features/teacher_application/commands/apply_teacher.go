@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -52,6 +53,35 @@ func (h *ApplyTeacherHandler) Handle(ctx context.Context, cmd ApplyTeacherComman
 	existing, err := h.appRepo.FindByUserID(ctx, cmd.UserID)
 	if err == nil && existing != nil {
 		if existing.Status == entities.ApplicationStatusPending {
+			updated := false
+			if cmd.Specialty != nil {
+				spec := strings.TrimSpace(*cmd.Specialty)
+				if spec == "" {
+					return nil, apperrors.New("Debes agregar al menos una especialidad académica.")
+				}
+				if len([]rune(spec)) > 120 {
+					return nil, apperrors.New("La especialidad académica no puede superar los 120 caracteres.")
+				}
+				existing.Specialty = &spec
+				updated = true
+			}
+			if cmd.Bio != nil {
+				bio := strings.TrimSpace(*cmd.Bio)
+				if bio == defaultAutoApplicationBio || len([]rune(bio)) < 20 {
+					return nil, apperrors.New("La biografía académica debe tener al menos 20 caracteres personalizados.")
+				}
+				if len([]rune(bio)) > 500 {
+					return nil, apperrors.New("La biografía académica no puede superar los 500 caracteres.")
+				}
+				existing.Bio = &bio
+				updated = true
+			}
+			if updated {
+				existing.UpdatedAt = time.Now()
+				if err := h.appRepo.Update(ctx, existing); err != nil {
+					return nil, fmt.Errorf("failed to update pending teacher application: %w", err)
+				}
+			}
 			return existing, nil
 		}
 		if existing.Status == entities.ApplicationStatusApproved {

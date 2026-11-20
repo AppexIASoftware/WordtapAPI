@@ -204,6 +204,22 @@ func formatStudentClassroomDTO(cls *entities.Classroom, studentID string, permis
 		})
 	}
 
+	teacherPayload := map[string]any{
+		"id":   cls.TeacherID,
+		"name": teacherName,
+	}
+	if cls.Teacher != nil {
+		if cls.Teacher.AvatarURL != nil && *cls.Teacher.AvatarURL != "" {
+			teacherPayload["avatar_url"] = *cls.Teacher.AvatarURL
+		}
+		if cls.Teacher.Specialty != nil && *cls.Teacher.Specialty != "" {
+			teacherPayload["specialty"] = *cls.Teacher.Specialty
+		}
+		if cls.Teacher.Bio != nil && *cls.Teacher.Bio != "" {
+			teacherPayload["bio"] = *cls.Teacher.Bio
+		}
+	}
+
 	return map[string]any{
 		"id":              cls.ID,
 		"teacher_id":      cls.TeacherID,
@@ -212,10 +228,7 @@ func formatStudentClassroomDTO(cls *entities.Classroom, studentID string, permis
 		"level":           cls.Level,
 		"description":     cls.Description,
 		"weeklyGoalWords": weeklyGoal,
-		"teacher": map[string]any{
-			"id":   cls.TeacherID,
-			"name": teacherName,
-		},
+		"teacher":         teacherPayload,
 		"studentProgress": map[string]any{
 			"wordsMastered": wordsMastered,
 			"weeklyGoal":    weeklyGoal,

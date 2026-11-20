@@ -27,6 +27,22 @@ func NewReviewApplicationHandler(appRepo repositories.TeacherApplicationReposito
 	return &ReviewApplicationHandler{appRepo: appRepo}
 }
 
+const defaultAutoApplicationBio = "Postulante registrado vía Google en Wordtap Studio"
+
+func hasCompleteAcademicProfile(app *entities.TeacherApplication) bool {
+	if app.Specialty == nil || strings.TrimSpace(*app.Specialty) == "" {
+		return false
+	}
+	if app.Bio == nil {
+		return false
+	}
+	bio := strings.TrimSpace(*app.Bio)
+	if bio == defaultAutoApplicationBio || len([]rune(bio)) < 20 {
+		return false
+	}
+	return true
+}
+
 func (h *ReviewApplicationHandler) Handle(ctx context.Context, cmd ReviewApplicationCommand) (*entities.TeacherApplication, error) {
 	if cmd.ApplicationID == "" {
 		return nil, errors.New("application_id is required")
@@ -44,6 +60,9 @@ func (h *ReviewApplicationHandler) Handle(ctx context.Context, cmd ReviewApplica
 	case "approve":
 		if app.Status == entities.ApplicationStatusApproved {
 			return nil, apperrors.New("La postulación ya se encuentra aprobada.")
+		}
+		if !hasCompleteAcademicProfile(app) {
+			return nil, apperrors.New("El postulante debe completar su especialidad académica y una biografía de al menos 20 caracteres antes de ser aprobado.")
 		}
 		if err := h.appRepo.ApproveInTx(ctx, cmd.ApplicationID, cmd.ReviewerID); err != nil {
 			return nil, fmt.Errorf("failed to approve application: %w", err)

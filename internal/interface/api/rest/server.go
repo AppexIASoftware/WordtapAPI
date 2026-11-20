@@ -353,6 +353,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 	).RegisterRoutes(v1, authRequired, adminOrModerator)
 	teacherAppRouter.RegisterRoutes(v1, authRequired, canManageTeacherApps)
 	teacherRoute.NewProfileRouter(userRepo, authRouter.InvalidateUserCache).RegisterRoutes(v1, authRequired, instructorOrAdmin)
+	teacherRoute.NewCalibrationRouter(infraRepo.NewMySQLReviewCalibrationRepository(db)).RegisterRoutes(v1, authRequired, instructorOrAdmin)
 	staffRepo := infraRepo.NewMySQLStaffRepository(db)
 	staffRouter := userRoute.NewStaffRouter(
 		userQuery.NewListStaffHandler(staffRepo),

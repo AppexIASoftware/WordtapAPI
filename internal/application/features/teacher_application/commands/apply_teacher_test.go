@@ -118,10 +118,14 @@ func TestApplyTeacherHandler(t *testing.T) {
 }
 
 func TestReviewApplicationHandler(t *testing.T) {
+	spec := "Inglés de Negocios, IELTS"
+	bio := "Docente certificado TESOL con 6 años de experiencia en clases."
 	app := &entities.TeacherApplication{
 		ID:        "app-1",
 		UserID:    "usr-1",
 		Status:    entities.ApplicationStatusPending,
+		Specialty: &spec,
+		Bio:       &bio,
 		CreatedAt: time.Now(),
 	}
 	aRepo := &mockAppRepo{existing: app}
@@ -139,5 +143,29 @@ func TestReviewApplicationHandler(t *testing.T) {
 	}
 	if reviewed.Status != entities.ApplicationStatusApproved {
 		t.Fatalf("expected approved status, got %s", reviewed.Status)
+	}
+}
+
+func TestReviewApplicationHandler_BlocksIncompleteProfile(t *testing.T) {
+	spec := "Inglés General"
+	autoBio := "Postulante registrado vía Google en Wordtap Studio"
+	app := &entities.TeacherApplication{
+		ID:        "app-2",
+		UserID:    "usr-2",
+		Status:    entities.ApplicationStatusPending,
+		Specialty: &spec,
+		Bio:       &autoBio,
+		CreatedAt: time.Now(),
+	}
+	aRepo := &mockAppRepo{existing: app}
+
+	handler := commands.NewReviewApplicationHandler(aRepo)
+	if _, err := handler.Handle(context.Background(), commands.ReviewApplicationCommand{
+		ApplicationID: "app-2",
+		ReviewerID:    "admin-1",
+		ReviewerRole:  entities.RoleAdmin,
+		Action:        "approve",
+	}); err == nil {
+		t.Fatalf("expected error when approving incomplete teacher profile")
 	}
 }
