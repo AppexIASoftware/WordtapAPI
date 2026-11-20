@@ -28,6 +28,8 @@ type PublicAuthorDTO struct {
 	Name      string  `json:"name"`
 	Role      string  `json:"role"`
 	AvatarURL *string `json:"avatar_url,omitempty"`
+	Bio       *string `json:"bio,omitempty"`
+	Specialty *string `json:"specialty,omitempty"`
 }
 
 // PublicCourseDTO projects a course for the public catalog and detail view with a sanitized author.
@@ -110,6 +112,8 @@ func toCourseDetailDTO(c *entities.Course, includeLessons bool, includeDraftsAnd
 			Name:      c.Author.Name,
 			Role:      string(c.Author.Role),
 			AvatarURL: c.Author.AvatarURL,
+			Bio:       c.Author.Bio,
+			Specialty: c.Author.Specialty,
 		}
 	}
 

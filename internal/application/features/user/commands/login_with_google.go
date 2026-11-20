@@ -31,6 +31,8 @@ type AuthUserDTO struct {
 	Email             string              `json:"email"`
 	Name              string              `json:"name"`
 	AvatarURL         *string             `json:"avatar_url"`
+	Bio               *string             `json:"bio,omitempty"`
+	Specialty         *string             `json:"specialty,omitempty"`
 	Role              entities.UserRole   `json:"role"`
 	AccessTier        entities.AccessTier `json:"access_tier"`
 	PreferredLanguage string              `json:"preferred_language"`
@@ -74,6 +76,8 @@ func ToAuthUserDTO(user *entities.User) AuthUserDTO {
 		Email:             user.Email,
 		Name:              user.Name,
 		AvatarURL:         user.AvatarURL,
+		Bio:               user.Bio,
+		Specialty:         user.Specialty,
 		Role:              user.Role,
 		AccessTier:        user.AccessTier,
 		PreferredLanguage: user.PreferredLanguage,

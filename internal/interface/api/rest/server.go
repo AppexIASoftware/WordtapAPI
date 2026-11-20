@@ -54,6 +54,7 @@ import (
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/lesson"
 	notificationRoute "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/notification"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/setting"
+	teacherRoute "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/teacher"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/teacher_application"
 	userRoute "github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/user"
 	"github.com/AppexIASoftware/WordtapAPI/internal/interface/api/rest/routes/vault"
@@ -351,6 +352,7 @@ func NewServer(db *gorm.DB) (*Server, error) {
 		auditCmd.NewCreateContentReportHandler(auditRepo),
 	).RegisterRoutes(v1, authRequired, adminOrModerator)
 	teacherAppRouter.RegisterRoutes(v1, authRequired, canManageTeacherApps)
+	teacherRoute.NewProfileRouter(userRepo, authRouter.InvalidateUserCache).RegisterRoutes(v1, authRequired, instructorOrAdmin)
 	staffRepo := infraRepo.NewMySQLStaffRepository(db)
 	staffRouter := userRoute.NewStaffRouter(
 		userQuery.NewListStaffHandler(staffRepo),

@@ -34,6 +34,8 @@ type User struct {
 	Name              string     `gorm:"type:varchar(120);not null" json:"name"`
 	PasswordHash      *string    `gorm:"type:text" json:"-"`
 	AvatarURL         *string    `gorm:"type:text" json:"avatar_url"`
+	Bio               *string    `gorm:"type:text" json:"bio"`
+	Specialty         *string    `gorm:"type:varchar(120)" json:"specialty"`
 	Role              UserRole   `gorm:"type:varchar(20);default:'student';not null" json:"role"`
 	AccessTier        AccessTier `gorm:"type:varchar(20);default:'free';not null" json:"access_tier"`
 	PreferredLanguage string     `gorm:"type:varchar(10);default:'es';not null" json:"preferred_language"`

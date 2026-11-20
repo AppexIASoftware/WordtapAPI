@@ -48,6 +48,13 @@ func NewAuthRouter(
 	}
 }
 
+// InvalidateUserCache elimina la entrada en caché del usuario tras actualizaciones externas de perfil.
+func (r *AuthRouter) InvalidateUserCache(userID string) {
+	if userID != "" {
+		r.userCache.Delete(userID)
+	}
+}
+
 // RegisterRoutes registra los endpoints del dominio de autenticación y usuarios.
 func (r *AuthRouter) RegisterRoutes(v1 *echo.Group, authRequired echo.MiddlewareFunc, authRateLimit ...echo.MiddlewareFunc) {
 	authGroup := v1.Group("/auth")
